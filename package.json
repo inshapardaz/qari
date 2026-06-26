@@ -1,0 +1,33 @@
+{
+  "name": "qari",
+  "version": "0.1.0",
+  "description": "Universal Ebook Reader - Framework-agnostic ebook reading component",
+  "type": "module",
+  "scripts": {
+    "dev": "vite serve demo",
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1",
+    "markdown-it": "^14.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.4.2",
+    "@testing-library/react": "^14.2.1",
+    "@types/markdown-it": "^14.1.2",
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "@vue/runtime-core": "^3.5.39",
+    "@vue/test-utils": "^2.4.11",
+    "fast-check": "^3.15.1",
+    "jsdom": "^24.0.0",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0",
+    "vue": "^3.5.39"
+  }
+}

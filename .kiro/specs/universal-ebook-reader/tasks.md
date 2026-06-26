@@ -6,15 +6,15 @@ Build a framework-agnostic ebook reading component using React as the core, with
 
 ## Tasks
 
-- [ ] 1. Set up project structure, data models, and core interfaces
-  - [ ] 1.1 Initialize project with TypeScript, React, Vitest, and fast-check
+- [x] 1. Set up project structure, data models, and core interfaces
+  - [x] 1.1 Initialize project with TypeScript, React, Vitest, and fast-check
     - Create package.json with dependencies: react, react-dom, vitest, fast-check, jsdom
     - Configure tsconfig.json with strict mode
     - Set up vitest.config.ts with jsdom environment
     - Create directory structure: src/models, src/parsers, src/services, src/components, src/wrappers
     - _Requirements: 1.1_
 
-  - [ ] 1.2 Define core data model interfaces and types
+  - [x] 1.2 Define core data model interfaces and types
     - Create src/models/book.ts with Book, BookMetadata, Chapter, ContentNode, InlineNode types
     - Create src/models/bookmark.ts with Bookmark interface
     - Create src/models/reader-state.ts with ReaderState interface
@@ -22,7 +22,7 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - All types as defined in the design document
     - _Requirements: 9.1, 2.6, 2.7_
 
-  - [ ] 1.3 Define service interfaces
+  - [x] 1.3 Define service interfaces
     - Create src/interfaces/parser.ts with EPUBParser, MarkdownParser, PrettyPrinter interfaces
     - Create src/interfaces/dictionary.ts with DictionaryProvider, DictionaryResult, Definition interfaces
     - Create src/interfaces/store-adapter.ts with CustomStoreAdapter interface (save, load, list, remove)
@@ -30,8 +30,8 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Create src/interfaces/direction-detector.ts with DirectionDetector, DirectionResult interfaces
     - _Requirements: 7.2, 8.4, 3.1, 6.1_
 
-- [ ] 2. Implement Markdown Parser and Pretty Printer
-  - [ ] 2.1 Implement the Markdown parser
+- [x] 2. Implement Markdown Parser and Pretty Printer
+  - [x] 2.1 Implement the Markdown parser
     - Create src/parsers/markdown-parser.ts
     - Parse CommonMark-compliant Markdown into Book representation
     - Map H1 to book title, H2 headings to chapter boundaries
@@ -39,14 +39,14 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Handle edge case: no H2 headings → single chapter, title from H1 or filename
     - _Requirements: 10.1, 10.4, 2.3_
 
-  - [ ] 2.2 Implement the Markdown Pretty Printer
+  - [x] 2.2 Implement the Markdown Pretty Printer
     - Create src/parsers/markdown-printer.ts
     - Serialize Book representation back to CommonMark Markdown
     - Output book title as H1, each chapter as H2 with content nodes rendered in Markdown syntax
     - Handle all ContentNode types: paragraphs, headings, images, code blocks, lists, inline formatting
     - _Requirements: 10.2_
 
-  - [ ]* 2.3 Write property test for Markdown round-trip preservation
+  - [x] 2.3 Write property test for Markdown round-trip preservation
     - **Property 2: Markdown Round-Trip Preservation**
     - Create src/parsers/__tests__/markdown-roundtrip.property.test.ts
     - Generate random Book instances limited to Markdown-expressible content nodes
@@ -54,7 +54,7 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Minimum 100 iterations
     - **Validates: Requirements 2.7, 10.1, 10.2, 10.3**
 
-  - [ ]* 2.4 Write unit tests for Markdown parser edge cases
+  - [x] 2.4 Write unit tests for Markdown parser edge cases
     - Test no-H2 input → single chapter
     - Test H1-only input → title extraction from H1
     - Test complex nested lists
@@ -62,8 +62,8 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Test code blocks with language annotations
     - _Requirements: 10.4, 10.1_
 
-- [ ] 3. Implement EPUB Parser and Pretty Printer
-  - [ ] 3.1 Implement the EPUB parser
+- [x] 3. Implement EPUB Parser and Pretty Printer
+  - [x] 3.1 Implement the EPUB parser
     - Create src/parsers/epub-parser.ts
     - Parse EPUB files (ArrayBuffer) into Book representation
     - Extract metadata: title, author, language, publisher, publication date from package document
@@ -73,7 +73,7 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Return structured error for malformed EPUB without producing partial Book
     - _Requirements: 9.1, 9.4, 9.5, 2.1_
 
-  - [ ] 3.2 Implement the EPUB Pretty Printer
+  - [x] 3.2 Implement the EPUB Pretty Printer
     - Create src/parsers/epub-printer.ts
     - Serialize Book to EPUB 3.0-conformant structure
     - Generate container.xml, package document (OPF), and XHTML content documents
@@ -81,7 +81,7 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Produce valid ArrayBuffer output
     - _Requirements: 9.2_
 
-  - [ ]* 3.3 Write property test for EPUB round-trip preservation
+  - [x] 3.3 Write property test for EPUB round-trip preservation
     - **Property 1: EPUB Round-Trip Preservation**
     - Create src/parsers/__tests__/epub-roundtrip.property.test.ts
     - Generate random Book instances with varied metadata, chapters, and content node combinations including OpaqueNodes
@@ -89,7 +89,7 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Minimum 100 iterations
     - **Validates: Requirements 2.6, 9.3, 9.5**
 
-  - [ ]* 3.4 Write property test for malformed input error completeness
+  - [x] 3.4 Write property test for malformed input error completeness
     - **Property 14: Malformed Input Error Completeness**
     - Create src/parsers/__tests__/malformed-input.property.test.ts
     - Generate random byte sequences and invalid inputs
@@ -97,18 +97,18 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Assert: no partial Book is produced
     - **Validates: Requirements 2.4, 9.4**
 
-- [ ] 4. Checkpoint - Parsers complete
+- [x] 4. Checkpoint - Parsers complete
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 5. Implement URL Loader
-  - [ ] 5.1 Implement the URL loader with timeout and content type detection
+- [x] 5. Implement URL Loader
+  - [x] 5.1 Implement the URL loader with timeout and content type detection
     - Create src/parsers/url-loader.ts
     - Fetch resource with 30-second timeout using AbortController
     - Detect content type from response headers to choose EPUB or Markdown parser
     - Return structured error with HTTP status or network error description on failure
     - _Requirements: 2.2, 2.5_
 
-  - [ ]* 5.2 Write unit tests for URL loader
+  - [x] 5.2 Write unit tests for URL loader
     - Test successful EPUB fetch and delegation
     - Test successful Markdown fetch and delegation
     - Test 30-second timeout behavior
@@ -117,8 +117,8 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Use mocked fetch
     - _Requirements: 2.2, 2.5_
 
-- [ ] 6. Implement Direction Detector
-  - [ ] 6.1 Implement the direction detector
+- [x] 6. Implement Direction Detector
+  - [x] 6.1 Implement the direction detector
     - Create src/services/direction-detector.ts
     - Analyze first 1000 characters of text content
     - Count RTL Unicode characters (Arabic, Hebrew, Urdu script ranges)
@@ -128,7 +128,7 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Detect specific scripts (Arabic, Hebrew, Urdu) for language-specific defaults
     - _Requirements: 6.1, 6.9_
 
-  - [ ]* 6.2 Write property test for direction detection threshold
+  - [x] 6.2 Write property test for direction detection threshold
     - **Property 3: Direction Detection Threshold**
     - Create src/services/__tests__/direction-detector.property.test.ts
     - Generate text strings with controlled RTL character percentages (0-100%)
@@ -137,8 +137,8 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Minimum 100 iterations
     - **Validates: Requirements 6.1, 6.7, 6.9**
 
-- [ ] 7. Implement Theme Engine
-  - [ ] 7.1 Implement the theme engine with persistence
+- [x] 7. Implement Theme Engine
+  - [x] 7.1 Implement the theme engine with persistence
     - Create src/services/theme-engine.ts
     - Define four themes: light, dark, sepia, high-contrast (WCAG AAA ≥ 7:1 contrast ratio)
     - Support font families: serif, sans-serif, monospace, nastaliq
@@ -149,7 +149,7 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Handle localStorage unavailability gracefully (in-session only + notification)
     - _Requirements: 3.1, 3.2, 3.3, 3.5, 3.6, 3.7, 3.8_
 
-  - [ ]* 7.2 Write property test for reading preferences round-trip
+  - [x] 7.2 Write property test for reading preferences round-trip
     - **Property 4: Reading Preferences Round-Trip**
     - Create src/services/__tests__/theme-engine.property.test.ts
     - Generate random valid preference combinations (theme × font × size)
@@ -157,15 +157,15 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Minimum 100 iterations
     - **Validates: Requirements 3.6**
 
-  - [ ]* 7.3 Write unit tests for theme engine
+  - [x] 7.3 Write unit tests for theme engine
     - Test high-contrast theme meets WCAG AAA (7:1 ratio)
     - Test default values applied when no persisted preferences
     - Test localStorage write failure handling
     - Test theme application within 100ms
     - _Requirements: 3.1, 3.7, 3.8, 3.2_
 
-- [ ] 8. Implement Bookmark Store
-  - [ ] 8.1 Implement the bookmark store with adapter pattern
+- [x] 8. Implement Bookmark Store
+  - [x] 8.1 Implement the bookmark store with adapter pattern
     - Create src/services/bookmark-store.ts
     - Default to localStorage persistence
     - Support CustomStoreAdapter injection for server-side persistence
@@ -177,7 +177,7 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Generate UUID for bookmark IDs, set UTC timestamps
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.7, 8.8, 8.9_
 
-  - [ ]* 8.2 Write property test for bookmark data integrity
+  - [x] 8.2 Write property test for bookmark data integrity
     - **Property 11: Bookmark Data Integrity**
     - Create src/services/__tests__/bookmark-integrity.property.test.ts
     - Generate valid bookmark inputs (names 1-100 chars)
@@ -186,7 +186,7 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Minimum 100 iterations
     - **Validates: Requirements 8.1, 8.8**
 
-  - [ ]* 8.3 Write property test for custom adapter delegation
+  - [x] 8.3 Write property test for custom adapter delegation
     - **Property 12: Custom Adapter Delegation**
     - Create src/services/__tests__/bookmark-delegation.property.test.ts
     - Generate sequences of bookmark operations with mock adapter
@@ -194,7 +194,7 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Minimum 100 iterations
     - **Validates: Requirements 8.3**
 
-  - [ ]* 8.4 Write property test for adapter timeout fallback
+  - [x] 8.4 Write property test for adapter timeout fallback
     - **Property 13: Adapter Timeout Fallback**
     - Create src/services/__tests__/bookmark-fallback.property.test.ts
     - Generate timeout/rejection scenarios for custom adapter
@@ -202,8 +202,8 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Minimum 100 iterations
     - **Validates: Requirements 8.6**
 
-- [ ] 9. Implement Dictionary Service
-  - [ ] 9.1 Implement the dictionary service with plugin interface
+- [x] 9. Implement Dictionary Service
+  - [x] 9.1 Implement the dictionary service with plugin interface
     - Create src/services/dictionary-service.ts
     - Support registering multiple DictionaryProvider instances
     - Route lookup to provider matching book language
@@ -213,7 +213,7 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Handle missing provider for language: show "no dictionary" message with fallback offer
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7_
 
-  - [ ]* 9.2 Write property test for dictionary context extraction
+  - [x] 9.2 Write property test for dictionary context extraction
     - **Property 10: Dictionary Context Extraction**
     - Create src/services/__tests__/dictionary-context.property.test.ts
     - Generate text bodies and word positions
@@ -222,8 +222,8 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Minimum 100 iterations
     - **Validates: Requirements 7.6**
 
-- [ ] 10. Implement Chapter Navigator
-  - [ ] 10.1 Implement chapter navigation and reading progress
+- [x] 10. Implement Chapter Navigator
+  - [x] 10.1 Implement chapter navigation and reading progress
     - Create src/services/chapter-navigator.ts
     - Extract Chapter_Index from Book (list chapters by title in document order)
     - Handle books with no identifiable chapter structure (single chapter, hide TOC)
@@ -232,7 +232,7 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Navigate to chapter by selection within 200ms
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7_
 
-  - [ ]* 10.2 Write property test for sequential page navigation invariant
+  - [x] 10.2 Write property test for sequential page navigation invariant
     - **Property 8: Sequential Page Navigation Invariant**
     - Create src/services/__tests__/navigation-invariant.property.test.ts
     - Generate book structures and position states
@@ -241,7 +241,7 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Minimum 100 iterations
     - **Validates: Requirements 5.4, 5.5, 5.6**
 
-  - [ ]* 10.3 Write property test for reading progress calculation
+  - [x] 10.3 Write property test for reading progress calculation
     - **Property 9: Reading Progress Calculation**
     - Create src/services/__tests__/progress-calculation.property.test.ts
     - Generate books with known character counts and positions
@@ -249,11 +249,11 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Minimum 100 iterations
     - **Validates: Requirements 5.3**
 
-- [ ] 11. Checkpoint - Services complete
+- [x] 11. Checkpoint - Services complete
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 12. Implement Reader Component (React Core)
-  - [ ] 12.1 Implement the Reader component with props, state management, and service orchestration
+- [x] 12. Implement Reader Component (React Core)
+  - [x] 12.1 Implement the Reader component with props, state management, and service orchestration
     - Create src/components/Reader.tsx
     - Accept ReaderProps as defined in design (source, theme, fontFamily, fontSize, zoom, direction, plugins, callbacks)
     - Initialize services via React Context (ThemeEngine, DirectionDetector, DictionaryService, BookmarkStore, ChapterNavigator)
@@ -263,7 +263,7 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Display structured error messages for failed inputs (source name, format, reason)
     - _Requirements: 1.1, 2.4_
 
-  - [ ] 12.2 Implement zoom functionality with clamping and pinch-zoom
+  - [x] 12.2 Implement zoom functionality with clamping and pinch-zoom
     - Create src/components/ZoomController.tsx
     - Support zoom levels 50-300% in 10% increments, default 100%
     - Clamp values to [50, 300] at nearest 10% increment
@@ -272,7 +272,7 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Preserve reading position on zoom change
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
-  - [ ]* 12.3 Write property test for zoom level clamping
+  - [x] 12.3 Write property test for zoom level clamping
     - **Property 5: Zoom Level Clamping and Application**
     - Create src/components/__tests__/zoom-clamping.property.test.ts
     - Generate arbitrary numeric values (negative, zero, huge)
@@ -280,7 +280,7 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Minimum 100 iterations
     - **Validates: Requirements 4.1, 4.5**
 
-  - [ ]* 12.4 Write property test for pinch-zoom gesture snapping
+  - [x] 12.4 Write property test for pinch-zoom gesture snapping
     - **Property 7: Pinch-Zoom Gesture Snapping**
     - Create src/components/__tests__/pinch-zoom-snap.property.test.ts
     - Generate raw float zoom values from gesture magnitudes
@@ -288,7 +288,7 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Minimum 100 iterations
     - **Validates: Requirements 4.3**
 
-  - [ ] 12.5 Implement reading UI: chapter index, page navigation, progress display, RTL support
+  - [x] 12.5 Implement reading UI: chapter index, page navigation, progress display, RTL support
     - Create src/components/ChapterIndex.tsx for table of contents panel
     - Create src/components/PageNavigation.tsx for next/previous controls
     - Create src/components/ProgressBar.tsx for reading progress display
@@ -299,7 +299,7 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Show user prompt when direction confidence is low
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9_
 
-  - [ ]* 12.6 Write property test for display changes preserving reading position
+  - [x] 12.6 Write property test for display changes preserving reading position
     - **Property 6: Display Changes Preserve Reading Position**
     - Create src/components/__tests__/position-preservation.property.test.ts
     - Generate reading positions and display change tuples (font change, size change, zoom change)
@@ -307,18 +307,18 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Minimum 100 iterations
     - **Validates: Requirements 3.4, 4.4**
 
-  - [ ] 12.7 Implement theme/font UI controls and bookmark UI
+  - [x] 12.7 Implement theme/font UI controls and bookmark UI
     - Create src/components/ThemeSelector.tsx for theme and font selection
     - Create src/components/BookmarkPanel.tsx for bookmark list, create, rename, delete
     - Create src/components/DictionaryPopover.tsx for word lookup display
     - Wire all UI controls to services
     - _Requirements: 3.2, 3.3, 3.4, 3.5, 7.3, 7.5, 8.5, 8.7_
 
-- [ ] 13. Checkpoint - React core complete
+- [x] 13. Checkpoint - React core complete
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 14. Implement Vue 3 Wrapper
-  - [ ] 14.1 Implement the Vue 3 wrapper component
+- [x] 14. Implement Vue 3 Wrapper
+  - [x] 14.1 Implement the Vue 3 wrapper component
     - Create src/wrappers/vue/EbookReader.vue (or .ts with defineComponent)
     - Define reactive props matching ReaderProps
     - Mount/unmount React Reader component using Vue lifecycle hooks (onMounted, onUnmounted)
@@ -327,15 +327,15 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Validate props; emit error event for invalid types or missing required props
     - _Requirements: 1.2, 1.4, 1.6, 1.7_
 
-  - [ ]* 14.2 Write unit tests for Vue wrapper
+  - [x] 14.2 Write unit tests for Vue wrapper
     - Test reactive prop updates propagate to Reader
     - Test events emitted correctly on state changes
     - Test prop validation errors emit error event
     - Test mount/unmount lifecycle
     - _Requirements: 1.2, 1.6, 1.7_
 
-- [ ] 15. Implement Web Component Wrapper
-  - [ ] 15.1 Implement the Web Component (Custom Element) wrapper
+- [x] 15. Implement Web Component Wrapper
+  - [x] 15.1 Implement the Web Component (Custom Element) wrapper
     - Create src/wrappers/web-component/EbookReaderElement.ts
     - Extend HTMLElement, define observedAttributes
     - Use Shadow DOM for style encapsulation
@@ -346,7 +346,7 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Unmount React on disconnectedCallback
     - _Requirements: 1.3, 1.4, 1.5, 1.6, 1.7_
 
-  - [ ]* 15.2 Write unit tests for Web Component wrapper
+  - [x] 15.2 Write unit tests for Web Component wrapper
     - Test Shadow DOM creation and style encapsulation
     - Test attribute changes update Reader
     - Test JavaScript property API for complex values
@@ -355,8 +355,8 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Test prop validation errors dispatch error event
     - _Requirements: 1.3, 1.5, 1.6, 1.7_
 
-- [ ] 16. Wrapper property tests
-  - [ ]* 16.1 Write property test for wrapper behavioral equivalence
+- [x] 16. Wrapper property tests
+  - [x] 16.1 Write property test for wrapper behavioral equivalence
     - **Property 15: Wrapper Behavioral Equivalence**
     - Create src/wrappers/__tests__/wrapper-equivalence.property.test.ts
     - Generate random valid prop configurations
@@ -365,7 +365,7 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Minimum 100 iterations
     - **Validates: Requirements 1.4**
 
-  - [ ]* 16.2 Write property test for wrapper event propagation
+  - [x] 16.2 Write property test for wrapper event propagation
     - **Property 16: Wrapper Event Propagation**
     - Create src/wrappers/__tests__/wrapper-events.property.test.ts
     - Generate random event payloads (page change, bookmark, error)
@@ -374,7 +374,7 @@ Build a framework-agnostic ebook reading component using React as the core, with
     - Minimum 100 iterations
     - **Validates: Requirements 1.6**
 
-- [ ] 17. Final checkpoint - All tests pass
+- [x] 17. Final checkpoint - All tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes
