@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Reader } from '../src/components/Reader';
 
@@ -9,6 +9,50 @@ interface ReaderSource {
   content?: string;
   data?: ArrayBuffer;
   url?: string;
+}
+
+// ---------------------------------------------------------------------------
+// View settings persistence
+// ---------------------------------------------------------------------------
+
+const SETTINGS_KEY = 'qari-demo-settings';
+
+interface ViewSettings {
+  theme: 'light' | 'dark' | 'sepia' | 'high-contrast';
+  fontFamily: 'serif' | 'sans-serif' | 'monospace';
+  fontSize: number;
+}
+
+const DEFAULT_SETTINGS: ViewSettings = {
+  theme: 'light',
+  fontFamily: 'serif',
+  fontSize: 16,
+};
+
+function loadSettings(): ViewSettings {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return DEFAULT_SETTINGS;
+    const parsed = JSON.parse(raw);
+    return {
+      theme: ['light', 'dark', 'sepia', 'high-contrast'].includes(parsed.theme)
+        ? parsed.theme : DEFAULT_SETTINGS.theme,
+      fontFamily: ['serif', 'sans-serif', 'monospace'].includes(parsed.fontFamily)
+        ? parsed.fontFamily : DEFAULT_SETTINGS.fontFamily,
+      fontSize: typeof parsed.fontSize === 'number' && parsed.fontSize >= 12 && parsed.fontSize <= 48
+        ? parsed.fontSize : DEFAULT_SETTINGS.fontSize,
+    };
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
+
+function saveSettings(settings: ViewSettings): void {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    // silently fail
+  }
 }
 
 const SAMPLE_MARKDOWN = `# The Art of Reading
@@ -45,13 +89,22 @@ Keep reading. Keep growing.
 `;
 
 function App() {
-  const [theme, setTheme] = useState<'light' | 'dark' | 'sepia' | 'high-contrast'>('light');
-  const [fontSize, setFontSize] = useState(16);
-  const [fontFamily, setFontFamily] = useState<'serif' | 'sans-serif' | 'monospace'>('serif');
+  const [settings, setSettings] = useState<ViewSettings>(loadSettings);
   const [source, setSource] = useState<ReaderSource>({ type: 'markdown', content: SAMPLE_MARKDOWN });
   const [urlInput, setUrlInput] = useState('');
   const [sourceLabel, setSourceLabel] = useState('Sample Markdown');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Persist settings whenever they change
+  useEffect(() => {
+    saveSettings(settings);
+  }, [settings]);
+
+  const updateSetting = useCallback(<K extends keyof ViewSettings>(key: K, value: ViewSettings[K]) => {
+    setSettings(prev => ({ ...prev, [key]: value }));
+  }, []);
+
+  const { theme, fontFamily, fontSize } = settings;
 
   const handleLoadUrl = () => {
     const trimmed = urlInput.trim();
@@ -190,7 +243,7 @@ function App() {
       <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           Theme:
-          <select value={theme} onChange={(e) => setTheme(e.target.value as typeof theme)}>
+          <select value={theme} onChange={(e) => updateSetting('theme', e.target.value as ViewSettings['theme'])}>
             <option value="light">Light</option>
             <option value="dark">Dark</option>
             <option value="sepia">Sepia</option>
@@ -200,7 +253,7 @@ function App() {
 
         <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           Font:
-          <select value={fontFamily} onChange={(e) => setFontFamily(e.target.value as typeof fontFamily)}>
+          <select value={fontFamily} onChange={(e) => updateSetting('fontFamily', e.target.value as ViewSettings['fontFamily'])}>
             <option value="serif">Serif</option>
             <option value="sans-serif">Sans-serif</option>
             <option value="monospace">Monospace</option>
@@ -215,7 +268,7 @@ function App() {
             max={48}
             step={2}
             value={fontSize}
-            onChange={(e) => setFontSize(Number(e.target.value))}
+            onChange={(e) => updateSetting('fontSize', Number(e.target.value))}
           />
         </label>
       </div>
@@ -225,7 +278,7 @@ function App() {
         border: '1px solid #ddd',
         borderRadius: '8px',
         overflow: 'hidden',
-        minHeight: '600px',
+        height: '70vh',
       }}>
         <Reader
           source={source as any}

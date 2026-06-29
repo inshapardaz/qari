@@ -301,6 +301,16 @@ const ContentNodeRenderer: React.FC<{ node: ContentNode }> = ({ node }) => {
 };
 
 // ---------------------------------------------------------------------------
+// Page model: CSS column-based pagination
+// ---------------------------------------------------------------------------
+// Instead of slicing by node count, we render all content for the current
+// chapter in a CSS multi-column container whose column width = page width.
+// The number of columns (pages) is determined by the browser layout engine.
+// We translate horizontally to show one column (page) at a time.
+// Each chapter starts from the first page of its column set.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
 // Reader Component
 // ---------------------------------------------------------------------------
 
@@ -319,6 +329,11 @@ export const Reader: React.FC<ReaderProps> = ({
   onReady,
 }) => {
   const [state, setState] = useState<ReaderState>(createInitialState);
+  const [currentChapterIdx, setCurrentChapterIdx] = useState(0);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Refs for services that persist across renders
   const themeEngineRef = useRef<ThemeEngine | null>(null);
@@ -526,6 +541,113 @@ export const Reader: React.FC<ReaderProps> = ({
   }, [source, loadBook]);
 
   // ---------------------------------------------------------------------------
+  // Calculate total pages whenever chapter or layout changes
+  // ---------------------------------------------------------------------------
+  const recalcPages = useCallback(() => {
+    if (!contentRef.current || !containerRef.current) return;
+    const scrollWidth = contentRef.current.scrollWidth;
+    const containerWidth = containerRef.current.clientWidth;
+    if (containerWidth === 0) return;
+    const computed = Math.max(1, Math.round(scrollWidth / containerWidth));
+    setTotalPages(computed);
+  }, []);
+
+  // Recalculate on chapter change, font/zoom change, or window resize
+  useEffect(() => {
+    recalcPages();
+  }, [currentChapterIdx, state.preferences, state.zoom, recalcPages]);
+
+  useEffect(() => {
+    // Small delay to let DOM settle after content render
+    const timer = setTimeout(recalcPages, 50);
+    return () => clearTimeout(timer);
+  }, [currentChapterIdx, state.book, state.preferences.fontSize, state.preferences.fontFamily, state.zoom, recalcPages]);
+
+  useEffect(() => {
+    const handleResize = () => recalcPages();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [recalcPages]);
+
+  // ---------------------------------------------------------------------------
+  // Page navigation
+  // ---------------------------------------------------------------------------
+  const goToNextPage = useCallback(() => {
+    if (currentPage < totalPages - 1) {
+      const next = currentPage + 1;
+      setCurrentPage(next);
+      if (onPageChange) {
+        onPageChange({
+          page: next,
+          chapter: currentChapterIdx,
+          progress: totalPages > 1 ? Math.round((next / (totalPages - 1)) * 100) : 100,
+        });
+      }
+    } else if (state.book && currentChapterIdx < state.book.chapters.length - 1) {
+      // Move to next chapter
+      const nextChapter = currentChapterIdx + 1;
+      setCurrentChapterIdx(nextChapter);
+      setCurrentPage(0);
+      if (onPageChange) {
+        onPageChange({
+          page: 0,
+          chapter: nextChapter,
+          progress: 0,
+        });
+      }
+    }
+  }, [currentPage, totalPages, currentChapterIdx, state.book, onPageChange]);
+
+  const goToPrevPage = useCallback(() => {
+    if (currentPage > 0) {
+      const prev = currentPage - 1;
+      setCurrentPage(prev);
+      if (onPageChange) {
+        onPageChange({
+          page: prev,
+          chapter: currentChapterIdx,
+          progress: totalPages > 1 ? Math.round((prev / (totalPages - 1)) * 100) : 0,
+        });
+      }
+    } else if (currentChapterIdx > 0) {
+      // Move to previous chapter (last page)
+      const prevChapter = currentChapterIdx - 1;
+      setCurrentChapterIdx(prevChapter);
+      // Will go to last page after recalc — set to a high number, clamped on next render
+      setCurrentPage(9999);
+      if (onPageChange) {
+        onPageChange({
+          page: 0,
+          chapter: prevChapter,
+          progress: 100,
+        });
+      }
+    }
+  }, [currentPage, currentChapterIdx, totalPages, onPageChange]);
+
+  // Clamp currentPage when totalPages changes (e.g., navigating to previous chapter's last page)
+  useEffect(() => {
+    if (currentPage >= totalPages && totalPages > 0) {
+      setCurrentPage(totalPages - 1);
+    }
+  }, [totalPages, currentPage]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (state.direction === 'rtl') {
+        if (e.key === 'ArrowLeft') goToNextPage();
+        else if (e.key === 'ArrowRight') goToPrevPage();
+      } else {
+        if (e.key === 'ArrowRight') goToNextPage();
+        else if (e.key === 'ArrowLeft') goToPrevPage();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [goToNextPage, goToPrevPage, state.direction]);
+
+  // ---------------------------------------------------------------------------
   // Context value (memoized)
   // ---------------------------------------------------------------------------
   const contextValue = useMemo<ReaderContextValue>(() => ({
@@ -564,6 +686,22 @@ export const Reader: React.FC<ReaderProps> = ({
     );
   }
 
+  const isFirstPage = currentPage === 0 && currentChapterIdx === 0;
+  const isLastPage = currentPage >= totalPages - 1
+    && state.book !== null
+    && currentChapterIdx >= state.book.chapters.length - 1;
+
+  const currentChapter = state.book?.chapters[currentChapterIdx];
+  const chapterTitle = currentChapter?.title ?? '';
+
+  // Overall progress across the whole book
+  const overallProgress = (() => {
+    if (!state.book || state.book.chapters.length === 0) return 0;
+    const chapterCount = state.book.chapters.length;
+    const chapterProgress = totalPages > 1 ? currentPage / (totalPages - 1) : 1;
+    return Math.round(((currentChapterIdx + chapterProgress) / chapterCount) * 100);
+  })();
+
   return (
     <div
       ref={rootRef}
@@ -572,36 +710,124 @@ export const Reader: React.FC<ReaderProps> = ({
       dir={state.direction}
       style={{
         zoom: `${state.zoom}%`,
-        padding: '2rem',
         fontFamily: 'var(--reader-font-family, Georgia, serif)',
         fontSize: 'var(--reader-font-size, 16px)',
         lineHeight: 1.7,
-        maxWidth: '800px',
-        margin: '0 auto',
         backgroundColor: 'var(--reader-bg, #ffffff)',
         color: 'var(--reader-fg, #1a1a1a)',
-        minHeight: '100%',
+        height: '100%',
         transition: 'background-color 0.1s, color 0.1s',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
       }}
     >
       <ReaderContext.Provider value={contextValue}>
-        <div className="ebook-reader__content" aria-live="polite">
-          {state.book && (
-            <div className="ebook-reader__book-loaded" data-testid="reader-book-loaded">
-              {state.book.chapters.map((chapter, ci) => (
-                <section
-                  key={chapter.id}
-                  className="ebook-reader__chapter"
-                  data-chapter-index={ci}
-                >
-                  <h2 className="ebook-reader__chapter-heading">{chapter.title}</h2>
-                  {chapter.content.map((node, ni) => (
-                    <ContentNodeRenderer key={ni} node={node} />
-                  ))}
-                </section>
-              ))}
-            </div>
-          )}
+        {/* Page viewport — fixed height, no scroll */}
+        <div
+          ref={containerRef}
+          className="ebook-reader__viewport"
+          style={{
+            flex: 1,
+            overflow: 'hidden',
+            position: 'relative',
+          }}
+        >
+          {/* Column-based content — horizontally paged via transform */}
+          <div
+            ref={contentRef}
+            className="ebook-reader__columns"
+            dir="ltr"
+            style={{
+              columnWidth: containerRef.current
+                ? `${containerRef.current.clientWidth - 64}px`
+                : '100%',
+              columnGap: '64px',
+              columnFill: 'auto',
+              height: '100%',
+              padding: '2rem',
+              transform: `translateX(${-(currentPage * (containerRef.current?.clientWidth ?? 0))}px)`,
+              transition: 'transform 0.3s ease',
+            }}
+          >
+            {currentChapter && (
+              <div dir={state.direction}>
+                <h2 style={{
+                  borderBottom: '1px solid var(--reader-border, #e0e0e0)',
+                  paddingBottom: '0.5rem',
+                  marginBottom: '1rem',
+                  breakAfter: 'avoid' as const,
+                  textAlign: state.direction === 'rtl' ? 'right' : 'left',
+                }}>
+                  {chapterTitle}
+                </h2>
+                {currentChapter.content.map((node, ni) => (
+                  <ContentNodeRenderer key={`${currentChapterIdx}-${ni}`} node={node} />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Navigation bar */}
+        <div
+          className="ebook-reader__nav"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '0.75rem 2rem',
+            borderTop: '1px solid var(--reader-border, #e0e0e0)',
+            backgroundColor: 'var(--reader-surface, #f5f5f5)',
+            flexShrink: 0,
+            flexDirection: state.direction === 'rtl' ? 'row-reverse' : 'row',
+          }}
+        >
+          {/* Left button: "previous" in LTR, "next" in RTL */}
+          <button
+            onClick={state.direction === 'rtl' ? goToNextPage : goToPrevPage}
+            disabled={state.direction === 'rtl' ? isLastPage : isFirstPage}
+            aria-label={state.direction === 'rtl' ? 'Next page (forward)' : 'Previous page'}
+            style={{
+              padding: '0.5rem 1rem',
+              border: '1px solid var(--reader-border, #e0e0e0)',
+              borderRadius: '4px',
+              background: (state.direction === 'rtl' ? isLastPage : isFirstPage)
+                ? 'transparent' : 'var(--reader-bg, #fff)',
+              color: (state.direction === 'rtl' ? isLastPage : isFirstPage)
+                ? 'var(--reader-border, #ccc)' : 'var(--reader-fg, #1a1a1a)',
+              cursor: (state.direction === 'rtl' ? isLastPage : isFirstPage)
+                ? 'not-allowed' : 'pointer',
+              fontSize: '1.2rem',
+            }}
+          >
+            ←
+          </button>
+
+          <span style={{ fontSize: '0.85rem', opacity: 0.7, textAlign: 'center' }}>
+            {chapterTitle} — Page {currentPage + 1}/{totalPages} — {overallProgress}%
+          </span>
+
+          {/* Right button: "next" in LTR, "previous" in RTL */}
+          <button
+            onClick={state.direction === 'rtl' ? goToPrevPage : goToNextPage}
+            disabled={state.direction === 'rtl' ? isFirstPage : isLastPage}
+            aria-label={state.direction === 'rtl' ? 'Previous page (backward)' : 'Next page'}
+            style={{
+              padding: '0.5rem 1rem',
+              border: '1px solid var(--reader-border, #e0e0e0)',
+              borderRadius: '4px',
+              background: (state.direction === 'rtl' ? isFirstPage : isLastPage)
+                ? 'transparent' : 'var(--reader-bg, #fff)',
+              color: (state.direction === 'rtl' ? isFirstPage : isLastPage)
+                ? 'var(--reader-border, #ccc)' : 'var(--reader-fg, #1a1a1a)',
+              cursor: (state.direction === 'rtl' ? isFirstPage : isLastPage)
+                ? 'not-allowed' : 'pointer',
+              fontSize: '1.2rem',
+            }}
+          >
+            →
+          </button>
         </div>
       </ReaderContext.Provider>
     </div>
