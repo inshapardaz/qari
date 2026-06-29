@@ -15,6 +15,7 @@ export interface BookMetadata {
   publisher?: string;
   publicationDate?: string; // ISO 8601
   identifier?: string; // ISBN or unique ID
+  pageDirection?: 'ltr' | 'rtl'; // from EPUB spine page-progression-direction
 }
 
 export interface Chapter {

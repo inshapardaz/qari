@@ -53,7 +53,11 @@ export class EPUBParserImpl implements EPUBParser {
 
     const metadata = this.extractMetadata(opfDoc);
     const manifest = this.extractManifest(opfDoc);
-    const spineItemRefs = this.extractSpine(opfDoc);
+    const { itemRefs: spineItemRefs, pageDirection } = this.extractSpine(opfDoc);
+
+    if (pageDirection) {
+      metadata.pageDirection = pageDirection;
+    }
 
     const chapters = await this.buildChapters(spineItemRefs, manifest, opfDir, zip);
 
@@ -190,7 +194,7 @@ export class EPUBParserImpl implements EPUBParser {
     return manifest;
   }
 
-  private extractSpine(opfDoc: Document): string[] {
+  private extractSpine(opfDoc: Document): { itemRefs: string[]; pageDirection?: 'ltr' | 'rtl' } {
     const spineEl = opfDoc.getElementsByTagName('spine')[0];
     if (!spineEl) {
       throw new EPUBParseError(
@@ -199,6 +203,11 @@ export class EPUBParserImpl implements EPUBParser {
         'No spine element found in OPF package document'
       );
     }
+
+    // Extract page-progression-direction attribute
+    const ppd = spineEl.getAttribute('page-progression-direction');
+    const pageDirection: 'ltr' | 'rtl' | undefined =
+      ppd === 'rtl' ? 'rtl' : ppd === 'ltr' ? 'ltr' : undefined;
 
     const itemRefs: string[] = [];
     const refs = spineEl.getElementsByTagName('itemref');
@@ -217,7 +226,7 @@ export class EPUBParserImpl implements EPUBParser {
       );
     }
 
-    return itemRefs;
+    return { itemRefs, pageDirection };
   }
 
   private async buildChapters(

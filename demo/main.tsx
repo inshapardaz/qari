@@ -21,12 +21,24 @@ interface ViewSettings {
   theme: 'light' | 'dark' | 'sepia' | 'high-contrast';
   fontFamily: 'serif' | 'sans-serif' | 'monospace';
   fontSize: number;
+  justify: boolean;
+  lineSpacing: number;
+  letterSpacing: number;
+  wordSpacing: number;
+  margin: number;
+  columns: 1 | 2;
 }
 
 const DEFAULT_SETTINGS: ViewSettings = {
   theme: 'light',
   fontFamily: 'serif',
   fontSize: 16,
+  justify: true,
+  lineSpacing: 1.5,
+  letterSpacing: 0,
+  wordSpacing: 0,
+  margin: 32,
+  columns: 1,
 };
 
 function loadSettings(): ViewSettings {
@@ -41,6 +53,16 @@ function loadSettings(): ViewSettings {
         ? parsed.fontFamily : DEFAULT_SETTINGS.fontFamily,
       fontSize: typeof parsed.fontSize === 'number' && parsed.fontSize >= 12 && parsed.fontSize <= 48
         ? parsed.fontSize : DEFAULT_SETTINGS.fontSize,
+      justify: typeof parsed.justify === 'boolean' ? parsed.justify : DEFAULT_SETTINGS.justify,
+      lineSpacing: typeof parsed.lineSpacing === 'number' && parsed.lineSpacing >= 1 && parsed.lineSpacing <= 3
+        ? parsed.lineSpacing : DEFAULT_SETTINGS.lineSpacing,
+      letterSpacing: typeof parsed.letterSpacing === 'number' && parsed.letterSpacing >= 0 && parsed.letterSpacing <= 5
+        ? parsed.letterSpacing : DEFAULT_SETTINGS.letterSpacing,
+      wordSpacing: typeof parsed.wordSpacing === 'number' && parsed.wordSpacing >= 0 && parsed.wordSpacing <= 10
+        ? parsed.wordSpacing : DEFAULT_SETTINGS.wordSpacing,
+      margin: typeof parsed.margin === 'number' && parsed.margin >= 0 && parsed.margin <= 100
+        ? parsed.margin : DEFAULT_SETTINGS.margin,
+      columns: [1, 2].includes(parsed.columns) ? parsed.columns : DEFAULT_SETTINGS.columns,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -104,7 +126,16 @@ function App() {
     setSettings(prev => ({ ...prev, [key]: value }));
   }, []);
 
-  const { theme, fontFamily, fontSize } = settings;
+  const { theme, fontFamily, fontSize, justify, lineSpacing, letterSpacing, wordSpacing, margin, columns } = settings;
+
+  const [progress, setProgress] = useState<{
+    currentPage: number;
+    totalPages: number;
+    currentChapter: number;
+    totalChapters: number;
+    chapterTitle: string;
+    percentage: number;
+  } | null>(null);
 
   const handleLoadUrl = () => {
     const trimmed = urlInput.trim();
@@ -239,40 +270,6 @@ function App() {
         </p>
       </fieldset>
 
-      {/* Reading controls */}
-      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          Theme:
-          <select value={theme} onChange={(e) => updateSetting('theme', e.target.value as ViewSettings['theme'])}>
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
-            <option value="sepia">Sepia</option>
-            <option value="high-contrast">High Contrast</option>
-          </select>
-        </label>
-
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          Font:
-          <select value={fontFamily} onChange={(e) => updateSetting('fontFamily', e.target.value as ViewSettings['fontFamily'])}>
-            <option value="serif">Serif</option>
-            <option value="sans-serif">Sans-serif</option>
-            <option value="monospace">Monospace</option>
-          </select>
-        </label>
-
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          Size: {fontSize}px
-          <input
-            type="range"
-            min={12}
-            max={48}
-            step={2}
-            value={fontSize}
-            onChange={(e) => updateSetting('fontSize', Number(e.target.value))}
-          />
-        </label>
-      </div>
-
       {/* Reader */}
       <div style={{
         border: '1px solid #ddd',
@@ -285,12 +282,49 @@ function App() {
           theme={theme}
           fontFamily={fontFamily}
           fontSize={fontSize}
+          justify={justify}
+          lineSpacing={lineSpacing}
+          letterSpacing={letterSpacing}
+          wordSpacing={wordSpacing}
+          margin={margin}
+          columns={columns}
           onPageChange={(e) => console.log('Page change:', e)}
           onBookmarkCreate={(e) => console.log('Bookmark created:', e)}
           onError={(e) => console.error('Reader error:', e)}
           onReady={() => console.log('Reader ready')}
+          onSettingsChange={(s) => {
+            if (s.theme) updateSetting('theme', s.theme);
+            if (s.fontFamily) updateSetting('fontFamily', s.fontFamily);
+            if (s.fontSize !== undefined) updateSetting('fontSize', s.fontSize);
+            if (s.justify !== undefined) updateSetting('justify', s.justify);
+            if (s.lineSpacing !== undefined) updateSetting('lineSpacing', s.lineSpacing);
+            if (s.letterSpacing !== undefined) updateSetting('letterSpacing', s.letterSpacing);
+            if (s.wordSpacing !== undefined) updateSetting('wordSpacing', s.wordSpacing);
+            if (s.margin !== undefined) updateSetting('margin', s.margin);
+            if (s.columns !== undefined) updateSetting('columns', s.columns);
+          }}
+          onProgressChange={setProgress}
         />
       </div>
+
+      {/* Reading progress info */}
+      {progress && (
+        <div style={{
+          marginTop: '1rem',
+          padding: '0.75rem 1rem',
+          background: '#f9fafb',
+          border: '1px solid #e5e7eb',
+          borderRadius: '6px',
+          fontSize: '0.85rem',
+          display: 'flex',
+          gap: '1.5rem',
+          flexWrap: 'wrap',
+        }}>
+          <span><strong>Page:</strong> {progress.currentPage}/{progress.totalPages}</span>
+          <span><strong>Chapter:</strong> {progress.currentChapter + 1}/{progress.totalChapters} — {progress.chapterTitle}</span>
+          <span><strong>Progress:</strong> {progress.percentage}%</span>
+        </div>
+      )}
     </div>
   );
 }
