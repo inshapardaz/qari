@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Reader, DEFAULT_FONT_OPTIONS } from '../src/components/Reader';
 import type { FontOption } from '../src/components/Reader';
+import type { TranslationStrings } from '../src/i18n';
 
 // Import Urdu web fonts (local CSS with fixed @font-face declarations)
 import './urdu-fonts.css';
@@ -17,6 +18,126 @@ const DEMO_FONT_OPTIONS: FontOption[] = [
 ];
 
 type SourceType = 'markdown' | 'epub' | 'url';
+
+// ---------------------------------------------------------------------------
+// UI translations for demo language selector
+// ---------------------------------------------------------------------------
+
+type DemoLanguage = 'en' | 'ur' | 'fr';
+
+const TRANSLATIONS: Record<DemoLanguage, Partial<TranslationStrings>> = {
+  en: {}, // empty = use all English defaults
+  ur: {
+    loading: 'لوڈ ہو رہا ہے…',
+    errorSource: 'ذریعہ:',
+    errorFormat: 'فارمیٹ:',
+    tableOfContents: 'فہرست مضامین',
+    bookmarks: 'بک مارکس',
+    readingSettings: 'پڑھنے کی ترتیبات',
+    enterFullscreen: 'فل سکرین میں داخل ہوں',
+    exitFullscreen: 'فل سکرین سے باہر نکلیں',
+    previousPage: 'پچھلا صفحہ',
+    nextPage: 'اگلا صفحہ',
+    pageIndicator: 'صفحہ {current}/{total}',
+    resetToDefaults: 'ڈیفالٹ پر واپس',
+    settingsTheme: 'تھیم',
+    themeLight: 'روشن',
+    themeDark: 'تاریک',
+    themeSepia: 'سیپیا',
+    themeHighContrast: 'اعلیٰ',
+    settingsFontFamily: 'فونٹ فیملی',
+    settingsFontSize: 'فونٹ سائز',
+    settingsJustify: 'متن جواز',
+    settingsLineSpacing: 'لائن اسپیسنگ',
+    settingsLetterSpacing: 'حروف اسپیسنگ',
+    settingsWordSpacing: 'لفظ اسپیسنگ',
+    settingsMargin: 'حاشیہ',
+    settingsColumns: 'کالم',
+    dictionaryLoading: 'لوڈ ہو رہا ہے...',
+    dictionaryClose: 'لغت بند کریں',
+    dictionaryNotFound: '"{word}" کی کوئی تعریف نہیں ملی۔',
+    dictionaryNoDictionary: 'اس زبان کے لیے کوئی لغت دستیاب نہیں۔',
+    dictionaryTryIn: '{language} میں تلاش کریں',
+    spellcheckCorrect: 'درست ہجے',
+    spellcheckMisspelled: 'غلط ہجے',
+    spellingSuggestions: 'ہجے کی تجاویز',
+    dictionaryLoadingAriaLabel: 'لغت تلاش ہو رہی ہے',
+    dictionaryExamples: 'مثالیں',
+    bookmarksPanelTitle: 'بک مارکس',
+    bookmarkNamePlaceholder: 'بک مارک کا نام',
+    bookmarkAdd: 'بک مارک شامل کریں',
+    bookmarksEmpty: 'ابھی کوئی بک مارک نہیں۔',
+    bookmarkRename: 'نام تبدیل',
+    bookmarkDelete: 'حذف',
+    bookmarkSave: 'محفوظ',
+    bookmarkCancel: 'منسوخ',
+    bookmarkNewNameAriaLabel: 'نیا بک مارک نام',
+    bookmarkCreateAriaLabel: 'بک مارک بنائیں',
+    chaptersTitle: 'ابواب',
+    goToChapter: 'باب پر جائیں: {title}',
+    zoomControls: 'زوم کنٹرول',
+    zoomIn: 'بڑا کریں',
+    zoomOut: 'چھوٹا کریں',
+  },
+  fr: {
+    loading: 'Chargement…',
+    errorSource: 'Source :',
+    errorFormat: 'Format :',
+    tableOfContents: 'Table des matières',
+    bookmarks: 'Signets',
+    readingSettings: 'Paramètres de lecture',
+    enterFullscreen: 'Plein écran',
+    exitFullscreen: 'Quitter le plein écran',
+    previousPage: 'Page précédente',
+    nextPage: 'Page suivante',
+    pageIndicator: 'Page {current}/{total}',
+    resetToDefaults: 'Réinitialiser',
+    settingsTheme: 'Thème',
+    themeLight: 'Clair',
+    themeDark: 'Sombre',
+    themeSepia: 'Sépia',
+    themeHighContrast: 'Contraste',
+    settingsFontFamily: 'Police',
+    settingsFontSize: 'Taille',
+    settingsJustify: 'Justifier',
+    settingsLineSpacing: 'Interligne',
+    settingsLetterSpacing: 'Espacement lettres',
+    settingsWordSpacing: 'Espacement mots',
+    settingsMargin: 'Marge',
+    settingsColumns: 'Colonnes',
+    dictionaryLoading: 'Chargement...',
+    dictionaryClose: 'Fermer le dictionnaire',
+    dictionaryNotFound: 'Aucune définition trouvée pour « {word} ».',
+    dictionaryNoDictionary: 'Aucun dictionnaire disponible pour cette langue.',
+    dictionaryTryIn: 'Essayer en {language}',
+    spellcheckCorrect: 'Orthographe correcte',
+    spellcheckMisspelled: 'Mal orthographié',
+    spellingSuggestions: 'Suggestions orthographiques',
+    dictionaryLoadingAriaLabel: 'Recherche dans le dictionnaire',
+    dictionaryExamples: 'Exemples',
+    bookmarksPanelTitle: 'Signets',
+    bookmarkNamePlaceholder: 'Nom du signet',
+    bookmarkAdd: 'Ajouter un signet',
+    bookmarksEmpty: 'Aucun signet pour le moment.',
+    bookmarkRename: 'Renommer',
+    bookmarkDelete: 'Supprimer',
+    bookmarkSave: 'Enregistrer',
+    bookmarkCancel: 'Annuler',
+    bookmarkNewNameAriaLabel: 'Nouveau nom du signet',
+    bookmarkCreateAriaLabel: 'Créer un signet',
+    chaptersTitle: 'Chapitres',
+    goToChapter: 'Aller au chapitre : {title}',
+    zoomControls: 'Contrôles de zoom',
+    zoomIn: 'Agrandir',
+    zoomOut: 'Réduire',
+  },
+};
+
+const LANGUAGE_LABELS: Record<DemoLanguage, string> = {
+  en: 'English',
+  ur: 'اردو',
+  fr: 'Français',
+};
 
 interface ReaderSource {
   type: SourceType;
@@ -129,6 +250,7 @@ function App() {
   const [source, setSource] = useState<ReaderSource>({ type: 'markdown', content: SAMPLE_MARKDOWN });
   const [urlInput, setUrlInput] = useState('');
   const [sourceLabel, setSourceLabel] = useState('Sample Markdown');
+  const [language, setLanguage] = useState<DemoLanguage>('en');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Persist settings whenever they change
@@ -277,6 +399,27 @@ function App() {
           >
             Load Sample
           </button>
+
+          {/* Language selector */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: '#555' }}>
+              UI Language
+            </label>
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value as DemoLanguage)}
+              style={{
+                padding: '0.5rem',
+                border: '1px solid #ccc',
+                borderRadius: '4px',
+                fontSize: '0.9rem',
+              }}
+            >
+              {(Object.keys(LANGUAGE_LABELS) as DemoLanguage[]).map((lang) => (
+                <option key={lang} value={lang}>{LANGUAGE_LABELS[lang]}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <p style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#888' }}>
@@ -305,6 +448,7 @@ function App() {
           fontOptions={DEMO_FONT_OPTIONS}
           margin={margin}
           columns={columns}
+          translations={TRANSLATIONS[language]}
           onPageChange={(e) => console.log('Page change:', e)}
           onBookmarkCreate={(e) => console.log('Bookmark created:', e)}
           onError={(e) => console.error('Reader error:', e)}

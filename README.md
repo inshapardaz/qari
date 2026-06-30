@@ -325,6 +325,85 @@ When the user adjusts settings via the in-app UI:
 />
 ```
 
+## Translations (i18n)
+
+The reader supports full UI translation via the `translations` prop. All visible strings — labels, aria-labels, button text, placeholders — can be overridden. English defaults are used for any keys you don't provide.
+
+### Quick Start
+
+```tsx
+import { Reader } from 'qari/components/Reader';
+
+<Reader
+  source={source}
+  translations={{
+    loading: 'Chargement…',
+    readingSettings: 'Paramètres de lecture',
+    previousPage: 'Page précédente',
+    nextPage: 'Page suivante',
+    pageIndicator: 'Page {current} sur {total}',
+    bookmarks: 'Signets',
+    tableOfContents: 'Table des matières',
+  }}
+/>
+```
+
+Only the keys you provide are overridden — all others fall back to the English defaults.
+
+### Type Safety
+
+Import the `TranslationStrings` type for autocomplete and compile-time checking:
+
+```tsx
+import { Reader } from 'qari/components/Reader';
+import type { TranslationStrings } from 'qari/i18n';
+
+const frenchTranslations: Partial<TranslationStrings> = {
+  loading: 'Chargement…',
+  readingSettings: 'Paramètres de lecture',
+  // ... other keys
+};
+
+<Reader source={source} translations={frenchTranslations} />
+```
+
+### Interpolated Strings
+
+Some keys include `{placeholder}` tokens that are replaced at runtime:
+
+| Key | Tokens | Example |
+|-----|--------|---------|
+| `pageIndicator` | `{current}`, `{total}` | `"Seite {current} von {total}"` |
+| `dictionaryNotFound` | `{word}` | `"Pas de définition pour « {word} »."` |
+| `dictionaryTryIn` | `{language}` | `"Essayer en {language}"` |
+| `goToChapter` | `{title}` | `"Aller au chapitre : {title}"` |
+
+Unmatched tokens are left as-is in the output, so you can include `{token}` in your strings even if a value isn't always available.
+
+### Full Translation Keys
+
+```tsx
+import { DEFAULT_TRANSLATIONS } from 'qari/i18n';
+
+// See all available keys and their English defaults:
+console.log(DEFAULT_TRANSLATIONS);
+```
+
+The full set of keys covers: Reader chrome, settings dialog, dictionary popover, bookmark panel, chapter index, and zoom controls. See `src/i18n/types.ts` for the complete interface.
+
+### Using Outside the Reader
+
+The `useTranslations` hook and `interpolate` utility are exported for use in custom components:
+
+```tsx
+import { useTranslations, interpolate } from 'qari/i18n';
+
+function MyCustomComponent() {
+  const t = useTranslations();
+  return <span>{interpolate(t.pageIndicator, { current: 1, total: 42 })}</span>;
+}
+```
+
 ## Text Direction
 
 ```tsx
@@ -371,6 +450,7 @@ When set to `"auto"`, the reader detects direction by analyzing character freque
 | `margin` | `number` | `32` | Content margin in pixels (0-100) |
 | `columns` | `1 \| 2` | `1` | Number of text columns |
 | `zoom` | `number` | `100` | Zoom level (50-300, snaps to 10%) |
+| `translations` | `Partial<TranslationStrings>` | English defaults | UI string overrides for i18n |
 | `direction` | `'ltr' \| 'rtl' \| 'auto'` | `'auto'` | Text direction override |
 | `enableBookmarks` | `boolean` | `true` | Show/hide bookmark panel |
 | `bookmarks` | `Bookmark[]` | `undefined` | Controlled bookmarks array |
