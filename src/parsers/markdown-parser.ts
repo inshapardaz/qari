@@ -18,6 +18,7 @@ import type {
   Chapter,
   ContentNode,
   InlineNode,
+  InlineImageSpan,
   ListItem,
   HeadingNode,
   ParagraphNode,
@@ -358,8 +359,12 @@ function parseInlineNodes(children: Token[]): InlineNode[] {
     }
 
     if (token.type === 'image') {
-      // Inline images within text - treat as text with alt
-      nodes.push({ type: 'text', content: token.content || '' });
+      // Inline images — render as inline-image node
+      nodes.push({
+        type: 'inline-image',
+        src: token.attrGet('src') || '',
+        alt: token.content || undefined,
+      });
       i++;
       continue;
     }

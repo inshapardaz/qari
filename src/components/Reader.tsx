@@ -354,6 +354,21 @@ const InlineNodeRenderer: React.FC<{ node: InlineNode }> = ({ node }) => {
       return <em>{node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} />)}</em>;
     case 'code':
       return <code>{node.content}</code>;
+    case 'inline-image':
+      return (
+        <img
+          src={node.src}
+          alt={node.alt || ''}
+          loading="lazy"
+          style={{
+            maxWidth: '100%',
+            maxHeight: '10em',
+            verticalAlign: 'middle',
+            display: 'inline-block',
+            objectFit: 'contain',
+          }}
+        />
+      );
     case 'link':
       return (
         <a href={node.href} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--reader-accent, #0066cc)' }}>
@@ -382,7 +397,35 @@ const ContentNodeRenderer: React.FC<{ node: ContentNode }> = ({ node }) => {
       );
     }
     case 'image':
-      return <img src={node.src} alt={node.alt || ''} style={{ maxWidth: '100%' }} />;
+      return (
+        <figure style={{ margin: '1rem 0', padding: 0, breakInside: 'avoid' }}>
+          <img
+            src={node.src}
+            alt={node.alt || ''}
+            loading="lazy"
+            onError={(e) => console.warn(`[qari] Image failed to load: "${node.src?.substring(0, 80)}"`, e)}
+            style={{
+              maxWidth: '100%',
+              maxHeight: '70vh',
+              width: 'auto',
+              height: 'auto',
+              display: 'block',
+              objectFit: 'contain',
+              borderRadius: '4px',
+            }}
+          />
+          {node.alt && (
+            <figcaption style={{
+              fontSize: '0.8em',
+              opacity: 0.7,
+              marginTop: '0.4rem',
+              textAlign: 'center',
+            }}>
+              {node.alt}
+            </figcaption>
+          )}
+        </figure>
+      );
     case 'code-block':
       return (
         <pre>
@@ -459,7 +502,17 @@ export const Reader: React.FC<ReaderProps> = ({
   const [chapterMenuOpen, setChapterMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bookmarksPanelOpen, setBookmarksPanelOpen] = useState(false);
-  const [selectedFontFamily, setSelectedFontFamily] = useState<string>(fontOptions[0]?.family ?? 'Georgia, serif');
+  const [selectedFontFamily, setSelectedFontFamily] = useState<string>(() => {
+    // Try to match the fontFamily prop against available font options
+    if (fontFamily) {
+      const match = fontOptions.find(opt =>
+        opt.name.toLowerCase() === fontFamily.toLowerCase() ||
+        opt.family.toLowerCase().includes(fontFamily.toLowerCase())
+      );
+      if (match) return match.family;
+    }
+    return fontOptions[0]?.family ?? 'Georgia, serif';
+  });
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -568,7 +621,17 @@ export const Reader: React.FC<ReaderProps> = ({
         preferences: { ...prev.preferences, fontFamily },
       }));
     }
-  }, [fontFamily]);
+    // Sync selectedFontFamily when fontFamily prop changes
+    if (fontFamily) {
+      const match = fontOptions.find(opt =>
+        opt.name.toLowerCase() === fontFamily.toLowerCase() ||
+        opt.family.toLowerCase().includes(fontFamily.toLowerCase())
+      );
+      if (match) {
+        setSelectedFontFamily(match.family);
+      }
+    }
+  }, [fontFamily, fontOptions]);
 
   useEffect(() => {
     if (themeEngineRef.current) {

@@ -13,6 +13,7 @@ import type {
   Chapter,
   ContentNode,
   InlineNode,
+  InlineImageSpan,
   ListItem,
   OpaqueNode,
   ParagraphNode,
@@ -40,6 +41,11 @@ export class EPUBParseError extends Error {
 /** Elements that should be preserved as OpaqueNode */
 const OPAQUE_ELEMENTS = new Set(['audio', 'video', 'script', 'embed', 'object']);
 
+/** Internal type extending Chapter with the base directory for image path resolution */
+interface ChapterWithBaseDir extends Chapter {
+  _baseDir: string;
+}
+
 export class EPUBParserImpl implements EPUBParser {
   async parse(data: ArrayBuffer): Promise<Book> {
     const zip = await this.loadZip(data);
@@ -61,7 +67,141 @@ export class EPUBParserImpl implements EPUBParser {
 
     const chapters = await this.buildChapters(spineItemRefs, manifest, opfDir, zip);
 
+    // Resolve image sources: extract from ZIP and convert to blob URLs
+    await this.resolveImageSources(chapters, zip);
+
     return { metadata, chapters };
+  }
+
+  /**
+   * Walks all content nodes in chapters, finds ImageNodes, and resolves
+   * their relative src to blob URLs by extracting from the ZIP.
+   */
+  private async resolveImageSources(
+    chapters: ChapterWithBaseDir[],
+    zip: JSZip
+  ): Promise<void> {
+    const blobUrlCache = new Map<string, string>();
+
+    let totalImages = 0;
+    let resolvedImages = 0;
+
+    for (const chapter of chapters) {
+      const counts = await this.resolveImagesInNodes(chapter.content, chapter._baseDir, zip, blobUrlCache);
+      totalImages += counts.total;
+      resolvedImages += counts.resolved;
+    }
+  }
+
+  private async resolveImagesInNodes(
+    nodes: ContentNode[],
+    baseDir: string,
+    zip: JSZip,
+    cache: Map<string, string>
+  ): Promise<{ total: number; resolved: number }> {
+    let total = 0;
+    let resolved = 0;
+
+    for (const node of nodes) {
+      if (node.type === 'image' && node.src && !node.src.startsWith('data:') && !node.src.startsWith('blob:') && !node.src.startsWith('http')) {
+        total++;
+        const resolvedPath = this.resolveRelativePath(baseDir, node.src);
+        
+        if (cache.has(resolvedPath)) {
+          node.src = cache.get(resolvedPath)!;
+          resolved++;
+        } else {
+          const blobUrl = await this.extractImageAsBlob(zip, resolvedPath);
+          if (blobUrl) {
+            cache.set(resolvedPath, blobUrl);
+            node.src = blobUrl;
+            resolved++;
+
+          } 
+        }
+      } else if (node.type === 'list') {
+        for (const item of node.items) {
+          const counts = await this.resolveImagesInNodes(item.children, baseDir, zip, cache);
+          total += counts.total;
+          resolved += counts.resolved;
+        }
+      } else if (node.type === 'paragraph' || node.type === 'heading') {
+        // Walk inline children for inline-image nodes
+        const inlineCounts = await this.resolveInlineImages(node.children, baseDir, zip, cache);
+        total += inlineCounts.total;
+        resolved += inlineCounts.resolved;
+      }
+    }
+
+    return { total, resolved };
+  }
+
+  private async resolveInlineImages(
+    nodes: InlineNode[],
+    baseDir: string,
+    zip: JSZip,
+    cache: Map<string, string>
+  ): Promise<{ total: number; resolved: number }> {
+    let total = 0;
+    let resolved = 0;
+
+    for (const node of nodes) {
+      if (node.type === 'inline-image' && node.src && !node.src.startsWith('data:') && !node.src.startsWith('blob:') && !node.src.startsWith('http')) {
+        total++;
+        const resolvedPath = this.resolveRelativePath(baseDir, node.src);
+        
+        if (cache.has(resolvedPath)) {
+          node.src = cache.get(resolvedPath)!;
+          resolved++;
+        } else {
+          const blobUrl = await this.extractImageAsBlob(zip, resolvedPath);
+          if (blobUrl) {
+            cache.set(resolvedPath, blobUrl);
+            node.src = blobUrl;
+            resolved++;
+          }
+        }
+      } else if (node.type === 'bold' || node.type === 'italic' || node.type === 'link') {
+        const counts = await this.resolveInlineImages(node.children, baseDir, zip, cache);
+        total += counts.total;
+        resolved += counts.resolved;
+      }
+    }
+
+    return { total, resolved };
+  }
+
+  private resolveRelativePath(baseDir: string, relativeSrc: string): string {
+    // Handle ../ prefixes
+    const parts = (baseDir ? baseDir + '/' + relativeSrc : relativeSrc).split('/');
+    const resolved: string[] = [];
+    for (const part of parts) {
+      if (part === '..') {
+        resolved.pop();
+      } else if (part !== '.' && part !== '') {
+        resolved.push(part);
+      }
+    }
+    return resolved.join('/');
+  }
+
+  private async extractImageAsBlob(zip: JSZip, path: string): Promise<string | null> {
+    const file = zip.file(path);
+    if (!file) {
+      // Try case-insensitive lookup
+      const allFiles = Object.keys(zip.files);
+      const match = allFiles.find(f => f.toLowerCase() === path.toLowerCase());
+      if (match) {
+        const matchedFile = zip.file(match);
+        if (matchedFile) {
+          const blob = await matchedFile.async('blob');
+          return URL.createObjectURL(blob);
+        }
+      }
+      return null;
+    }
+    const blob = await file.async('blob');
+    return URL.createObjectURL(blob);
   }
 
   private async loadZip(data: ArrayBuffer): Promise<JSZip> {
@@ -234,8 +374,8 @@ export class EPUBParserImpl implements EPUBParser {
     manifest: Map<string, { href: string; mediaType: string }>,
     opfDir: string,
     zip: JSZip
-  ): Promise<Chapter[]> {
-    const chapters: Chapter[] = [];
+  ): Promise<ChapterWithBaseDir[]> {
+    const chapters: ChapterWithBaseDir[] = [];
 
     for (let i = 0; i < spineItemRefs.length; i++) {
       const idref = spineItemRefs[i];
@@ -252,17 +392,25 @@ export class EPUBParserImpl implements EPUBParser {
         ? `${opfDir}/${manifestItem.href}`
         : manifestItem.href;
 
+      // Directory of the content file — used to resolve relative image paths
+      const contentDir = contentPath.includes('/')
+        ? contentPath.substring(0, contentPath.lastIndexOf('/'))
+        : '';
+
       const xhtmlContent = await this.getFileContent(zip, contentPath);
       const contentDoc = this.parseXml(xhtmlContent, `content document: ${contentPath}`);
 
       const title = this.extractChapterTitle(contentDoc, idref);
       const content = this.parseContentDocument(contentDoc);
 
+      const imageCount = content.filter(n => n.type === 'image').length;
+
       chapters.push({
         id: idref,
         title,
         order: i,
         content,
+        _baseDir: contentDir,
       });
     }
 
@@ -553,9 +701,13 @@ export class EPUBParserImpl implements EPUBParser {
       };
     }
 
-    // Images within inline context - skip (handled at block level)
+    // Inline images
     if (tagName === 'img') {
-      return null;
+      return {
+        type: 'inline-image',
+        src: el.getAttribute('src') || '',
+        ...(el.getAttribute('alt') && { alt: el.getAttribute('alt')! }),
+      } as InlineImageSpan;
     }
 
     // For <span> and other inline wrappers, recurse into children

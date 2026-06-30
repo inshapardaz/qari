@@ -33,7 +33,7 @@ const SETTINGS_KEY = 'qari-demo-settings';
 
 interface ViewSettings {
   theme: 'light' | 'dark' | 'sepia' | 'high-contrast';
-  fontFamily: 'serif' | 'sans-serif' | 'monospace';
+  fontFamily: string;
   fontSize: number;
   justify: boolean;
   lineSpacing: number;
@@ -45,7 +45,7 @@ interface ViewSettings {
 
 const DEFAULT_SETTINGS: ViewSettings = {
   theme: 'light',
-  fontFamily: 'serif',
+  fontFamily: 'Serif',
   fontSize: 16,
   justify: true,
   lineSpacing: 1.5,
@@ -63,7 +63,7 @@ function loadSettings(): ViewSettings {
     return {
       theme: ['light', 'dark', 'sepia', 'high-contrast'].includes(parsed.theme)
         ? parsed.theme : DEFAULT_SETTINGS.theme,
-      fontFamily: ['serif', 'sans-serif', 'monospace'].includes(parsed.fontFamily)
+      fontFamily: typeof parsed.fontFamily === 'string' && parsed.fontFamily.length > 0
         ? parsed.fontFamily : DEFAULT_SETTINGS.fontFamily,
       fontSize: typeof parsed.fontSize === 'number' && parsed.fontSize >= 12 && parsed.fontSize <= 48
         ? parsed.fontSize : DEFAULT_SETTINGS.fontSize,

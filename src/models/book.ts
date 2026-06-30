@@ -78,7 +78,8 @@ export type InlineNode =
   | BoldSpan
   | ItalicSpan
   | LinkSpan
-  | CodeSpan;
+  | CodeSpan
+  | InlineImageSpan;
 
 export interface TextSpan {
   type: 'text';
@@ -104,4 +105,10 @@ export interface LinkSpan {
 export interface CodeSpan {
   type: 'code';
   content: string;
+}
+
+export interface InlineImageSpan {
+  type: 'inline-image';
+  src: string;
+  alt?: string;
 }
