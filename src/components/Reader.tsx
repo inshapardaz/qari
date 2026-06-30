@@ -56,7 +56,7 @@ export type LineSpacing = 1 | 1.5 | 2 | 2.5 | 3;
 
 export interface ReaderSettings {
   theme?: ThemeName;
-  fontFamily?: FontFamily;
+  fontFamily?: string;
   fontSize?: number;
   justify?: boolean;
   lineSpacing?: number;
@@ -65,6 +65,22 @@ export interface ReaderSettings {
   margin?: number; // in px, 0-100
   columns?: 1 | 2;
 }
+
+export interface FontOption {
+  /** Display name shown in the font selector UI */
+  name: string;
+  /** CSS font-family value (e.g., 'Georgia, serif' or 'Noto Nastaliq Urdu') */
+  family: string;
+}
+
+/**
+ * Default font options with common cross-platform fonts.
+ */
+export const DEFAULT_FONT_OPTIONS: FontOption[] = [
+  { name: 'Serif', family: 'Georgia, "Times New Roman", serif' },
+  { name: 'Sans', family: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' },
+  { name: 'Mono', family: '"SF Mono", "Fira Code", "Cascadia Code", "Courier New", monospace' },
+];
 
 export interface ReaderProps {
   source: ReaderSource;
@@ -82,6 +98,12 @@ export interface ReaderProps {
   dictionaryProviders?: DictionaryProvider[];
   /** Enable or disable the bookmarks feature. Defaults to true. */
   enableBookmarks?: boolean;
+  /**
+   * Custom font options for the font selector.
+   * Each entry provides a display name and CSS font-family value.
+   * Defaults to DEFAULT_FONT_OPTIONS (Serif, Sans, Mono) if not provided.
+   */
+  fontOptions?: FontOption[];
   bookmarkAdapter?: CustomStoreAdapter;
   bookmarks?: Bookmark[];
   bookmarkStore?: BookmarkStoreInterface;
@@ -417,6 +439,7 @@ export const Reader: React.FC<ReaderProps> = ({
   direction = 'auto',
   dictionaryProviders,
   enableBookmarks = true,
+  fontOptions = DEFAULT_FONT_OPTIONS,
   bookmarkAdapter,
   bookmarks: bookmarksProp,
   bookmarkStore: bookmarkStoreProp,
@@ -436,6 +459,8 @@ export const Reader: React.FC<ReaderProps> = ({
   const [chapterMenuOpen, setChapterMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bookmarksPanelOpen, setBookmarksPanelOpen] = useState(false);
+  const [selectedFontFamily, setSelectedFontFamily] = useState<string>(fontOptions[0]?.family ?? 'Georgia, serif');
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -448,6 +473,30 @@ export const Reader: React.FC<ReaderProps> = ({
   const bookmarkStoreRef = useRef<BookmarkStore | null>(null);
   const chapterNavigatorRef = useRef<ChapterNavigator | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+
+  // ---------------------------------------------------------------------------
+  // Fullscreen toggle
+  // ---------------------------------------------------------------------------
+  const toggleFullscreen = useCallback(() => {
+    if (!rootRef.current) return;
+    if (!document.fullscreenElement) {
+      rootRef.current.requestFullscreen().catch(() => {
+        // Fullscreen not supported or denied — ignore
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
 
   // ---------------------------------------------------------------------------
   // Initialize BookmarkStore (responds to adapter prop changes)
@@ -1166,6 +1215,23 @@ export const Reader: React.FC<ReaderProps> = ({
             </div>
             )}
 
+            {/* Fullscreen toggle */}
+            <button
+              onClick={toggleFullscreen}
+              aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+              style={{
+                padding: '0.4rem 0.6rem',
+                border: '1px solid var(--reader-border, #e0e0e0)',
+                borderRadius: '4px',
+                background: isFullscreen ? 'var(--reader-accent, #0066cc)' : 'var(--reader-bg, #fff)',
+                color: isFullscreen ? '#fff' : 'var(--reader-fg, #1a1a1a)',
+                cursor: 'pointer',
+                fontSize: '1rem',
+              }}
+            >
+              {isFullscreen ? '⊗' : '⛶'}
+            </button>
+
             <button
               onClick={() => setSettingsOpen(!settingsOpen)}
               aria-label="Reading settings"
@@ -1184,21 +1250,38 @@ export const Reader: React.FC<ReaderProps> = ({
             </button>
           </div>
 
-          {/* Settings popup */}
+          {/* Settings dialog */}
           {settingsOpen && (
             <div
               style={{
-                position: 'absolute',
-                top: '100%',
-                ...(state.direction === 'rtl' ? { left: '1rem' } : { right: '1rem' }),
-                marginTop: '0.5rem',
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: 'rgba(0,0,0,0.4)',
+                zIndex: 300,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '1rem',
+              }}
+              onClick={() => setSettingsOpen(false)}
+              onMouseDown={(e) => {
+                if (e.target === e.currentTarget) setSettingsOpen(false);
+              }}
+            >
+            <div
+              style={{
                 background: 'var(--reader-bg, #fff)',
                 border: '1px solid var(--reader-border, #e0e0e0)',
                 borderRadius: '8px',
-                boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
                 padding: '1.25rem',
-                zIndex: 200,
-                minWidth: '260px',
+                width: '100%',
+                maxWidth: '320px',
+                maxHeight: '80vh',
+                overflowY: 'auto',
               }}
               onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
@@ -1236,30 +1319,32 @@ export const Reader: React.FC<ReaderProps> = ({
                 <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.4rem', fontWeight: 600, color: 'var(--reader-fg, #333)' }}>
                   Font Family
                 </label>
-                <div style={{ display: 'flex', gap: '0.4rem' }}>
-                  {(['serif', 'sans-serif', 'monospace'] as FontFamily[]).map(f => (
-                    <button
-                      key={f}
-                      onClick={() => {
-                        if (onSettingsChange) onSettingsChange({ fontFamily: f });
-                      }}
-                      style={{
-                        flex: 1,
-                        padding: '0.4rem',
-                        border: fontFamily === f ? '2px solid var(--reader-accent, #0066cc)' : '1px solid var(--reader-border, #e0e0e0)',
-                        borderRadius: '4px',
-                        background: 'var(--reader-bg, #fff)',
-                        color: 'var(--reader-fg, #1a1a1a)',
-                        cursor: 'pointer',
-                        fontSize: '0.75rem',
-                        fontFamily: f === 'serif' ? 'Georgia, serif' : f === 'monospace' ? 'monospace' : 'system-ui, sans-serif',
-                        fontWeight: fontFamily === f ? 700 : 400,
-                      }}
-                    >
-                      {f === 'sans-serif' ? 'Sans' : f.charAt(0).toUpperCase() + f.slice(1)}
-                    </button>
+                <select
+                  value={selectedFontFamily}
+                  onChange={(e) => {
+                    const family = e.target.value;
+                    setSelectedFontFamily(family);
+                    const opt = fontOptions.find(o => o.family === family);
+                    if (onSettingsChange) onSettingsChange({ fontFamily: opt?.name ?? family });
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem',
+                    border: '1px solid var(--reader-border, #e0e0e0)',
+                    borderRadius: '4px',
+                    background: 'var(--reader-bg, #fff)',
+                    color: 'var(--reader-fg, #1a1a1a)',
+                    fontSize: '0.85rem',
+                    fontFamily: selectedFontFamily,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {fontOptions.map(opt => (
+                    <option key={opt.family} value={opt.family} style={{ fontFamily: opt.family }}>
+                      {opt.name}
+                    </option>
                   ))}
-                </div>
+                </select>
               </div>
 
               <div>
@@ -1446,6 +1531,7 @@ export const Reader: React.FC<ReaderProps> = ({
                 Reset to Defaults
               </button>
             </div>
+            </div>
           )}
         </div>
 
@@ -1537,7 +1623,7 @@ export const Reader: React.FC<ReaderProps> = ({
           <div
             ref={contentRef}
             className="ebook-reader__columns"
-            dir="ltr"
+            dir={state.direction}
             style={{
               columnWidth: containerRef.current
                 ? `${(containerRef.current.clientWidth - margin * 2 - (columns === 2 ? 64 : 0)) / columns}px`
@@ -1546,9 +1632,11 @@ export const Reader: React.FC<ReaderProps> = ({
               columnFill: 'auto',
               height: '100%',
               padding: `2rem ${margin}px`,
-              transform: `translateX(${-(currentPage * (containerRef.current?.clientWidth ?? 0))}px)`,
+              transform: state.direction === 'rtl'
+                ? `translateX(${currentPage * (containerRef.current?.clientWidth ?? 0)}px)`
+                : `translateX(${-(currentPage * (containerRef.current?.clientWidth ?? 0))}px)`,
               transition: 'transform 0.3s ease',
-              fontFamily: 'var(--reader-font-family, Georgia, serif)',
+              fontFamily: selectedFontFamily,
               fontSize: 'var(--reader-font-size, 16px)',
               lineHeight: lineSpacing,
               textAlign: justify ? 'justify' : undefined,
@@ -1557,7 +1645,7 @@ export const Reader: React.FC<ReaderProps> = ({
             }}
           >
             {currentChapter && (
-              <div dir={state.direction}>
+              <div>
                 <h2 style={{
                   borderBottom: '1px solid var(--reader-border, #e0e0e0)',
                   paddingBottom: '0.5rem',

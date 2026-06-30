@@ -13,7 +13,8 @@
     "jszip": "^3.10.1",
     "markdown-it": "^14.2.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "urdu-web-fonts": "^1.0.3"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.4.2",
