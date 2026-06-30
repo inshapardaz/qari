@@ -870,18 +870,25 @@ export const Reader: React.FC<ReaderProps> = ({
         else if (e.key === 'ArrowLeft') goToPrevPage();
       }
     };
-    const handleClickOutside = () => {
+    const handleClickOutside = (e: MouseEvent) => {
+      // Ignore clicks inside popup containers (they use stopPropagation,
+      // but this is a safety check for capture-phase registration)
+      const header = rootRef.current?.querySelector('.ebook-reader__header');
+      if (header && header.contains(e.target as Node)) {
+        return;
+      }
       setChapterMenuOpen(false);
       setSettingsOpen(false);
       setBookmarksPanelOpen(false);
     };
     window.addEventListener('keydown', handleKeyDown);
     if (chapterMenuOpen || settingsOpen || bookmarksPanelOpen) {
-      setTimeout(() => document.addEventListener('click', handleClickOutside), 0);
+      // Use mousedown instead of click to avoid race conditions with re-renders
+      document.addEventListener('mousedown', handleClickOutside);
     }
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('click', handleClickOutside);
+      document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [goToNextPage, goToPrevPage, state.direction, chapterMenuOpen, settingsOpen, bookmarksPanelOpen]);
 
@@ -1042,6 +1049,7 @@ export const Reader: React.FC<ReaderProps> = ({
             {chapterMenuOpen && (
               <div
                 onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
                 style={{
                   position: 'absolute',
                   top: '100%',
@@ -1128,6 +1136,7 @@ export const Reader: React.FC<ReaderProps> = ({
               {bookmarksPanelOpen && (
                 <div
                   onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
                   style={{
                     position: 'absolute',
                     top: '100%',
@@ -1192,6 +1201,7 @@ export const Reader: React.FC<ReaderProps> = ({
                 minWidth: '260px',
               }}
               onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
             >
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.4rem', fontWeight: 600, color: 'var(--reader-fg, #333)' }}>
@@ -1468,8 +1478,8 @@ export const Reader: React.FC<ReaderProps> = ({
           {/* Hover navigation overlays */}
           {hovered && !isFirstPage && (
             <button
-              onClick={state.direction === 'rtl' ? goToNextPage : goToPrevPage}
-              aria-label={state.direction === 'rtl' ? 'Next page' : 'Previous page'}
+              onClick={goToPrevPage}
+              aria-label="Previous page"
               style={{
                 position: 'absolute',
                 [state.direction === 'rtl' ? 'right' : 'left']: 0,
@@ -1496,8 +1506,8 @@ export const Reader: React.FC<ReaderProps> = ({
           )}
           {hovered && !isLastPage && (
             <button
-              onClick={state.direction === 'rtl' ? goToPrevPage : goToNextPage}
-              aria-label={state.direction === 'rtl' ? 'Previous page' : 'Next page'}
+              onClick={goToNextPage}
+              aria-label="Next page"
               style={{
                 position: 'absolute',
                 [state.direction === 'rtl' ? 'left' : 'right']: 0,
