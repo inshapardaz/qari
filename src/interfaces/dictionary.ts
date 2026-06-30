@@ -8,8 +8,19 @@ export interface DictionaryProvider {
   id: string;
   /** Languages this provider supports (ISO 639-1 codes) */
   supportedLanguages: string[];
+  /** Provider category for priority routing */
+  category?: 'local' | 'online';
+  /** Whether the provider is ready to handle lookups */
+  ready?: boolean;
   /** Look up a word with context */
-  lookup(word: string, language: string, context: string): Promise<DictionaryResult>;
+  lookup(word: string, language: string, context: string, signal?: AbortSignal): Promise<DictionaryResult>;
+}
+
+export interface SpellCheckResult {
+  /** Whether the word is correctly spelled */
+  correct: boolean;
+  /** Suggested corrections for misspelled words */
+  suggestions: string[];
 }
 
 export interface DictionaryResult {
@@ -17,6 +28,8 @@ export interface DictionaryResult {
   language: string;
   definitions: Definition[];
   notFound?: boolean;
+  /** Spell-check result from local providers */
+  spellCheck?: SpellCheckResult;
 }
 
 export interface Definition {

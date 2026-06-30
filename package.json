@@ -12,6 +12,7 @@
   "dependencies": {
     "jszip": "^3.10.1",
     "markdown-it": "^14.2.0",
+    "nspell": "^2.1.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "urdu-web-fonts": "^1.0.3"
@@ -20,6 +21,7 @@
     "@testing-library/jest-dom": "^6.4.2",
     "@testing-library/react": "^14.2.1",
     "@types/markdown-it": "^14.1.2",
+    "@types/nspell": "^2.1.6",
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",

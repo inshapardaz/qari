@@ -301,6 +301,7 @@ function App() {
           letterSpacing={letterSpacing}
           wordSpacing={wordSpacing}
           enableBookmarks={false}
+          enableBuiltInDictionary={true}
           fontOptions={DEMO_FONT_OPTIONS}
           margin={margin}
           columns={columns}

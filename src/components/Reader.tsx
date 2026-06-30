@@ -37,6 +37,14 @@ import { LocalStorageStore } from '../services/local-storage-store';
 import { ChapterNavigator } from '../services/chapter-navigator';
 
 import { BookmarkPanel } from './BookmarkPanel';
+import { DictionaryPopover } from './DictionaryPopover';
+
+import { HunspellProvider } from '../services/hunspell-provider';
+import type { HunspellDictionaryConfig } from '../services/hunspell-provider';
+import { FreeDictionaryProvider } from '../services/free-dictionary-provider';
+import { WiktionaryProvider } from '../services/wiktionary-provider';
+import { useSelectionHandler } from '../hooks/useSelectionHandler';
+import type { DictionaryLookupResult } from '../services/dictionary-service';
 
 import { EPUBParserImpl } from '../parsers/epub-parser';
 import { MarkdownParserImpl } from '../parsers/markdown-parser';
@@ -96,6 +104,10 @@ export interface ReaderProps {
   zoom?: number;
   direction?: 'ltr' | 'rtl' | 'auto';
   dictionaryProviders?: DictionaryProvider[];
+  /** Hunspell dictionary configurations for local/offline spell checking */
+  hunspellDictionaries?: HunspellDictionaryConfig[];
+  /** Enable built-in online dictionary providers (FreeDictionary + Wiktionary). Defaults to false. */
+  enableBuiltInDictionary?: boolean;
   /** Enable or disable the bookmarks feature. Defaults to true. */
   enableBookmarks?: boolean;
   /**
@@ -481,6 +493,8 @@ export const Reader: React.FC<ReaderProps> = ({
   zoom = 100,
   direction = 'auto',
   dictionaryProviders,
+  hunspellDictionaries,
+  enableBuiltInDictionary = false,
   enableBookmarks = true,
   fontOptions = DEFAULT_FONT_OPTIONS,
   bookmarkAdapter,
@@ -652,15 +666,145 @@ export const Reader: React.FC<ReaderProps> = ({
   // Register dictionary providers
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    // Re-create dictionary service with new providers
+    // Re-create dictionary service with new providers in priority order:
+    // 1. Hunspell providers (local)
+    // 2. User-supplied dictionaryProviders
+    // 3. Built-in online providers (when enableBuiltInDictionary is true)
     const service = new DictionaryService();
+
+    // 1. Register Hunspell providers for each config
+    if (hunspellDictionaries) {
+      for (const config of hunspellDictionaries) {
+        try {
+          const hunspellProvider = new HunspellProvider({
+            language: config.language,
+            aff: config.aff,
+            dic: config.dic,
+            affUrl: config.affUrl,
+            dicUrl: config.dicUrl,
+          });
+          service.registerProvider(hunspellProvider, 'local');
+        } catch {
+          // Initialization failure for this config — skip it
+        }
+      }
+    }
+
+    // 2. Register user-supplied providers
     if (dictionaryProviders) {
       for (const provider of dictionaryProviders) {
         service.registerProvider(provider);
       }
     }
+
+    // 3. Register built-in online providers when enabled
+    if (enableBuiltInDictionary) {
+      const freeDictProvider = new FreeDictionaryProvider();
+      service.registerProvider(freeDictProvider, 'online');
+
+      const wiktionaryProvider = new WiktionaryProvider({
+        languages: ['en', 'fr', 'es', 'de', 'it', 'pt', 'ru'],
+      });
+      service.registerProvider(wiktionaryProvider, 'online');
+    }
+
     dictionaryServiceRef.current = service;
-  }, [dictionaryProviders]);
+  }, [dictionaryProviders, hunspellDictionaries, enableBuiltInDictionary]);
+
+  // ---------------------------------------------------------------------------
+  // Determine whether any providers are registered (for selection handler)
+  // ---------------------------------------------------------------------------
+  const hasProviders = useMemo(() => {
+    return !!(
+      (dictionaryProviders && dictionaryProviders.length > 0) ||
+      (hunspellDictionaries && hunspellDictionaries.length > 0) ||
+      enableBuiltInDictionary
+    );
+  }, [dictionaryProviders, hunspellDictionaries, enableBuiltInDictionary]);
+
+  // ---------------------------------------------------------------------------
+  // Selection handler hook — bridges user text interactions with dictionary lookups
+  // ---------------------------------------------------------------------------
+  const { anchorPosition, lookupState, triggerLookup, dismiss } = useSelectionHandler({
+    contentRef,
+    hasProviders,
+  });
+
+  // ---------------------------------------------------------------------------
+  // Dictionary lookup state management
+  // ---------------------------------------------------------------------------
+  const [dictionaryResult, setDictionaryResult] = useState<DictionaryLookupResult | null>(null);
+  const [dictionaryLoading, setDictionaryLoading] = useState(false);
+
+  // Perform dictionary lookup when selection handler triggers it
+  useEffect(() => {
+    if (lookupState.status !== 'loading') {
+      return;
+    }
+
+    // Extract the selected word from browser selection
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) {
+      return;
+    }
+
+    const text = selection.toString().trim();
+    if (!text) return;
+
+    const word = text.split(/\s+/)[0];
+    if (!word) return;
+
+    setDictionaryLoading(true);
+    setDictionaryResult(null);
+
+    // Cancel any in-progress lookup
+    dictionaryServiceRef.current.cancelCurrentLookup();
+
+    // Determine the book language (default to 'en')
+    const language = state.book?.metadata?.language ?? 'en';
+    const chapterText = ''; // Simplified context — full text extraction not needed for basic lookup
+    const position = 0;
+
+    dictionaryServiceRef.current
+      .lookup(word, language, chapterText, position)
+      .then((result) => {
+        setDictionaryResult(result);
+        setDictionaryLoading(false);
+      })
+      .catch(() => {
+        setDictionaryLoading(false);
+      });
+  }, [lookupState.status, state.book]);
+
+  // Handle suggestion selection — triggers a new lookup for the suggested word
+  const handleSuggestionSelect = useCallback((suggestedWord: string) => {
+    setDictionaryLoading(true);
+    setDictionaryResult(null);
+
+    // Cancel any in-progress lookup
+    dictionaryServiceRef.current.cancelCurrentLookup();
+
+    const language = state.book?.metadata?.language ?? 'en';
+    const chapterText = '';
+    const position = 0;
+
+    dictionaryServiceRef.current
+      .lookup(suggestedWord, language, chapterText, position)
+      .then((result) => {
+        setDictionaryResult(result);
+        setDictionaryLoading(false);
+      })
+      .catch(() => {
+        setDictionaryLoading(false);
+      });
+  }, [state.book]);
+
+  // Handle popover close
+  const handleDictionaryClose = useCallback(() => {
+    dismiss();
+    setDictionaryResult(null);
+    setDictionaryLoading(false);
+  }, [dismiss]);
 
   // ---------------------------------------------------------------------------
   // Load book from source
@@ -1122,6 +1266,7 @@ export const Reader: React.FC<ReaderProps> = ({
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
+        position: 'relative',
       }}
     >
       <ReaderContext.Provider value={contextValue}>
@@ -1741,6 +1886,17 @@ export const Reader: React.FC<ReaderProps> = ({
         >
           Page {bookPageNumber}/{bookTotalPages} — {overallProgress}%
         </div>
+
+        {/* Dictionary popover — positioned near selected text */}
+        {hasProviders && (dictionaryLoading || dictionaryResult) && (
+          <DictionaryPopover
+            lookupResult={dictionaryResult}
+            loading={dictionaryLoading}
+            anchorPosition={anchorPosition ?? undefined}
+            onClose={handleDictionaryClose}
+            onSuggestionSelect={handleSuggestionSelect}
+          />
+        )}
       </ReaderContext.Provider>
     </div>
   );

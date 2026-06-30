@@ -3,7 +3,7 @@
  */
 
 export type { EPUBParser, MarkdownParser, PrettyPrinter } from './parser';
-export type { DictionaryProvider, DictionaryResult, Definition } from './dictionary';
+export type { DictionaryProvider, DictionaryResult, Definition, SpellCheckResult } from './dictionary';
 export type { CustomStoreAdapter } from './store-adapter';
 export type {
   ThemeEngine,
