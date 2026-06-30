@@ -8,6 +8,7 @@
 
 import React from 'react';
 import { useReaderContext } from './Reader';
+import { useTranslations, interpolate } from '../i18n';
 
 export interface ChapterIndexProps {
   /** Callback when the user navigates to a different chapter */
@@ -16,6 +17,7 @@ export interface ChapterIndexProps {
 
 export const ChapterIndex: React.FC<ChapterIndexProps> = ({ onChapterSelect }) => {
   const { state, chapterNavigator } = useReaderContext();
+  const t = useTranslations();
 
   // Don't render if there's no navigator or no chapter structure
   if (!chapterNavigator || !chapterNavigator.hasChapterStructure()) {
@@ -39,10 +41,10 @@ export const ChapterIndex: React.FC<ChapterIndexProps> = ({ onChapterSelect }) =
     <nav
       className="ebook-reader__chapter-index"
       dir={state.direction}
-      aria-label="Table of contents"
+      aria-label={t.tableOfContents}
       data-testid="chapter-index"
     >
-      <h2 className="ebook-reader__chapter-index-title">Chapters</h2>
+      <h2 className="ebook-reader__chapter-index-title">{t.chaptersTitle}</h2>
       <ol className="ebook-reader__chapter-list" role="list">
         {chapters.map((chapter, index) => {
           const isCurrent = index === currentChapter;
@@ -55,7 +57,7 @@ export const ChapterIndex: React.FC<ChapterIndexProps> = ({ onChapterSelect }) =
               <button
                 className="ebook-reader__chapter-button"
                 onClick={() => handleChapterClick(index)}
-                aria-label={`Go to chapter: ${chapter.title}`}
+                aria-label={interpolate(t.goToChapter, { title: chapter.title })}
                 data-testid={`chapter-item-${index}`}
               >
                 <span className="ebook-reader__chapter-order">{chapter.order + 1}.</span>

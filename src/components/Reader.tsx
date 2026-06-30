@@ -39,6 +39,9 @@ import { ChapterNavigator } from '../services/chapter-navigator';
 import { BookmarkPanel } from './BookmarkPanel';
 import { DictionaryPopover } from './DictionaryPopover';
 
+import { TranslationContext, DEFAULT_TRANSLATIONS, useTranslations, interpolate } from '../i18n';
+import type { TranslationStrings } from '../i18n';
+
 import { HunspellProvider } from '../services/hunspell-provider';
 import type { HunspellDictionaryConfig } from '../services/hunspell-provider';
 import { FreeDictionaryProvider } from '../services/free-dictionary-provider';
@@ -92,6 +95,7 @@ export const DEFAULT_FONT_OPTIONS: FontOption[] = [
 
 export interface ReaderProps {
   source: ReaderSource;
+  translations?: Partial<TranslationStrings>;
   theme?: ThemeName;
   fontFamily?: FontFamily;
   fontSize?: number;
@@ -481,6 +485,7 @@ const ContentNodeRenderer: React.FC<{ node: ContentNode }> = ({ node }) => {
 
 export const Reader: React.FC<ReaderProps> = ({
   source,
+  translations,
   theme = 'light',
   fontFamily = 'serif',
   fontSize = 16,
@@ -1187,6 +1192,16 @@ export const Reader: React.FC<ReaderProps> = ({
   }, [onBookmarkChange]);
 
   // ---------------------------------------------------------------------------
+  // Resolved translations (memoized merge of defaults + overrides)
+  // ---------------------------------------------------------------------------
+  const resolvedTranslations = useMemo(
+    () => ({ ...DEFAULT_TRANSLATIONS, ...translations }),
+    [translations]
+  );
+
+  const t = resolvedTranslations;
+
+  // ---------------------------------------------------------------------------
   // Context value (memoized)
   // ---------------------------------------------------------------------------
   const contextValue = useMemo<ReaderContextValue>(() => ({
@@ -1207,7 +1222,7 @@ export const Reader: React.FC<ReaderProps> = ({
   if (state.loading) {
     return (
       <div ref={rootRef} className="ebook-reader" data-testid="reader-loading" role="status" aria-label="Loading book">
-        <div className="ebook-reader__loading">Loading…</div>
+        <div className="ebook-reader__loading">{t.loading}</div>
       </div>
     );
   }
@@ -1218,10 +1233,10 @@ export const Reader: React.FC<ReaderProps> = ({
         <div className="ebook-reader__error">
           <p className="ebook-reader__error-message">{state.error.message}</p>
           {state.error.source && (
-            <p className="ebook-reader__error-source">Source: {state.error.source}</p>
+            <p className="ebook-reader__error-source">{t.errorSource} {state.error.source}</p>
           )}
           {state.error.format && (
-            <p className="ebook-reader__error-format">Format: {state.error.format}</p>
+            <p className="ebook-reader__error-format">{t.errorFormat} {state.error.format}</p>
           )}
         </div>
       </div>
@@ -1270,6 +1285,7 @@ export const Reader: React.FC<ReaderProps> = ({
       }}
     >
       <ReaderContext.Provider value={contextValue}>
+        <TranslationContext.Provider value={resolvedTranslations}>
         {/* Header bar with settings */}
         <div
           className="ebook-reader__header"
@@ -1288,7 +1304,7 @@ export const Reader: React.FC<ReaderProps> = ({
           <div style={{ position: 'relative' }}>
             <button
               onClick={() => setChapterMenuOpen(!chapterMenuOpen)}
-              aria-label="Table of contents"
+              aria-label={t.tableOfContents}
               aria-expanded={chapterMenuOpen}
               style={{
                 padding: '0.4rem 0.6rem',
@@ -1375,7 +1391,7 @@ export const Reader: React.FC<ReaderProps> = ({
             <div style={{ position: 'relative' }}>
               <button
                 onClick={() => setBookmarksPanelOpen(!bookmarksPanelOpen)}
-                aria-label="Bookmarks"
+                aria-label={t.bookmarks}
                 aria-expanded={bookmarksPanelOpen}
                 style={{
                   padding: '0.4rem 0.6rem',
@@ -1426,7 +1442,7 @@ export const Reader: React.FC<ReaderProps> = ({
             {/* Fullscreen toggle */}
             <button
               onClick={toggleFullscreen}
-              aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+              aria-label={isFullscreen ? t.exitFullscreen : t.enterFullscreen}
               style={{
                 padding: '0.4rem 0.6rem',
                 border: '1px solid var(--reader-border, #e0e0e0)',
@@ -1442,7 +1458,7 @@ export const Reader: React.FC<ReaderProps> = ({
 
             <button
               onClick={() => setSettingsOpen(!settingsOpen)}
-              aria-label="Reading settings"
+              aria-label={t.readingSettings}
               aria-expanded={settingsOpen}
               style={{
                 padding: '0.4rem 0.6rem',
@@ -1496,28 +1512,28 @@ export const Reader: React.FC<ReaderProps> = ({
             >
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.4rem', fontWeight: 600, color: 'var(--reader-fg, #333)' }}>
-                  Theme
+                  {t.settingsTheme}
                 </label>
                 <div style={{ display: 'flex', gap: '0.4rem' }}>
-                  {(['light', 'dark', 'sepia', 'high-contrast'] as ThemeName[]).map(t => (
+                  {(['light', 'dark', 'sepia', 'high-contrast'] as ThemeName[]).map(thm => (
                     <button
-                      key={t}
+                      key={thm}
                       onClick={() => {
-                        if (onSettingsChange) onSettingsChange({ theme: t });
+                        if (onSettingsChange) onSettingsChange({ theme: thm });
                       }}
                       style={{
                         flex: 1,
                         padding: '0.4rem',
-                        border: theme === t ? '2px solid var(--reader-accent, #0066cc)' : '1px solid var(--reader-border, #e0e0e0)',
+                        border: theme === thm ? '2px solid var(--reader-accent, #0066cc)' : '1px solid var(--reader-border, #e0e0e0)',
                         borderRadius: '4px',
-                        background: t === 'light' ? '#fff' : t === 'dark' ? '#1a1a2e' : t === 'sepia' ? '#f4ecd8' : '#000',
-                        color: t === 'dark' || t === 'high-contrast' ? '#fff' : '#1a1a1a',
+                        background: thm === 'light' ? '#fff' : thm === 'dark' ? '#1a1a2e' : thm === 'sepia' ? '#f4ecd8' : '#000',
+                        color: thm === 'dark' || thm === 'high-contrast' ? '#fff' : '#1a1a1a',
                         cursor: 'pointer',
                         fontSize: '0.7rem',
-                        fontWeight: theme === t ? 700 : 400,
+                        fontWeight: theme === thm ? 700 : 400,
                       }}
                     >
-                      {t === 'high-contrast' ? 'HC' : t.charAt(0).toUpperCase() + t.slice(1)}
+                      {thm === 'light' ? t.themeLight : thm === 'dark' ? t.themeDark : thm === 'sepia' ? t.themeSepia : t.themeHighContrast}
                     </button>
                   ))}
                 </div>
@@ -1525,7 +1541,7 @@ export const Reader: React.FC<ReaderProps> = ({
 
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.4rem', fontWeight: 600, color: 'var(--reader-fg, #333)' }}>
-                  Font Family
+                  {t.settingsFontFamily}
                 </label>
                 <select
                   value={selectedFontFamily}
@@ -1557,7 +1573,7 @@ export const Reader: React.FC<ReaderProps> = ({
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.4rem', fontWeight: 600, color: 'var(--reader-fg, #333)' }}>
-                  Font Size: {fontSize}px
+                  {t.settingsFontSize}: {fontSize}px
                 </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <button
@@ -1610,7 +1626,7 @@ export const Reader: React.FC<ReaderProps> = ({
 
               <div style={{ marginTop: '1rem' }}>
                 <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: 600, color: 'var(--reader-fg, #333)' }}>
-                  Justify Text
+                  {t.settingsJustify}
                   <button
                     onClick={() => { if (onSettingsChange) onSettingsChange({ justify: !justify }); }}
                     style={{
@@ -1641,7 +1657,7 @@ export const Reader: React.FC<ReaderProps> = ({
 
               <div style={{ marginTop: '1rem' }}>
                 <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.4rem', fontWeight: 600, color: 'var(--reader-fg, #333)' }}>
-                  Line Spacing: {lineSpacing}×
+                  {t.settingsLineSpacing}: {lineSpacing}×
                 </label>
                 <input
                   type="range" min={1} max={3} step={0.25} value={lineSpacing}
@@ -1652,7 +1668,7 @@ export const Reader: React.FC<ReaderProps> = ({
 
               <div style={{ marginTop: '1rem' }}>
                 <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.4rem', fontWeight: 600, color: 'var(--reader-fg, #333)' }}>
-                  Letter Spacing: {letterSpacing}px
+                  {t.settingsLetterSpacing}: {letterSpacing}px
                 </label>
                 <input
                   type="range" min={0} max={5} step={0.5} value={letterSpacing}
@@ -1663,7 +1679,7 @@ export const Reader: React.FC<ReaderProps> = ({
 
               <div style={{ marginTop: '1rem' }}>
                 <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.4rem', fontWeight: 600, color: 'var(--reader-fg, #333)' }}>
-                  Word Spacing: {wordSpacing}px
+                  {t.settingsWordSpacing}: {wordSpacing}px
                 </label>
                 <input
                   type="range" min={0} max={10} step={1} value={wordSpacing}
@@ -1674,7 +1690,7 @@ export const Reader: React.FC<ReaderProps> = ({
 
               <div style={{ marginTop: '1rem' }}>
                 <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.4rem', fontWeight: 600, color: 'var(--reader-fg, #333)' }}>
-                  Margin: {margin}px
+                  {t.settingsMargin}: {margin}px
                 </label>
                 <input
                   type="range" min={0} max={100} step={8} value={margin}
@@ -1685,7 +1701,7 @@ export const Reader: React.FC<ReaderProps> = ({
 
               <div style={{ marginTop: '1rem' }}>
                 <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.4rem', fontWeight: 600, color: 'var(--reader-fg, #333)' }}>
-                  Columns
+                  {t.settingsColumns}
                 </label>
                 <div style={{ display: 'flex', gap: '0.4rem' }}>
                   {([1, 2] as const).map(c => (
@@ -1736,7 +1752,7 @@ export const Reader: React.FC<ReaderProps> = ({
                   fontSize: '0.8rem',
                 }}
               >
-                Reset to Defaults
+                {t.resetToDefaults}
               </button>
             </div>
             </div>
@@ -1773,7 +1789,7 @@ export const Reader: React.FC<ReaderProps> = ({
           {hovered && !isFirstPage && (
             <button
               onClick={goToPrevPage}
-              aria-label="Previous page"
+              aria-label={t.previousPage}
               style={{
                 position: 'absolute',
                 [state.direction === 'rtl' ? 'right' : 'left']: 0,
@@ -1801,7 +1817,7 @@ export const Reader: React.FC<ReaderProps> = ({
           {hovered && !isLastPage && (
             <button
               onClick={goToNextPage}
-              aria-label="Next page"
+              aria-label={t.nextPage}
               style={{
                 position: 'absolute',
                 [state.direction === 'rtl' ? 'left' : 'right']: 0,
@@ -1884,7 +1900,7 @@ export const Reader: React.FC<ReaderProps> = ({
             flexShrink: 0,
           }}
         >
-          Page {bookPageNumber}/{bookTotalPages} — {overallProgress}%
+          {interpolate(t.pageIndicator, { current: bookPageNumber, total: bookTotalPages, percent: overallProgress })}
         </div>
 
         {/* Dictionary popover — positioned near selected text */}
@@ -1897,6 +1913,7 @@ export const Reader: React.FC<ReaderProps> = ({
             onSuggestionSelect={handleSuggestionSelect}
           />
         )}
+        </TranslationContext.Provider>
       </ReaderContext.Provider>
     </div>
   );

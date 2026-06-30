@@ -19,6 +19,7 @@ import React, {
 } from 'react';
 
 import { clampZoom } from './Reader';
+import { useTranslations } from '../i18n';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -170,20 +171,21 @@ export const ZoomControls: React.FC<ZoomControlsProps> = ({
   onZoomIn,
   onZoomOut,
 }) => {
+  const t = useTranslations();
   return (
     <div
       className="zoom-controls"
       data-testid="zoom-controls"
       role="toolbar"
-      aria-label="Zoom controls"
+      aria-label={t.zoomControls}
     >
       <button
         className="zoom-controls__btn zoom-controls__btn--out"
         data-testid="zoom-out-btn"
         onClick={onZoomOut}
         disabled={!canZoomOut}
-        aria-label={`Zoom out. Current zoom ${zoom}%`}
-        title="Zoom out"
+        aria-label={`${t.zoomOut}. Current zoom ${zoom}%`}
+        title={t.zoomOut}
       >
         −
       </button>
@@ -200,8 +202,8 @@ export const ZoomControls: React.FC<ZoomControlsProps> = ({
         data-testid="zoom-in-btn"
         onClick={onZoomIn}
         disabled={!canZoomIn}
-        aria-label={`Zoom in. Current zoom ${zoom}%`}
-        title="Zoom in"
+        aria-label={`${t.zoomIn}. Current zoom ${zoom}%`}
+        title={t.zoomIn}
       >
         +
       </button>

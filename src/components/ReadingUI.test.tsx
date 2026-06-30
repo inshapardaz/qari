@@ -213,7 +213,7 @@ describe('PageNavigation', () => {
   it('displays page indicator', () => {
     renderWithContext(<PageNavigation />);
 
-    expect(screen.getByTestId('page-indicator').textContent).toBe('1 / 2');
+    expect(screen.getByTestId('page-indicator').textContent).toBe('Page 1/2');
   });
 
   it('calls onPageChange with updated state when next is clicked', () => {

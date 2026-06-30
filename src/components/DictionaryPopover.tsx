@@ -6,6 +6,7 @@
 
 import React, { useEffect, useRef, useCallback } from 'react';
 import type { DictionaryLookupResult } from '../services/dictionary-service';
+import { useTranslations, interpolate } from '../i18n';
 
 export interface DictionaryPopoverProps {
   /** The lookup result to display */
@@ -33,6 +34,7 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
   onClose,
   onSuggestionSelect,
 }) => {
+  const t = useTranslations();
   const popoverRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
@@ -193,7 +195,7 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
         className="dictionary-popover"
         data-testid="dictionary-popover"
         role="dialog"
-        aria-label="Dictionary lookup loading"
+        aria-label={t.dictionaryLoadingAriaLabel}
         style={style}
         ref={popoverRef}
         tabIndex={-1}
@@ -206,7 +208,7 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
           style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--reader-fg, #666)' }}
         >
           <span style={{ display: 'inline-block', width: '14px', height: '14px', border: '2px solid currentColor', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-          Loading...
+          {t.dictionaryLoading}
         </div>
       </div>
     );
@@ -267,7 +269,7 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
           style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', color: 'var(--reader-fg, #666)', opacity: 0.7, fontSize: '13px' }}
         >
           <span style={{ display: 'inline-block', width: '12px', height: '12px', border: '2px solid currentColor', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-          Loading...
+          {t.dictionaryLoading}
         </div>
       )}
 
@@ -284,7 +286,7 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
             type="button"
             className="dictionary-popover__close"
             data-testid="dictionary-close"
-            aria-label="Close dictionary"
+            aria-label={t.dictionaryClose}
             onClick={handleClose}
             style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', lineHeight: 1, padding: '2px 6px', borderRadius: '4px', color: 'var(--reader-fg, #666)', opacity: 0.7 }}
           >
@@ -303,7 +305,7 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
               aria-label="Word is correctly spelled"
               style={{ color: '#16a34a', fontWeight: 500 }}
             >
-              ✓ Correctly spelled
+              ✓ {t.spellcheckCorrect}
             </span>
           ) : (
             <>
@@ -313,13 +315,13 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
                 aria-label="Word is misspelled"
                 style={{ color: '#dc2626', fontWeight: 500 }}
               >
-                ⚠ Misspelled
+                ⚠ {t.spellcheckMisspelled}
               </span>
               {lookupResult.spellCheck.suggestions.length > 0 && (
                 <ul
                   className="dictionary-popover__suggestions"
                   data-testid="spelling-suggestions"
-                  aria-label="Spelling suggestions"
+                  aria-label={t.spellingSuggestions}
                   role="list"
                   style={{ listStyle: 'none', padding: 0, margin: '6px 0 0 0', display: 'flex', flexWrap: 'wrap', gap: '4px' }}
                 >
@@ -348,7 +350,7 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
       {hasNoDictionary && (
         <div className="dictionary-popover__no-dict" data-testid="dictionary-no-dict" style={{ padding: '4px 0' }}>
           <p className="dictionary-popover__message" style={{ margin: 0, opacity: 0.7 }}>
-            No dictionary available for this language.
+            {t.dictionaryNoDictionary}
           </p>
           {fallbackLanguage && (
             <button
@@ -359,7 +361,7 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
               onClick={() => onFallbackLookup?.(fallbackLanguage)}
               style={{ marginTop: '8px', padding: '4px 12px', fontSize: '13px', background: 'var(--reader-bg, #f3f4f6)', border: '1px solid var(--reader-border, #d1d5db)', borderRadius: '4px', cursor: 'pointer', color: 'var(--reader-fg, #374151)' }}
             >
-              Try in {fallbackLanguage}
+              {interpolate(t.dictionaryTryIn, { language: fallbackLanguage })}
             </button>
           )}
         </div>
@@ -369,7 +371,7 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
       {isNotFound && (
         <div className="dictionary-popover__not-found" data-testid="dictionary-not-found" style={{ padding: '4px 0', opacity: 0.7 }}>
           <p className="dictionary-popover__message" style={{ margin: 0 }}>
-            No definition found for &ldquo;{word}&rdquo;.
+            {interpolate(t.dictionaryNotFound, { word })}
           </p>
         </div>
       )}
@@ -400,7 +402,7 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
                   className="dictionary-popover__examples"
                   data-testid={`dictionary-examples-${index}`}
                   role="list"
-                  aria-label="Examples"
+                  aria-label={t.dictionaryExamples}
                   style={{ listStyle: 'none', padding: '4px 0 0 0', margin: 0 }}
                 >
                   {def.examples.map((example, exIdx) => (

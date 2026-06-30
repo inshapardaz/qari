@@ -5,14 +5,8 @@
 
 import React, { useCallback } from 'react';
 import { useReaderContext } from './Reader';
+import { useTranslations } from '../i18n';
 import type { ThemeName, FontFamily } from '../models/reader-state';
-
-const THEMES: { value: ThemeName; label: string }[] = [
-  { value: 'light', label: 'Light' },
-  { value: 'dark', label: 'Dark' },
-  { value: 'sepia', label: 'Sepia' },
-  { value: 'high-contrast', label: 'High Contrast' },
-];
 
 const FONTS: { value: FontFamily; label: string }[] = [
   { value: 'serif', label: 'Serif' },
@@ -33,6 +27,14 @@ export interface ThemeSelectorProps {
 export const ThemeSelector: React.FC<ThemeSelectorProps> = ({ onChange }) => {
   const { state, themeEngine } = useReaderContext();
   const { preferences } = state;
+  const t = useTranslations();
+
+  const THEMES: { value: ThemeName; label: string }[] = [
+    { value: 'light', label: t.themeLight },
+    { value: 'dark', label: t.themeDark },
+    { value: 'sepia', label: t.themeSepia },
+    { value: 'high-contrast', label: t.themeHighContrast },
+  ];
 
   const applyAndPersist = useCallback(
     (updatedPrefs: { theme: ThemeName; fontFamily: FontFamily; fontSize: number }) => {
@@ -93,7 +95,7 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({ onChange }) => {
     <div className="theme-selector" data-testid="theme-selector" role="group" aria-label="Reading preferences">
       {/* Theme Picker */}
       <fieldset className="theme-selector__themes">
-        <legend>Theme</legend>
+        <legend>{t.settingsTheme}</legend>
         <div className="theme-selector__theme-options" role="radiogroup" aria-label="Color theme">
           {THEMES.map(({ value, label }) => (
             <button

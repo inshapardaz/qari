@@ -9,6 +9,7 @@
 
 import React from 'react';
 import { useReaderContext } from './Reader';
+import { useTranslations, interpolate } from '../i18n';
 import type { PageChangeEvent } from '../models/events';
 
 export interface PageNavigationProps {
@@ -18,6 +19,7 @@ export interface PageNavigationProps {
 
 export const PageNavigation: React.FC<PageNavigationProps> = ({ onPageChange }) => {
   const { state, chapterNavigator } = useReaderContext();
+  const t = useTranslations();
 
   if (!chapterNavigator) {
     return null;
@@ -59,8 +61,8 @@ export const PageNavigation: React.FC<PageNavigationProps> = ({ onPageChange }) 
   // and the visual "backward" button (right) triggers previous.
   const leftAction = isRTL ? handleNext : handlePrevious;
   const rightAction = isRTL ? handlePrevious : handleNext;
-  const leftLabel = isRTL ? 'Next page' : 'Previous page';
-  const rightLabel = isRTL ? 'Previous page' : 'Next page';
+  const leftLabel = isRTL ? t.nextPage : t.previousPage;
+  const rightLabel = isRTL ? t.previousPage : t.nextPage;
   const leftTestId = isRTL ? 'nav-next' : 'nav-previous';
   const rightTestId = isRTL ? 'nav-previous' : 'nav-next';
 
@@ -82,7 +84,7 @@ export const PageNavigation: React.FC<PageNavigationProps> = ({ onPageChange }) 
       </button>
 
       <span className="ebook-reader__page-indicator" data-testid="page-indicator">
-        {state.currentPage + 1} / {state.totalPages}
+        {interpolate(t.pageIndicator, { current: state.currentPage + 1, total: state.totalPages })}
       </span>
 
       <button

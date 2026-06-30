@@ -6,6 +6,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { useReaderContext } from './Reader';
+import { useTranslations } from '../i18n';
 import { getChapterCharCount } from '../services/chapter-navigator';
 import type { Bookmark } from '../models/bookmark';
 import type { BookmarkEvent, PageChangeEvent } from '../models/events';
@@ -42,6 +43,7 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
   charsPerPage = DEFAULT_CHARS_PER_PAGE,
 }) => {
   const { state, bookmarkStore, chapterNavigator, addBookmark, removeBookmark, updateBookmark } = useReaderContext();
+  const t = useTranslations();
   const { bookmarks, book, currentChapter } = state;
 
   const [newBookmarkName, setNewBookmarkName] = useState('');
@@ -247,7 +249,7 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
 
   return (
     <div className="bookmark-panel" data-testid="bookmark-panel" role="region" aria-label="Bookmarks">
-      <h2 className="bookmark-panel__title">Bookmarks</h2>
+      <h2 className="bookmark-panel__title">{t.bookmarksPanelTitle}</h2>
 
       {/* Error display */}
       {error && (
@@ -267,10 +269,10 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
           type="text"
           className="bookmark-panel__input"
           data-testid="bookmark-name-input"
-          placeholder="Bookmark name"
+          placeholder={t.bookmarkNamePlaceholder}
           value={newBookmarkName}
           maxLength={MAX_NAME_LENGTH}
-          aria-label="New bookmark name"
+          aria-label={t.bookmarkNewNameAriaLabel}
           onChange={(e) => {
             setNewBookmarkName(e.target.value);
             setError(null);
@@ -281,10 +283,10 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
           type="button"
           className="bookmark-panel__create-btn"
           data-testid="bookmark-create-btn"
-          aria-label="Create bookmark"
+          aria-label={t.bookmarkCreateAriaLabel}
           onClick={handleCreate}
         >
-          Add Bookmark
+          {t.bookmarkAdd}
         </button>
       </div>
 
@@ -292,7 +294,7 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
       <ul className="bookmark-panel__list" data-testid="bookmark-list" role="list" aria-label="Bookmark list">
         {bookBookmarks.length === 0 && (
           <li className="bookmark-panel__empty" data-testid="bookmark-empty">
-            No bookmarks yet.
+            {t.bookmarksEmpty}
           </li>
         )}
         {bookBookmarks.map((bookmark) => (
@@ -324,7 +326,7 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
                   aria-label="Save bookmark name"
                   onClick={handleRenameConfirm}
                 >
-                  Save
+                  {t.bookmarkSave}
                 </button>
                 <button
                   type="button"
@@ -333,7 +335,7 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
                   aria-label="Cancel rename"
                   onClick={handleRenameCancel}
                 >
-                  Cancel
+                  {t.bookmarkCancel}
                 </button>
               </div>
             ) : (
@@ -355,7 +357,7 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
                     aria-label={`Rename bookmark: ${bookmark.name}`}
                     onClick={() => handleRenameStart(bookmark)}
                   >
-                    Rename
+                    {t.bookmarkRename}
                   </button>
                   <button
                     type="button"
@@ -364,7 +366,7 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
                     aria-label={`Delete bookmark: ${bookmark.name}`}
                     onClick={() => handleDelete(bookmark.id)}
                   >
-                    Delete
+                    {t.bookmarkDelete}
                   </button>
                 </div>
               </div>
