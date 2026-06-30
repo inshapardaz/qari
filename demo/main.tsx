@@ -286,6 +286,7 @@ function App() {
           lineSpacing={lineSpacing}
           letterSpacing={letterSpacing}
           wordSpacing={wordSpacing}
+          enableBookmarks={false}
           margin={margin}
           columns={columns}
           onPageChange={(e) => console.log('Page change:', e)}
