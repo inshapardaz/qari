@@ -24,6 +24,7 @@
     "@vitejs/plugin-react": "^4.3.1",
     "@vue/runtime-core": "^3.5.39",
     "@vue/test-utils": "^2.4.11",
+    "fake-indexeddb": "^6.2.5",
     "fast-check": "^3.15.1",
     "jsdom": "^24.0.0",
     "typescript": "^5.4.5",

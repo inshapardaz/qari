@@ -118,6 +118,9 @@ function renderWithContext(
     dictionaryService: new DictionaryService(),
     bookmarkStore: null,
     chapterNavigator: navigator,
+    addBookmark: () => {},
+    removeBookmark: () => {},
+    updateBookmark: () => {},
     ...contextOverrides,
   };
 
@@ -283,6 +286,9 @@ describe('PageNavigation', () => {
           dictionaryService: new DictionaryService(),
           bookmarkStore: null,
           chapterNavigator: null,
+          addBookmark: () => {},
+          removeBookmark: () => {},
+          updateBookmark: () => {},
         }}
       >
         <PageNavigation />

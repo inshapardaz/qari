@@ -1,27 +1,47 @@
 /**
- * BookmarkPanel Component — displays bookmark list with create, rename, and delete capabilities.
+ * BookmarkPanel Component — displays bookmark list with create, rename, delete,
+ * and navigation capabilities.
  * Uses BookmarkStore and ChapterNavigator from ReaderContext.
  */
 
 import React, { useState, useCallback } from 'react';
 import { useReaderContext } from './Reader';
+import { getChapterCharCount } from '../services/chapter-navigator';
 import type { Bookmark } from '../models/bookmark';
-import type { BookmarkEvent } from '../models/events';
+import type { BookmarkEvent, PageChangeEvent } from '../models/events';
 
 export interface BookmarkPanelProps {
   /** Called when a bookmark is created */
   onBookmarkCreate?: (event: BookmarkEvent) => void;
   /** Called when a bookmark is selected (navigate to it) */
   onBookmarkSelect?: (bookmark: Bookmark) => void;
+  /**
+   * Called when navigation to a bookmark is requested.
+   * Provides the resolved chapter index, page number, and reading progress percentage.
+   */
+  onNavigate?: (chapterIdx: number, page: number, progress: number) => void;
+  /**
+   * Called when navigation completes with the standard PageChangeEvent.
+   */
+  onPageChange?: (event: PageChangeEvent) => void;
+  /**
+   * Characters per page used for pagination calculation.
+   * Defaults to 1500 if not provided.
+   */
+  charsPerPage?: number;
 }
 
 const MAX_NAME_LENGTH = 100;
+const DEFAULT_CHARS_PER_PAGE = 1500;
 
 export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
   onBookmarkCreate,
   onBookmarkSelect,
+  onNavigate,
+  onPageChange,
+  charsPerPage = DEFAULT_CHARS_PER_PAGE,
 }) => {
-  const { state, bookmarkStore, chapterNavigator } = useReaderContext();
+  const { state, bookmarkStore, chapterNavigator, addBookmark, removeBookmark, updateBookmark } = useReaderContext();
   const { bookmarks, book, currentChapter } = state;
 
   const [newBookmarkName, setNewBookmarkName] = useState('');
@@ -32,6 +52,96 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
   // Filter bookmarks for the current book
   const currentBookId = book?.metadata.identifier || '';
   const bookBookmarks = bookmarks.filter((b) => b.bookId === currentBookId);
+
+  /**
+   * Handles clicking a bookmark to navigate to its position.
+   * Implements the navigation algorithm from the design:
+   * 1. Look up chapterId in book.chapters
+   * 2. If chapter not found → show error, stay on current page
+   * 3. Calculate target page: Math.floor(position / charsPerPage)
+   * 4. If position > chapter char count → navigate to last page
+   * 5. Update state via onNavigate callback
+   * 6. Fire onPageChange callback with new position
+   * 7. Recalculate reading progress
+   */
+  const handleBookmarkClick = useCallback(
+    (bookmark: Bookmark) => {
+      if (!book) {
+        setError('No book is currently loaded.');
+        return;
+      }
+
+      // 1. Look up chapterId in book.chapters
+      const chapterIdx = book.chapters.findIndex((ch) => ch.id === bookmark.chapterId);
+
+      // 2. If chapter not found → show error, stay on current page
+      if (chapterIdx === -1) {
+        setError('Bookmark target is invalid: chapter not found in current book.');
+        return;
+      }
+
+      const chapter = book.chapters[chapterIdx];
+      const chapterCharCount = getChapterCharCount(chapter);
+
+      // 3. Calculate target page
+      let targetPage: number;
+      let effectivePosition: number;
+
+      if (bookmark.position > chapterCharCount) {
+        // 4. If position > chapter char count → navigate to last page
+        const totalPagesInChapter = chapterCharCount === 0
+          ? 1
+          : Math.ceil(chapterCharCount / charsPerPage);
+        targetPage = totalPagesInChapter - 1;
+        effectivePosition = chapterCharCount;
+      } else {
+        targetPage = Math.floor(bookmark.position / charsPerPage);
+        effectivePosition = bookmark.position;
+      }
+
+      // 7. Calculate reading progress
+      // Progress = (charsBeforeChapter + min(position, chapterCharCount)) / totalBookChars * 100
+      let charsBeforeChapter = 0;
+      let totalBookChars = 0;
+      for (let i = 0; i < book.chapters.length; i++) {
+        const charCount = getChapterCharCount(book.chapters[i]);
+        if (i < chapterIdx) {
+          charsBeforeChapter += charCount;
+        }
+        totalBookChars += charCount;
+      }
+
+      const progress = totalBookChars > 0
+        ? Math.round(
+            ((charsBeforeChapter + Math.min(effectivePosition, chapterCharCount)) / totalBookChars) * 100
+          )
+        : 0;
+      const clampedProgress = Math.max(0, Math.min(100, progress));
+
+      // Clear any previous error
+      setError(null);
+
+      // 5. Update state via onNavigate callback
+      if (onNavigate) {
+        onNavigate(chapterIdx, targetPage, clampedProgress);
+      }
+
+      // 6. Fire onPageChange callback
+      if (onPageChange) {
+        onPageChange({
+          chapter: chapterIdx,
+          page: targetPage,
+          progress: clampedProgress,
+        });
+      }
+
+      // Also call the legacy onBookmarkSelect if provided
+      if (onBookmarkSelect) {
+        onBookmarkSelect(bookmark);
+      }
+    },
+    [book, charsPerPage, onNavigate, onPageChange, onBookmarkSelect]
+  );
 
   const validateName = (name: string): string | null => {
     if (!name || name.trim().length === 0) {
@@ -67,6 +177,7 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
         newBookmarkName.trim()
       );
 
+      addBookmark(bookmark);
       setNewBookmarkName('');
       setError(null);
 
@@ -76,7 +187,7 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to create bookmark.');
     }
-  }, [newBookmarkName, bookmarkStore, book, currentChapter, currentBookId, onBookmarkCreate]);
+  }, [newBookmarkName, bookmarkStore, book, currentChapter, currentBookId, onBookmarkCreate, addBookmark]);
 
   const handleRenameStart = useCallback((bookmark: Bookmark) => {
     setEditingId(bookmark.id);
@@ -94,14 +205,15 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
     }
 
     try {
-      await bookmarkStore.rename(editingId, editName.trim());
+      const renamed = await bookmarkStore.rename(editingId, editName.trim());
+      updateBookmark(renamed);
       setEditingId(null);
       setEditName('');
       setError(null);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to rename bookmark.');
     }
-  }, [editingId, editName, bookmarkStore]);
+  }, [editingId, editName, bookmarkStore, updateBookmark]);
 
   const handleRenameCancel = useCallback(() => {
     setEditingId(null);
@@ -115,12 +227,13 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
 
       try {
         await bookmarkStore.delete(bookmarkId);
+        removeBookmark(bookmarkId);
         setError(null);
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Failed to delete bookmark.');
       }
     },
-    [bookmarkStore]
+    [bookmarkStore, removeBookmark]
   );
 
   const handleKeyDown = useCallback(
@@ -230,7 +343,7 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
                   className="bookmark-panel__name"
                   data-testid={`bookmark-name-${bookmark.id}`}
                   aria-label={`Go to bookmark: ${bookmark.name}`}
-                  onClick={() => onBookmarkSelect?.(bookmark)}
+                  onClick={() => handleBookmarkClick(bookmark)}
                 >
                   {bookmark.name}
                 </button>

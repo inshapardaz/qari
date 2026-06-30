@@ -13,3 +13,8 @@ export type {
   ThemeColors,
 } from './theme-engine';
 export type { DirectionDetector, DirectionResult } from './direction-detector';
+export type {
+  BookmarkStoreInterface,
+  BookmarkChangeEvent,
+  HookStoreCallbacks,
+} from './bookmark-store';

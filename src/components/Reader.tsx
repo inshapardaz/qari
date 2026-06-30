@@ -27,12 +27,16 @@ import type {
 } from '../models/events';
 import type { DictionaryProvider } from '../interfaces/dictionary';
 import type { CustomStoreAdapter } from '../interfaces/store-adapter';
+import type { BookmarkStoreInterface, BookmarkChangeEvent } from '../interfaces/bookmark-store';
 
 import { ThemeEngine } from '../services/theme-engine';
 import { DefaultDirectionDetector } from '../services/direction-detector';
 import { DictionaryService } from '../services/dictionary-service';
 import { BookmarkStore } from '../services/bookmark-store';
+import { LocalStorageStore } from '../services/local-storage-store';
 import { ChapterNavigator } from '../services/chapter-navigator';
+
+import { BookmarkPanel } from './BookmarkPanel';
 
 import { EPUBParserImpl } from '../parsers/epub-parser';
 import { MarkdownParserImpl } from '../parsers/markdown-parser';
@@ -76,7 +80,12 @@ export interface ReaderProps {
   zoom?: number;
   direction?: 'ltr' | 'rtl' | 'auto';
   dictionaryProviders?: DictionaryProvider[];
+  /** Enable or disable the bookmarks feature. Defaults to true. */
+  enableBookmarks?: boolean;
   bookmarkAdapter?: CustomStoreAdapter;
+  bookmarks?: Bookmark[];
+  bookmarkStore?: BookmarkStoreInterface;
+  onBookmarkChange?: (event: BookmarkChangeEvent) => void;
   onPageChange?: (event: PageChangeEvent) => void;
   onBookmarkCreate?: (event: BookmarkEvent) => void;
   onError?: (event: ReaderError) => void;
@@ -105,6 +114,9 @@ export interface ReaderContextValue {
   dictionaryService: DictionaryService;
   bookmarkStore: BookmarkStore | null;
   chapterNavigator: ChapterNavigator | null;
+  addBookmark: (bookmark: Bookmark) => void;
+  removeBookmark: (bookmarkId: string) => void;
+  updateBookmark: (bookmark: Bookmark) => void;
 }
 
 export const ReaderContext = createContext<ReaderContextValue | null>(null);
@@ -404,7 +416,11 @@ export const Reader: React.FC<ReaderProps> = ({
   zoom = 100,
   direction = 'auto',
   dictionaryProviders,
+  enableBookmarks = true,
   bookmarkAdapter,
+  bookmarks: bookmarksProp,
+  bookmarkStore: bookmarkStoreProp,
+  onBookmarkChange,
   onPageChange,
   onBookmarkCreate,
   onError,
@@ -419,6 +435,7 @@ export const Reader: React.FC<ReaderProps> = ({
   const [pagesPerChapter, setPagesPerChapter] = useState<number[]>([]); // cached page counts per chapter
   const [chapterMenuOpen, setChapterMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [bookmarksPanelOpen, setBookmarksPanelOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -438,6 +455,35 @@ export const Reader: React.FC<ReaderProps> = ({
   useEffect(() => {
     bookmarkStoreRef.current = new BookmarkStore(bookmarkAdapter);
   }, [bookmarkAdapter]);
+
+  // ---------------------------------------------------------------------------
+  // Bookmark store interface instance (new pluggable store system)
+  // Precedence: bookmarkStoreProp > LocalStorageStore default
+  // ---------------------------------------------------------------------------
+  const defaultLocalStoreRef = useRef<LocalStorageStore>(new LocalStorageStore());
+  const bookmarkStoreInterfaceRef = useRef<BookmarkStoreInterface>(
+    bookmarkStoreProp ?? defaultLocalStoreRef.current
+  );
+
+  useEffect(() => {
+    if (bookmarkStoreProp) {
+      bookmarkStoreInterfaceRef.current = bookmarkStoreProp;
+    } else {
+      bookmarkStoreInterfaceRef.current = defaultLocalStoreRef.current;
+    }
+  }, [bookmarkStoreProp]);
+
+  // ---------------------------------------------------------------------------
+  // Prop-driven bookmark reactivity: when bookmarks prop changes, sync state
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (bookmarksProp !== undefined) {
+      setState(prev => ({
+        ...prev,
+        bookmarks: bookmarksProp,
+      }));
+    }
+  }, [bookmarksProp]);
 
   // ---------------------------------------------------------------------------
   // Initialize ThemeEngine once root element is available
@@ -569,11 +615,23 @@ export const Reader: React.FC<ReaderProps> = ({
 
       // Load bookmarks
       let bookmarks: Bookmark[] = [];
-      if (bookmarkStoreRef.current && book.metadata.identifier) {
+      if (bookmarksProp !== undefined) {
+        // Controlled mode: use prop value directly, skip store load
+        bookmarks = bookmarksProp;
+      } else if (book.metadata.identifier) {
+        // Uncontrolled mode: load from the configured store interface
         try {
-          bookmarks = await bookmarkStoreRef.current.load(book.metadata.identifier);
+          bookmarks = await bookmarkStoreInterfaceRef.current.load(book.metadata.identifier);
         } catch {
           // Bookmark loading failure is non-fatal
+          // Also try legacy bookmark store as fallback
+          if (bookmarkStoreRef.current) {
+            try {
+              bookmarks = await bookmarkStoreRef.current.load(book.metadata.identifier);
+            } catch {
+              // Non-fatal
+            }
+          }
         }
       }
 
@@ -633,7 +691,7 @@ export const Reader: React.FC<ReaderProps> = ({
         onError(readerError);
       }
     }
-  }, [direction, onReady, onError]);
+  }, [direction, onReady, onError, bookmarksProp]);
 
   useEffect(() => {
     loadBook(source);
@@ -801,6 +859,7 @@ export const Reader: React.FC<ReaderProps> = ({
       if (e.key === 'Escape') {
         setChapterMenuOpen(false);
         setSettingsOpen(false);
+        setBookmarksPanelOpen(false);
         return;
       }
       if (state.direction === 'rtl') {
@@ -814,16 +873,55 @@ export const Reader: React.FC<ReaderProps> = ({
     const handleClickOutside = () => {
       setChapterMenuOpen(false);
       setSettingsOpen(false);
+      setBookmarksPanelOpen(false);
     };
     window.addEventListener('keydown', handleKeyDown);
-    if (chapterMenuOpen || settingsOpen) {
+    if (chapterMenuOpen || settingsOpen || bookmarksPanelOpen) {
       setTimeout(() => document.addEventListener('click', handleClickOutside), 0);
     }
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('click', handleClickOutside);
     };
-  }, [goToNextPage, goToPrevPage, state.direction, chapterMenuOpen, settingsOpen]);
+  }, [goToNextPage, goToPrevPage, state.direction, chapterMenuOpen, settingsOpen, bookmarksPanelOpen]);
+
+  // ---------------------------------------------------------------------------
+  // Context value (memoized)
+  // ---------------------------------------------------------------------------
+  // Bookmark state management callbacks (exposed via context)
+  // ---------------------------------------------------------------------------
+  const addBookmark = useCallback((bookmark: Bookmark) => {
+    setState(prev => ({
+      ...prev,
+      bookmarks: [...prev.bookmarks, bookmark],
+    }));
+    if (onBookmarkChange) {
+      onBookmarkChange({ type: 'created', bookmark });
+    }
+  }, [onBookmarkChange]);
+
+  const removeBookmark = useCallback((bookmarkId: string) => {
+    setState(prev => {
+      const bookmark = prev.bookmarks.find(b => b.id === bookmarkId);
+      if (bookmark && onBookmarkChange) {
+        onBookmarkChange({ type: 'deleted', bookmark });
+      }
+      return {
+        ...prev,
+        bookmarks: prev.bookmarks.filter(b => b.id !== bookmarkId),
+      };
+    });
+  }, [onBookmarkChange]);
+
+  const updateBookmarkInState = useCallback((bookmark: Bookmark) => {
+    setState(prev => ({
+      ...prev,
+      bookmarks: prev.bookmarks.map(b => b.id === bookmark.id ? bookmark : b),
+    }));
+    if (onBookmarkChange) {
+      onBookmarkChange({ type: 'renamed', bookmark });
+    }
+  }, [onBookmarkChange]);
 
   // ---------------------------------------------------------------------------
   // Context value (memoized)
@@ -835,7 +933,10 @@ export const Reader: React.FC<ReaderProps> = ({
     dictionaryService: dictionaryServiceRef.current,
     bookmarkStore: bookmarkStoreRef.current,
     chapterNavigator: chapterNavigatorRef.current,
-  }), [state]);
+    addBookmark,
+    removeBookmark,
+    updateBookmark: updateBookmarkInState,
+  }), [state, addBookmark, removeBookmark, updateBookmarkInState]);
 
   // ---------------------------------------------------------------------------
   // Render
@@ -1003,22 +1104,76 @@ export const Reader: React.FC<ReaderProps> = ({
           </span>
 
           {/* Settings button (right) */}
-          <button
-            onClick={() => setSettingsOpen(!settingsOpen)}
-            aria-label="Reading settings"
-            aria-expanded={settingsOpen}
-            style={{
-              padding: '0.4rem 0.6rem',
-              border: '1px solid var(--reader-border, #e0e0e0)',
-              borderRadius: '4px',
-              background: settingsOpen ? 'var(--reader-accent, #0066cc)' : 'var(--reader-bg, #fff)',
-              color: settingsOpen ? '#fff' : 'var(--reader-fg, #1a1a1a)',
-              cursor: 'pointer',
-              fontSize: '1rem',
-            }}
-          >
-            ⚙
-          </button>
+          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+            {/* Bookmarks button */}
+            {enableBookmarks && (
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setBookmarksPanelOpen(!bookmarksPanelOpen)}
+                aria-label="Bookmarks"
+                aria-expanded={bookmarksPanelOpen}
+                style={{
+                  padding: '0.4rem 0.6rem',
+                  border: '1px solid var(--reader-border, #e0e0e0)',
+                  borderRadius: '4px',
+                  background: bookmarksPanelOpen ? 'var(--reader-accent, #0066cc)' : 'var(--reader-bg, #fff)',
+                  color: bookmarksPanelOpen ? '#fff' : 'var(--reader-fg, #1a1a1a)',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                }}
+              >
+                🔖
+              </button>
+
+              {bookmarksPanelOpen && (
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    ...(state.direction === 'rtl' ? { left: '0' } : { right: '0' }),
+                    marginTop: '0.5rem',
+                    background: 'var(--reader-bg, #fff)',
+                    border: '1px solid var(--reader-border, #e0e0e0)',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                    padding: '0.75rem',
+                    zIndex: 200,
+                    minWidth: '280px',
+                    maxHeight: '400px',
+                    overflowY: 'auto',
+                  }}
+                >
+                  <BookmarkPanel
+                    onNavigate={(chapterIdx, page) => {
+                      setCurrentChapterIdx(chapterIdx);
+                      setCurrentPage(page);
+                      setBookmarksPanelOpen(false);
+                    }}
+                    onPageChange={onPageChange}
+                  />
+                </div>
+              )}
+            </div>
+            )}
+
+            <button
+              onClick={() => setSettingsOpen(!settingsOpen)}
+              aria-label="Reading settings"
+              aria-expanded={settingsOpen}
+              style={{
+                padding: '0.4rem 0.6rem',
+                border: '1px solid var(--reader-border, #e0e0e0)',
+                borderRadius: '4px',
+                background: settingsOpen ? 'var(--reader-accent, #0066cc)' : 'var(--reader-bg, #fff)',
+                color: settingsOpen ? '#fff' : 'var(--reader-fg, #1a1a1a)',
+                cursor: 'pointer',
+                fontSize: '1rem',
+              }}
+            >
+              ⚙
+            </button>
+          </div>
 
           {/* Settings popup */}
           {settingsOpen && (

@@ -41,6 +41,9 @@ function createMockContext(overrides: Partial<ReaderContextValue> = {}): ReaderC
     dictionaryService: {} as any,
     bookmarkStore: null,
     chapterNavigator: null,
+    addBookmark: vi.fn(),
+    removeBookmark: vi.fn(),
+    updateBookmark: vi.fn(),
     ...overrides,
   };
 }
