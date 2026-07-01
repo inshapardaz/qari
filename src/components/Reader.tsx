@@ -38,6 +38,7 @@ import { ChapterNavigator } from '../services/chapter-navigator';
 
 import { BookmarkPanel } from './BookmarkPanel';
 import { DictionaryPopover } from './DictionaryPopover';
+import { ImageLightbox } from './ImageLightbox';
 
 import { TranslationContext, DEFAULT_TRANSLATIONS, useTranslations, interpolate } from '../i18n';
 import type { TranslationStrings } from '../i18n';
@@ -322,7 +323,7 @@ function contentNodeToHtml(node: ContentNode): string {
     case 'heading':
       return `<h${node.level}>${inlineNodesToHtml(node.children)}</h${node.level}>`;
     case 'image':
-      return `<img src="${node.src}" alt="${node.alt || ''}" style="max-width:100%" />`;
+      return `<img src="${node.src}" alt="${node.alt || ''}" style="max-width:100%;max-height:calc(100vh - 120px);width:100%;height:auto;object-fit:contain" />`;
     case 'code-block':
       return `<pre><code>${escapeHtml(node.content)}</code></pre>`;
     case 'list': {
@@ -360,14 +361,14 @@ function escapeHtml(text: string): string {
 // Content Renderers
 // ---------------------------------------------------------------------------
 
-const InlineNodeRenderer: React.FC<{ node: InlineNode }> = ({ node }) => {
+const InlineNodeRenderer: React.FC<{ node: InlineNode; onImageClick?: (src: string, alt: string) => void }> = ({ node, onImageClick }) => {
   switch (node.type) {
     case 'text':
       return <>{node.content}</>;
     case 'bold':
-      return <strong>{node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} />)}</strong>;
+      return <strong>{node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} onImageClick={onImageClick} />)}</strong>;
     case 'italic':
-      return <em>{node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} />)}</em>;
+      return <em>{node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} onImageClick={onImageClick} />)}</em>;
     case 'code':
       return <code>{node.content}</code>;
     case 'inline-image':
@@ -376,19 +377,21 @@ const InlineNodeRenderer: React.FC<{ node: InlineNode }> = ({ node }) => {
           src={node.src}
           alt={node.alt || ''}
           loading="lazy"
+          onClick={() => onImageClick?.(node.src!, node.alt || '')}
           style={{
             maxWidth: '100%',
             maxHeight: '10em',
             verticalAlign: 'middle',
             display: 'inline-block',
             objectFit: 'contain',
+            cursor: 'pointer',
           }}
         />
       );
     case 'link':
       return (
         <a href={node.href} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--reader-accent, #0066cc)' }}>
-          {node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} />)}
+          {node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} onImageClick={onImageClick} />)}
         </a>
       );
     default:
@@ -396,19 +399,19 @@ const InlineNodeRenderer: React.FC<{ node: InlineNode }> = ({ node }) => {
   }
 };
 
-const ContentNodeRenderer: React.FC<{ node: ContentNode }> = ({ node }) => {
+const ContentNodeRenderer: React.FC<{ node: ContentNode; onImageClick?: (src: string, alt: string) => void }> = ({ node, onImageClick }) => {
   switch (node.type) {
     case 'paragraph':
       return (
         <p>
-          {node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} />)}
+          {node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} onImageClick={onImageClick} />)}
         </p>
       );
     case 'heading': {
       const Tag = `h${node.level}` as keyof JSX.IntrinsicElements;
       return (
         <Tag>
-          {node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} />)}
+          {node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} onImageClick={onImageClick} />)}
         </Tag>
       );
     }
@@ -419,15 +422,17 @@ const ContentNodeRenderer: React.FC<{ node: ContentNode }> = ({ node }) => {
             src={node.src}
             alt={node.alt || ''}
             loading="lazy"
+            onClick={() => onImageClick?.(node.src!, node.alt || '')}
             onError={(e) => console.warn(`[qari] Image failed to load: "${node.src?.substring(0, 80)}"`, e)}
             style={{
               maxWidth: '100%',
-              maxHeight: '70vh',
-              width: 'auto',
+              maxHeight: 'calc(100vh - 120px)',
+              width: '100%',
               height: 'auto',
               display: 'block',
               objectFit: 'contain',
               borderRadius: '4px',
+              cursor: 'pointer',
             }}
           />
           {node.alt && (
@@ -456,7 +461,7 @@ const ContentNodeRenderer: React.FC<{ node: ContentNode }> = ({ node }) => {
         <ListTag>
           {node.items.map((item, i) => (
             <li key={i}>
-              {item.children.map((child, j) => <ContentNodeRenderer key={j} node={child} />)}
+              {item.children.map((child, j) => <ContentNodeRenderer key={j} node={child} onImageClick={onImageClick} />)}
             </li>
           ))}
         </ListTag>
@@ -534,6 +539,7 @@ export const Reader: React.FC<ReaderProps> = ({
   });
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const [lightboxImage, setLightboxImage] = useState<{ src: string; alt: string } | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
@@ -1873,7 +1879,7 @@ export const Reader: React.FC<ReaderProps> = ({
             {currentChapter && (
               <div>
                 {currentChapter.content.map((node, ni) => (
-                  <ContentNodeRenderer key={`${currentChapterIdx}-${ni}`} node={node} />
+                  <ContentNodeRenderer key={`${currentChapterIdx}-${ni}`} node={node} onImageClick={(src, alt) => setLightboxImage({ src, alt })} />
                 ))}
               </div>
             )}
@@ -1908,6 +1914,15 @@ export const Reader: React.FC<ReaderProps> = ({
             anchorPosition={anchorPosition ?? undefined}
             onClose={handleDictionaryClose}
             onSuggestionSelect={handleSuggestionSelect}
+          />
+        )}
+
+        {/* Image lightbox overlay */}
+        {lightboxImage && (
+          <ImageLightbox
+            src={lightboxImage.src}
+            alt={lightboxImage.alt}
+            onClose={() => setLightboxImage(null)}
           />
         )}
         </TranslationContext.Provider>

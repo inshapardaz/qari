@@ -66,4 +66,10 @@ export const DEFAULT_TRANSLATIONS: TranslationStrings = {
   zoomControls: 'Zoom controls',
   zoomIn: 'Zoom in',
   zoomOut: 'Zoom out',
+
+  // Image lightbox
+  lightboxClose: 'Close image viewer',
+  lightboxZoomIn: 'Zoom in',
+  lightboxZoomOut: 'Zoom out',
+  lightboxLabel: 'Image viewer',
 };

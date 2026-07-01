@@ -64,4 +64,10 @@ export interface TranslationStrings {
   zoomControls: string;
   zoomIn: string; // supports {level}
   zoomOut: string; // supports {level}
+
+  // Image lightbox
+  lightboxClose: string;
+  lightboxZoomIn: string;
+  lightboxZoomOut: string;
+  lightboxLabel: string;
 }
