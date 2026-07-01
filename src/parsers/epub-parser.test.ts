@@ -625,4 +625,110 @@ describe('EPUBParserImpl', () => {
       expect(content[1].type).toBe('paragraph');
     });
   });
+
+  describe('EPUB footnote parsing', () => {
+    it('should produce FootnoteRefSpan for noteref with resolvable target', async () => {
+      const epub = await createEpubBuffer({
+        spineItems: [
+          {
+            id: 'ch1',
+            href: 'ch1.xhtml',
+            content: `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+<head><title>Test</title></head>
+<body>
+  <p>Some text<a epub:type="noteref" href="#fn1">1</a> continues.</p>
+  <aside id="fn1">This is the footnote content.</aside>
+</body>
+</html>`,
+          },
+        ],
+      });
+
+      const book = await parser.parse(epub);
+      const para = book.chapters[0].content[0];
+
+      expect(para.type).toBe('paragraph');
+      if (para.type === 'paragraph') {
+        const footnoteRef = para.children.find((child) => child.type === 'footnote-ref');
+        expect(footnoteRef).toBeDefined();
+        expect(footnoteRef!.type).toBe('footnote-ref');
+        if (footnoteRef!.type === 'footnote-ref') {
+          expect(footnoteRef!.label).toBe('1');
+          expect(footnoteRef!.content).toBeInstanceOf(Array);
+          expect(footnoteRef!.content.length).toBeGreaterThan(0);
+          expect(footnoteRef!.content[0]).toEqual({
+            type: 'text',
+            content: 'This is the footnote content.',
+          });
+        }
+      }
+    });
+
+    it('should fall back to LinkSpan for noteref with unresolvable target', async () => {
+      const epub = await createEpubBuffer({
+        spineItems: [
+          {
+            id: 'ch1',
+            href: 'ch1.xhtml',
+            content: `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+<head><title>Test</title></head>
+<body>
+  <p>Some text<a epub:type="noteref" href="#nonexistent">2</a> continues.</p>
+</body>
+</html>`,
+          },
+        ],
+      });
+
+      const book = await parser.parse(epub);
+      const para = book.chapters[0].content[0];
+
+      expect(para.type).toBe('paragraph');
+      if (para.type === 'paragraph') {
+        const link = para.children.find((child) => child.type === 'link');
+        expect(link).toBeDefined();
+        expect(link!.type).toBe('link');
+        if (link!.type === 'link') {
+          expect(link!.href).toBe('#nonexistent');
+          expect(link!.children).toEqual([{ type: 'text', content: '2' }]);
+        }
+        // Ensure no footnote-ref was produced
+        const footnoteRef = para.children.find((child) => child.type === 'footnote-ref');
+        expect(footnoteRef).toBeUndefined();
+      }
+    });
+
+    it('should derive label from anchor text content', async () => {
+      const epub = await createEpubBuffer({
+        spineItems: [
+          {
+            id: 'ch1',
+            href: 'ch1.xhtml',
+            content: `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+<head><title>Test</title></head>
+<body>
+  <p>Reference<a epub:type="noteref" href="#note-a">Note A</a> here.</p>
+  <aside id="note-a">Footnote body text.</aside>
+</body>
+</html>`,
+          },
+        ],
+      });
+
+      const book = await parser.parse(epub);
+      const para = book.chapters[0].content[0];
+
+      expect(para.type).toBe('paragraph');
+      if (para.type === 'paragraph') {
+        const footnoteRef = para.children.find((child) => child.type === 'footnote-ref');
+        expect(footnoteRef).toBeDefined();
+        if (footnoteRef!.type === 'footnote-ref') {
+          expect(footnoteRef!.label).toBe('Note A');
+        }
+      }
+    });
+  });
 });

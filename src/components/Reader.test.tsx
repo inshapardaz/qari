@@ -583,3 +583,135 @@ describe('Reader Bookmark Integration', () => {
     });
   });
 });
+
+
+// ---------------------------------------------------------------------------
+// Reader Footnote Integration Tests (Task 7.4)
+// Requirements: 4.1, 4.2, 4.3, 5.1, 6.5
+// ---------------------------------------------------------------------------
+
+import { fireEvent } from '@testing-library/react';
+
+describe('Reader Footnote Integration', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  /**
+   * Create a markdown source with a footnote reference and definition.
+   * The markdown parser will detect [^1] and [^1]: definition and produce
+   * a FootnoteRefSpan node.
+   */
+  function createFootnoteMarkdownSource(): ReaderSource {
+    return {
+      type: 'markdown',
+      content: '# Footnote Test\n\n## Chapter 1\n\nThis has a footnote[^1] in it.\n\n[^1]: This is the footnote content.',
+    };
+  }
+
+  it('renders footnote reference as superscript with accent color (Req 4.1, 4.2)', async () => {
+    const source = createFootnoteMarkdownSource();
+    render(<Reader source={source} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('reader-content')).toBeDefined();
+    });
+
+    const footnoteRef = screen.getByTestId('footnote-ref');
+    expect(footnoteRef).toBeDefined();
+    // It should be rendered as a <sup> element (Req 4.4)
+    expect(footnoteRef.tagName.toLowerCase()).toBe('sup');
+    // It should have the accent color style (Req 4.2)
+    expect(footnoteRef.style.color).toBe('var(--reader-accent, #0066cc)');
+    // It should have cursor: pointer (Req 4.3)
+    expect(footnoteRef.style.cursor).toBe('pointer');
+    // It should have role="button" for accessibility
+    expect(footnoteRef.getAttribute('role')).toBe('button');
+    // The label "1" should be displayed
+    expect(footnoteRef.textContent).toBe('1');
+  });
+
+  it('clicking a footnote ref opens the FootnotePopover (Req 5.1)', async () => {
+    const source = createFootnoteMarkdownSource();
+    render(<Reader source={source} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('reader-content')).toBeDefined();
+    });
+
+    const footnoteRef = screen.getByTestId('footnote-ref');
+
+    // Click the footnote reference
+    await act(async () => {
+      fireEvent.click(footnoteRef);
+    });
+
+    // The popover should now be visible
+    await waitFor(() => {
+      expect(screen.getByTestId('footnote-popover')).toBeDefined();
+    });
+
+    const popover = screen.getByTestId('footnote-popover');
+    // Verify it has role="dialog" (Req 5.4)
+    expect(popover.getAttribute('role')).toBe('dialog');
+  });
+
+  it('popover displays correct footnote content (Req 5.3)', async () => {
+    const source = createFootnoteMarkdownSource();
+    render(<Reader source={source} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('reader-content')).toBeDefined();
+    });
+
+    const footnoteRef = screen.getByTestId('footnote-ref');
+
+    await act(async () => {
+      fireEvent.click(footnoteRef);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('footnote-popover')).toBeDefined();
+    });
+
+    // The footnote content area should contain the footnote text
+    const contentEl = screen.getByTestId('footnote-content');
+    expect(contentEl).toBeDefined();
+    expect(contentEl.textContent).toContain('This is the footnote content');
+  });
+
+  it('closing popover restores focus to the footnote reference (Req 6.5)', async () => {
+    const source = createFootnoteMarkdownSource();
+    render(<Reader source={source} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('reader-content')).toBeDefined();
+    });
+
+    const footnoteRef = screen.getByTestId('footnote-ref');
+
+    // Focus and click the footnote reference
+    footnoteRef.focus();
+    await act(async () => {
+      fireEvent.click(footnoteRef);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('footnote-popover')).toBeDefined();
+    });
+
+    // Close the popover via the close button
+    const closeBtn = screen.getByTestId('footnote-close');
+    await act(async () => {
+      fireEvent.click(closeBtn);
+    });
+
+    // The popover should be gone
+    await waitFor(() => {
+      expect(screen.queryByTestId('footnote-popover')).toBeNull();
+    });
+
+    // Focus should be restored to the footnote reference
+    expect(document.activeElement).toBe(footnoteRef);
+  });
+});

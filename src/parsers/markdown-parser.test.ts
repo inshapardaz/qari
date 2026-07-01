@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { MarkdownParserImpl } from './markdown-parser';
-import type { Book, ParagraphNode, HeadingNode, CodeBlockNode, ImageNode, ListNode } from '../models/book';
+import type { ParagraphNode, HeadingNode, CodeBlockNode, ImageNode, ListNode, FootnoteRefSpan, TextSpan } from '../models/book';
 
 describe('MarkdownParser', () => {
   const parser = new MarkdownParserImpl();
@@ -248,6 +248,67 @@ function hello() {
       expect(book.metadata.title).toBe('Untitled');
       expect(book.chapters).toHaveLength(1);
       expect(book.chapters[0].content).toHaveLength(0);
+    });
+  });
+
+  describe('footnote parsing', () => {
+    it('reference with matching definition produces FootnoteRefSpan', () => {
+      const md = 'This has a footnote[^1] in it.\n\n[^1]: This is the footnote content.';
+      const book = parser.parse(md);
+      const para = book.chapters[0].content[0] as ParagraphNode;
+
+      const footnoteNode = para.children.find(n => n.type === 'footnote-ref') as FootnoteRefSpan;
+      expect(footnoteNode).toBeDefined();
+      expect(footnoteNode.type).toBe('footnote-ref');
+      expect(footnoteNode.label).toBe('1');
+      expect(footnoteNode.content.length).toBeGreaterThan(0);
+      // The content should contain the parsed definition text
+      const textContent = footnoteNode.content.find(n => n.type === 'text') as TextSpan;
+      expect(textContent).toBeDefined();
+      expect(textContent.content).toBe('This is the footnote content.');
+    });
+
+    it('reference without matching definition produces TextSpan with raw text', () => {
+      const md = 'This has a footnote[^missing] with no definition.';
+      const book = parser.parse(md);
+      const para = book.chapters[0].content[0] as ParagraphNode;
+
+      // Should contain a TextSpan with the raw reference text
+      const rawRef = para.children.find(
+        n => n.type === 'text' && (n as TextSpan).content === '[^missing]'
+      ) as TextSpan;
+      expect(rawRef).toBeDefined();
+      expect(rawRef.type).toBe('text');
+      expect(rawRef.content).toBe('[^missing]');
+    });
+
+    it('multiple references are numbered sequentially', () => {
+      const md = 'First[^a] and second[^b] and third[^c].\n\n[^a]: Note A\n[^b]: Note B\n[^c]: Note C';
+      const book = parser.parse(md);
+      const para = book.chapters[0].content[0] as ParagraphNode;
+
+      const footnotes = para.children.filter(n => n.type === 'footnote-ref') as FootnoteRefSpan[];
+      expect(footnotes).toHaveLength(3);
+      expect(footnotes[0].label).toBe('1');
+      expect(footnotes[1].label).toBe('2');
+      expect(footnotes[2].label).toBe('3');
+    });
+
+    it('footnote content is parsed as inline nodes', () => {
+      const md = 'Text[^fn1] here.\n\n[^fn1]: Content with **bold** and *italic* formatting.';
+      const book = parser.parse(md);
+      const para = book.chapters[0].content[0] as ParagraphNode;
+
+      const footnoteNode = para.children.find(n => n.type === 'footnote-ref') as FootnoteRefSpan;
+      expect(footnoteNode).toBeDefined();
+      expect(footnoteNode.content.length).toBeGreaterThan(1);
+
+      // Should contain bold and italic spans from parsed definition
+      const boldSpan = footnoteNode.content.find(n => n.type === 'bold');
+      expect(boldSpan).toBeDefined();
+
+      const italicSpan = footnoteNode.content.find(n => n.type === 'italic');
+      expect(italicSpan).toBeDefined();
     });
   });
 });

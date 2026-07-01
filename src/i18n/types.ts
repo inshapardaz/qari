@@ -70,4 +70,8 @@ export interface TranslationStrings {
   lightboxZoomIn: string;
   lightboxZoomOut: string;
   lightboxLabel: string;
+
+  // Footnote popover
+  footnoteClose: string;
+  footnoteDialogLabel: string; // supports {label}
 }

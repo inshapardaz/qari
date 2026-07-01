@@ -16,7 +16,7 @@ import React, {
   useMemo,
 } from 'react';
 
-import type { Book, ContentNode, InlineNode } from '../models/book';
+import type { Book, ContentNode, InlineNode, FootnoteRefSpan } from '../models/book';
 import type { Bookmark } from '../models/bookmark';
 import type { ReaderState, ThemeName, FontFamily } from '../models/reader-state';
 import type {
@@ -38,6 +38,7 @@ import { ChapterNavigator } from '../services/chapter-navigator';
 
 import { BookmarkPanel } from './BookmarkPanel';
 import { DictionaryPopover } from './DictionaryPopover';
+import { FootnotePopover } from './FootnotePopover';
 import { ImageLightbox } from './ImageLightbox';
 
 import { TranslationContext, DEFAULT_TRANSLATIONS, useTranslations, interpolate } from '../i18n';
@@ -349,6 +350,7 @@ function inlineNodeToHtml(node: InlineNode): string {
     case 'italic': return `<em>${inlineNodesToHtml(node.children)}</em>`;
     case 'code': return `<code>${escapeHtml(node.content)}</code>`;
     case 'link': return `<a href="${node.href}">${inlineNodesToHtml(node.children)}</a>`;
+    case 'footnote-ref': return `<sup style="color:var(--reader-accent,#0066cc);cursor:pointer;font-weight:600;font-size:0.75em">${escapeHtml(node.label)}</sup>`;
     default: return '';
   }
 }
@@ -361,14 +363,15 @@ function escapeHtml(text: string): string {
 // Content Renderers
 // ---------------------------------------------------------------------------
 
-const InlineNodeRenderer: React.FC<{ node: InlineNode; onImageClick?: (src: string, alt: string) => void }> = ({ node, onImageClick }) => {
+const InlineNodeRenderer: React.FC<{ node: InlineNode; onImageClick?: (src: string, alt: string) => void; onFootnoteClick?: (node: FootnoteRefSpan, e: React.MouseEvent) => void; onLinkClick?: (href: string, e: React.MouseEvent) => void }> = ({ node, onImageClick, onFootnoteClick, onLinkClick }) => {
+  const t = useTranslations();
   switch (node.type) {
     case 'text':
       return <>{node.content}</>;
     case 'bold':
-      return <strong>{node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} onImageClick={onImageClick} />)}</strong>;
+      return <strong>{node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} onImageClick={onImageClick} onFootnoteClick={onFootnoteClick} onLinkClick={onLinkClick} />)}</strong>;
     case 'italic':
-      return <em>{node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} onImageClick={onImageClick} />)}</em>;
+      return <em>{node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} onImageClick={onImageClick} onFootnoteClick={onFootnoteClick} onLinkClick={onLinkClick} />)}</em>;
     case 'code':
       return <code>{node.content}</code>;
     case 'inline-image':
@@ -389,29 +392,62 @@ const InlineNodeRenderer: React.FC<{ node: InlineNode; onImageClick?: (src: stri
         />
       );
     case 'link':
+      // Internal book links (fragment refs or relative paths) should not navigate
+      // External links (http/https) open in new tab
+      const isExternal = node.href.startsWith('http://') || node.href.startsWith('https://');
       return (
-        <a href={node.href} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--reader-accent, #0066cc)' }}>
-          {node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} onImageClick={onImageClick} />)}
+        <a
+          href={isExternal ? node.href : undefined}
+          target={isExternal ? '_blank' : undefined}
+          rel={isExternal ? 'noopener noreferrer' : undefined}
+          style={{ color: 'var(--reader-accent, #0066cc)', cursor: 'pointer' }}
+          onClick={isExternal ? undefined : (e) => { e.preventDefault(); onLinkClick?.(node.href, e); }}
+        >
+          {node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} onImageClick={onImageClick} onFootnoteClick={onFootnoteClick} onLinkClick={onLinkClick} />)}
         </a>
+      );
+    case 'footnote-ref':
+      return (
+        <sup
+          data-testid="footnote-ref"
+          onClick={(e) => onFootnoteClick?.(node, e)}
+          style={{
+            color: 'var(--reader-accent, #0066cc)',
+            cursor: 'pointer',
+            fontWeight: 600,
+            fontSize: '0.75em',
+          }}
+          role="button"
+          tabIndex={0}
+          aria-label={interpolate(t.footnoteDialogLabel, { label: node.label })}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onFootnoteClick?.(node, e as unknown as React.MouseEvent);
+            }
+          }}
+        >
+          {node.label}
+        </sup>
       );
     default:
       return null;
   }
 };
 
-const ContentNodeRenderer: React.FC<{ node: ContentNode; onImageClick?: (src: string, alt: string) => void }> = ({ node, onImageClick }) => {
+const ContentNodeRenderer: React.FC<{ node: ContentNode; onImageClick?: (src: string, alt: string) => void; onFootnoteClick?: (node: FootnoteRefSpan, e: React.MouseEvent) => void; onLinkClick?: (href: string, e: React.MouseEvent) => void }> = ({ node, onImageClick, onFootnoteClick, onLinkClick }) => {
   switch (node.type) {
     case 'paragraph':
       return (
         <p>
-          {node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} onImageClick={onImageClick} />)}
+          {node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} onImageClick={onImageClick} onFootnoteClick={onFootnoteClick} onLinkClick={onLinkClick} />)}
         </p>
       );
     case 'heading': {
       const Tag = `h${node.level}` as keyof JSX.IntrinsicElements;
       return (
         <Tag>
-          {node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} onImageClick={onImageClick} />)}
+          {node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} onImageClick={onImageClick} onFootnoteClick={onFootnoteClick} onLinkClick={onLinkClick} />)}
         </Tag>
       );
     }
@@ -461,7 +497,7 @@ const ContentNodeRenderer: React.FC<{ node: ContentNode; onImageClick?: (src: st
         <ListTag>
           {node.items.map((item, i) => (
             <li key={i}>
-              {item.children.map((child, j) => <ContentNodeRenderer key={j} node={child} onImageClick={onImageClick} />)}
+              {item.children.map((child, j) => <ContentNodeRenderer key={j} node={child} onImageClick={onImageClick} onFootnoteClick={onFootnoteClick} onLinkClick={onLinkClick} />)}
             </li>
           ))}
         </ListTag>
@@ -540,6 +576,8 @@ export const Reader: React.FC<ReaderProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<{ src: string; alt: string } | null>(null);
+  const [activeFootnote, setActiveFootnote] = useState<FootnoteRefSpan | null>(null);
+  const [footnoteAnchor, setFootnoteAnchor] = useState<{ top: number; left: number } | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
@@ -816,6 +854,76 @@ export const Reader: React.FC<ReaderProps> = ({
     setDictionaryResult(null);
     setDictionaryLoading(false);
   }, [dismiss]);
+
+  // ---------------------------------------------------------------------------
+  // Footnote popover state management
+  // ---------------------------------------------------------------------------
+  const handleFootnoteClick = useCallback((node: FootnoteRefSpan, e: React.MouseEvent) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const readerRect = rootRef.current?.getBoundingClientRect();
+    if (readerRect) {
+      setFootnoteAnchor({
+        top: rect.bottom - readerRect.top,
+        left: rect.left + rect.width / 2 - readerRect.left,
+      });
+    }
+    setActiveFootnote(node);
+  }, []);
+
+  const handleFootnoteClose = useCallback(() => {
+    setActiveFootnote(null);
+    setFootnoteAnchor(null);
+  }, []);
+
+  /**
+   * Handles clicks on internal book links (non-http hrefs).
+   * Finds the target content in the book's footnoteMap and shows it as a footnote popover.
+   */
+  const handleLinkClick = useCallback((href: string, e: React.MouseEvent) => {
+    if (!state.book) return;
+
+    // Extract fragment id from href (could be "#id" or "file.xhtml#id")
+    const hashIdx = href.indexOf('#');
+    if (hashIdx === -1) return;
+    const fragmentId = href.substring(hashIdx + 1);
+    if (!fragmentId) return;
+
+    // Look up the target content in the book's footnoteMap
+    let targetContent: InlineNode[] | null = null;
+
+    if (state.book.footnoteMap) {
+      targetContent = state.book.footnoteMap.get(fragmentId) || null;
+    }
+
+    // If not found in the map, show a placeholder
+    if (!targetContent || targetContent.length === 0) {
+      targetContent = [{ type: 'text', content: `[Could not resolve: ${href}]` }];
+    }
+
+    // Get the link text as label
+    const label = (e.currentTarget as HTMLElement).textContent?.trim() || '?';
+
+    // Create a synthetic FootnoteRefSpan and show the popover
+    const syntheticFootnote: FootnoteRefSpan = {
+      type: 'footnote-ref',
+      label,
+      content: targetContent,
+    };
+
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const readerRect = rootRef.current?.getBoundingClientRect();
+    if (readerRect) {
+      setFootnoteAnchor({
+        top: rect.bottom - readerRect.top,
+        left: rect.left + rect.width / 2 - readerRect.left,
+      });
+    }
+    setActiveFootnote(syntheticFootnote);
+  }, [state.book]);
+
+  const renderInlineNode = useCallback((node: InlineNode, index: number): React.ReactNode => {
+    return <InlineNodeRenderer key={index} node={node} />;
+  }, []);
 
   // ---------------------------------------------------------------------------
   // Load book from source
@@ -1879,7 +1987,7 @@ export const Reader: React.FC<ReaderProps> = ({
             {currentChapter && (
               <div>
                 {currentChapter.content.map((node, ni) => (
-                  <ContentNodeRenderer key={`${currentChapterIdx}-${ni}`} node={node} onImageClick={(src, alt) => setLightboxImage({ src, alt })} />
+                  <ContentNodeRenderer key={`${currentChapterIdx}-${ni}`} node={node} onImageClick={(src, alt) => setLightboxImage({ src, alt })} onFootnoteClick={handleFootnoteClick} onLinkClick={handleLinkClick} />
                 ))}
               </div>
             )}
@@ -1914,6 +2022,17 @@ export const Reader: React.FC<ReaderProps> = ({
             anchorPosition={anchorPosition ?? undefined}
             onClose={handleDictionaryClose}
             onSuggestionSelect={handleSuggestionSelect}
+          />
+        )}
+
+        {/* Footnote popover — positioned near clicked footnote reference */}
+        {activeFootnote && (
+          <FootnotePopover
+            footnote={activeFootnote}
+            anchorPosition={footnoteAnchor ?? undefined}
+            visible={true}
+            onClose={handleFootnoteClose}
+            renderInlineNode={renderInlineNode}
           />
         )}
 

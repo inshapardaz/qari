@@ -29,11 +29,29 @@ import type {
 
 const md = new MarkdownIt();
 
+/**
+ * Regex to match footnote definitions: [^id]: content
+ * Captures: id, content (rest of line)
+ */
+const FOOTNOTE_DEF_REGEX = /^\[\^([^\]]+)\]:\s*(.+)$/gm;
+
+/**
+ * Regex to match footnote references: [^id] within inline text.
+ * Captures: id
+ */
+const FOOTNOTE_REF_REGEX = /\[\^([^\]]+)\]/g;
+
 export class MarkdownParserImpl implements MarkdownParser {
   parse(content: string): Book {
-    const tokens = md.parse(content, {});
+    // Extract footnote definitions before parsing
+    const footnoteDefinitions = extractFootnoteDefinitions(content);
+
+    // Strip footnote definition lines from content before markdown-it parsing
+    const strippedContent = content.replace(FOOTNOTE_DEF_REGEX, '');
+
+    const tokens = md.parse(strippedContent, {});
     const title = extractTitle(tokens);
-    const chapters = buildChapters(tokens, title);
+    const chapters = buildChapters(tokens, title, footnoteDefinitions);
 
     const metadata: BookMetadata = {
       title: title || 'Untitled',
@@ -41,6 +59,24 @@ export class MarkdownParserImpl implements MarkdownParser {
 
     return { metadata, chapters };
   }
+}
+
+/**
+ * Extracts footnote definitions from the raw markdown content.
+ * Returns a map of id -> raw content string.
+ */
+function extractFootnoteDefinitions(content: string): Map<string, string> {
+  const definitions = new Map<string, string>();
+  const regex = new RegExp(FOOTNOTE_DEF_REGEX.source, FOOTNOTE_DEF_REGEX.flags);
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(content)) !== null) {
+    const id = match[1];
+    const defContent = match[2].trim();
+    definitions.set(id, defContent);
+  }
+
+  return definitions;
 }
 
 /**
@@ -69,10 +105,13 @@ function hasH2Headings(tokens: Token[]): boolean {
 /**
  * Builds chapters from tokens. If no H2 headings exist, returns a single chapter.
  */
-function buildChapters(tokens: Token[], bookTitle: string | null): Chapter[] {
+function buildChapters(tokens: Token[], bookTitle: string | null, footnoteDefinitions: Map<string, string>): Chapter[] {
+  // Shared counter across entire document for sequential footnote numbering
+  const footnoteCounter = { value: 0 };
+
   if (!hasH2Headings(tokens)) {
     // Single chapter: all content (excluding H1)
-    const content = parseContentNodes(tokens, true);
+    const content = parseContentNodes(tokens, true, footnoteDefinitions, footnoteCounter);
     return [
       {
         id: 'chapter-0',
@@ -97,7 +136,7 @@ function buildChapters(tokens: Token[], bookTitle: string | null): Chapter[] {
     if (token.type === 'heading_open' && token.tag === 'h2') {
       // Save previous chapter if there was one
       if (currentChapterTitle !== null) {
-        chapters.push(createChapter(currentChapterTitle, currentChapterTokens, chapterIndex));
+        chapters.push(createChapter(currentChapterTitle, currentChapterTokens, chapterIndex, footnoteDefinitions, footnoteCounter));
         chapterIndex++;
       }
 
@@ -126,18 +165,18 @@ function buildChapters(tokens: Token[], bookTitle: string | null): Chapter[] {
 
   // Push the last chapter
   if (currentChapterTitle !== null) {
-    chapters.push(createChapter(currentChapterTitle, currentChapterTokens, chapterIndex));
+    chapters.push(createChapter(currentChapterTitle, currentChapterTokens, chapterIndex, footnoteDefinitions, footnoteCounter));
   }
 
   return chapters;
 }
 
-function createChapter(title: string, tokens: Token[], order: number): Chapter {
+function createChapter(title: string, tokens: Token[], order: number, footnoteDefinitions: Map<string, string>, footnoteCounter: { value: number }): Chapter {
   return {
     id: `chapter-${order}`,
     title,
     order,
-    content: parseContentNodes(tokens, false),
+    content: parseContentNodes(tokens, false, footnoteDefinitions, footnoteCounter),
   };
 }
 
@@ -145,7 +184,7 @@ function createChapter(title: string, tokens: Token[], order: number): Chapter {
  * Parses a list of tokens into ContentNode[].
  * If skipH1 is true, H1 headings are excluded.
  */
-function parseContentNodes(tokens: Token[], skipH1: boolean): ContentNode[] {
+function parseContentNodes(tokens: Token[], skipH1: boolean, footnoteDefinitions: Map<string, string>, footnoteCounter: { value: number }): ContentNode[] {
   const nodes: ContentNode[] = [];
   let i = 0;
 
@@ -163,7 +202,7 @@ function parseContentNodes(tokens: Token[], skipH1: boolean): ContentNode[] {
       const level = parseInt(token.tag.slice(1), 10) as 1 | 2 | 3 | 4 | 5 | 6;
       const inlineToken = tokens[i + 1];
       const children = inlineToken && inlineToken.type === 'inline'
-        ? parseInlineNodes(inlineToken.children || [])
+        ? parseInlineNodes(inlineToken.children || [], footnoteDefinitions, footnoteCounter)
         : [];
       const headingNode: HeadingNode = { type: 'heading', level, children };
       nodes.push(headingNode);
@@ -180,7 +219,7 @@ function parseContentNodes(tokens: Token[], skipH1: boolean): ContentNode[] {
         if (imageNode) {
           nodes.push(imageNode);
         } else {
-          const children = parseInlineNodes(inlineToken.children || []);
+          const children = parseInlineNodes(inlineToken.children || [], footnoteDefinitions, footnoteCounter);
           const paragraphNode: ParagraphNode = { type: 'paragraph', children };
           nodes.push(paragraphNode);
         }
@@ -214,7 +253,7 @@ function parseContentNodes(tokens: Token[], skipH1: boolean): ContentNode[] {
 
     // Ordered lists
     if (token.type === 'ordered_list_open') {
-      const { node, endIndex } = parseList(tokens, i, true);
+      const { node, endIndex } = parseList(tokens, i, true, footnoteDefinitions, footnoteCounter);
       nodes.push(node);
       i = endIndex + 1;
       continue;
@@ -222,7 +261,7 @@ function parseContentNodes(tokens: Token[], skipH1: boolean): ContentNode[] {
 
     // Unordered lists
     if (token.type === 'bullet_list_open') {
-      const { node, endIndex } = parseList(tokens, i, false);
+      const { node, endIndex } = parseList(tokens, i, false, footnoteDefinitions, footnoteCounter);
       nodes.push(node);
       i = endIndex + 1;
       continue;
@@ -255,14 +294,14 @@ function tryExtractImage(children: Token[]): ImageNode | null {
 /**
  * Parses a list (ordered or unordered) from tokens starting at the list_open token.
  */
-function parseList(tokens: Token[], startIndex: number, ordered: boolean): { node: ListNode; endIndex: number } {
+function parseList(tokens: Token[], startIndex: number, ordered: boolean, footnoteDefinitions: Map<string, string>, footnoteCounter: { value: number }): { node: ListNode; endIndex: number } {
   const closeType = ordered ? 'ordered_list_close' : 'bullet_list_close';
   const items: ListItem[] = [];
   let i = startIndex + 1; // skip list_open
 
   while (i < tokens.length && tokens[i].type !== closeType) {
     if (tokens[i].type === 'list_item_open') {
-      const { item, endIndex } = parseListItem(tokens, i);
+      const { item, endIndex } = parseListItem(tokens, i, footnoteDefinitions, footnoteCounter);
       items.push(item);
       i = endIndex + 1;
     } else {
@@ -280,7 +319,7 @@ function parseList(tokens: Token[], startIndex: number, ordered: boolean): { nod
  * Parses a single list item from tokens.
  * Uses nesting depth tracking to handle nested lists within list items.
  */
-function parseListItem(tokens: Token[], startIndex: number): { item: ListItem; endIndex: number } {
+function parseListItem(tokens: Token[], startIndex: number, footnoteDefinitions: Map<string, string>, footnoteCounter: { value: number }): { item: ListItem; endIndex: number } {
   let i = startIndex + 1; // skip list_item_open
   const itemTokens: Token[] = [];
   let depth = 1; // track nesting depth (started at 1 for the opening list_item_open)
@@ -299,7 +338,7 @@ function parseListItem(tokens: Token[], startIndex: number): { item: ListItem; e
     i++;
   }
 
-  const children = parseContentNodes(itemTokens, false);
+  const children = parseContentNodes(itemTokens, false, footnoteDefinitions, footnoteCounter);
   return {
     item: { children },
     endIndex: i, // points to list_item_close
@@ -308,8 +347,10 @@ function parseListItem(tokens: Token[], startIndex: number): { item: ListItem; e
 
 /**
  * Parses inline tokens into InlineNode[].
+ * Uses a shared footnote counter context for auto-incremented labels.
  */
-function parseInlineNodes(children: Token[]): InlineNode[] {
+function parseInlineNodes(children: Token[], footnoteDefinitions: Map<string, string>, footnoteCounter?: { value: number }): InlineNode[] {
+  const counter = footnoteCounter || { value: 0 };
   const nodes: InlineNode[] = [];
   let i = 0;
 
@@ -318,7 +359,9 @@ function parseInlineNodes(children: Token[]): InlineNode[] {
 
     if (token.type === 'text') {
       if (token.content) {
-        nodes.push({ type: 'text', content: token.content });
+        // Check for footnote references in text content
+        const expanded = expandFootnoteRefs(token.content, footnoteDefinitions, counter);
+        nodes.push(...expanded);
       }
       i++;
       continue;
@@ -337,14 +380,14 @@ function parseInlineNodes(children: Token[]): InlineNode[] {
     }
 
     if (token.type === 'strong_open') {
-      const { inlineNodes, endIndex } = collectUntilClose(children, i + 1, 'strong_close');
+      const { inlineNodes, endIndex } = collectUntilClose(children, i + 1, 'strong_close', footnoteDefinitions, counter);
       nodes.push({ type: 'bold', children: inlineNodes });
       i = endIndex + 1;
       continue;
     }
 
     if (token.type === 'em_open') {
-      const { inlineNodes, endIndex } = collectUntilClose(children, i + 1, 'em_close');
+      const { inlineNodes, endIndex } = collectUntilClose(children, i + 1, 'em_close', footnoteDefinitions, counter);
       nodes.push({ type: 'italic', children: inlineNodes });
       i = endIndex + 1;
       continue;
@@ -352,7 +395,7 @@ function parseInlineNodes(children: Token[]): InlineNode[] {
 
     if (token.type === 'link_open') {
       const href = token.attrGet('href') || '';
-      const { inlineNodes, endIndex } = collectUntilClose(children, i + 1, 'link_close');
+      const { inlineNodes, endIndex } = collectUntilClose(children, i + 1, 'link_close', footnoteDefinitions, counter);
       nodes.push({ type: 'link', href, children: inlineNodes });
       i = endIndex + 1;
       continue;
@@ -371,9 +414,68 @@ function parseInlineNodes(children: Token[]): InlineNode[] {
 
     // Fallback: treat unknown tokens as text if they have content
     if (token.content) {
-      nodes.push({ type: 'text', content: token.content });
+      const expanded = expandFootnoteRefs(token.content, footnoteDefinitions, counter);
+      nodes.push(...expanded);
     }
     i++;
+  }
+
+  return nodes;
+}
+
+/**
+ * Expands footnote references within a text string.
+ * Returns an array of InlineNode (text spans and footnote-ref spans).
+ */
+function expandFootnoteRefs(
+  text: string,
+  footnoteDefinitions: Map<string, string>,
+  counter: { value: number }
+): InlineNode[] {
+  const nodes: InlineNode[] = [];
+  const regex = new RegExp(FOOTNOTE_REF_REGEX.source, FOOTNOTE_REF_REGEX.flags);
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(text)) !== null) {
+    // Add any text before this match
+    if (match.index > lastIndex) {
+      nodes.push({ type: 'text', content: text.slice(lastIndex, match.index) });
+    }
+
+    const id = match[1];
+    const defContent = footnoteDefinitions.get(id);
+
+    if (defContent) {
+      counter.value++;
+      // Parse the definition content as inline nodes
+      // Use markdown-it to tokenize the definition content for inline parsing
+      const defTokens = md.parseInline(defContent, {});
+      const defChildren = defTokens.length > 0 && defTokens[0].children
+        ? parseInlineNodes(defTokens[0].children, footnoteDefinitions, counter)
+        : [{ type: 'text' as const, content: defContent }];
+
+      nodes.push({
+        type: 'footnote-ref',
+        label: String(counter.value),
+        content: defChildren,
+      });
+    } else {
+      // No matching definition — fall back to TextSpan with raw text
+      nodes.push({ type: 'text', content: `[^${id}]` });
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Add any remaining text after the last match
+  if (lastIndex < text.length) {
+    nodes.push({ type: 'text', content: text.slice(lastIndex) });
+  }
+
+  // If no matches were found, return the original text as-is
+  if (nodes.length === 0) {
+    nodes.push({ type: 'text', content: text });
   }
 
   return nodes;
@@ -385,7 +487,9 @@ function parseInlineNodes(children: Token[]): InlineNode[] {
 function collectUntilClose(
   children: Token[],
   startIndex: number,
-  closeType: string
+  closeType: string,
+  footnoteDefinitions: Map<string, string>,
+  counter: { value: number }
 ): { inlineNodes: InlineNode[]; endIndex: number } {
   const collected: Token[] = [];
   let i = startIndex;
@@ -396,7 +500,7 @@ function collectUntilClose(
   }
 
   return {
-    inlineNodes: parseInlineNodes(collected),
+    inlineNodes: parseInlineNodes(collected, footnoteDefinitions, counter),
     endIndex: i, // points to the close token
   };
 }

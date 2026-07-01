@@ -72,4 +72,8 @@ export const DEFAULT_TRANSLATIONS: TranslationStrings = {
   lightboxZoomIn: 'Zoom in',
   lightboxZoomOut: 'Zoom out',
   lightboxLabel: 'Image viewer',
+
+  // Footnote popover
+  footnoteClose: 'Close footnote',
+  footnoteDialogLabel: 'Footnote {label}',
 };

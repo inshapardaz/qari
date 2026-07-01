@@ -6,6 +6,8 @@
 export interface Book {
   metadata: BookMetadata;
   chapters: Chapter[];
+  /** Map of fragment IDs to their inline content, for runtime footnote resolution */
+  footnoteMap?: Map<string, InlineNode[]>;
 }
 
 export interface BookMetadata {
@@ -79,7 +81,8 @@ export type InlineNode =
   | ItalicSpan
   | LinkSpan
   | CodeSpan
-  | InlineImageSpan;
+  | InlineImageSpan
+  | FootnoteRefSpan;
 
 export interface TextSpan {
   type: 'text';
@@ -111,4 +114,10 @@ export interface InlineImageSpan {
   type: 'inline-image';
   src: string;
   alt?: string;
+}
+
+export interface FootnoteRefSpan {
+  type: 'footnote-ref';
+  label: string;          // Display label, e.g. "1", "2"
+  content: InlineNode[];  // Resolved footnote body as inline nodes
 }
