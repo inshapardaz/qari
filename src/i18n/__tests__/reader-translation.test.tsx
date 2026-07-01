@@ -74,8 +74,8 @@ describe('Reader translation integration', () => {
         expect(screen.getByTestId('reader-content')).toBeInTheDocument();
       });
 
-      // The footer should contain the interpolated page indicator (e.g. "Page 1/1")
-      expect(screen.getByText(/Page \d+\/\d+/)).toBeInTheDocument();
+      // The footer should contain the interpolated page indicator (e.g. "Page 1 of 1")
+      expect(screen.getByText(/Page \d+ of \d+/)).toBeInTheDocument();
     });
   });
 

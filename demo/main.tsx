@@ -28,6 +28,7 @@ type DemoLanguage = 'en' | 'ur' | 'fr';
 const TRANSLATIONS: Record<DemoLanguage, Partial<TranslationStrings>> = {
   en: {}, // empty = use all English defaults
   ur: {
+    uiDirection: 'rtl',
     loading: 'لوڈ ہو رہا ہے…',
     errorSource: 'ذریعہ:',
     errorFormat: 'فارمیٹ:',
@@ -38,7 +39,8 @@ const TRANSLATIONS: Record<DemoLanguage, Partial<TranslationStrings>> = {
     exitFullscreen: 'فل سکرین سے باہر نکلیں',
     previousPage: 'پچھلا صفحہ',
     nextPage: 'اگلا صفحہ',
-    pageIndicator: 'صفحہ {current}/{total}',
+    pageIndicator: 'صفحہ {current} از {total}',
+    chapterIndicator: 'باب {current} از {total}',
     resetToDefaults: 'ڈیفالٹ پر واپس',
     settingsTheme: 'تھیم',
     themeLight: 'روشن',
@@ -90,7 +92,8 @@ const TRANSLATIONS: Record<DemoLanguage, Partial<TranslationStrings>> = {
     exitFullscreen: 'Quitter le plein écran',
     previousPage: 'Page précédente',
     nextPage: 'Page suivante',
-    pageIndicator: 'Page {current}/{total}',
+    pageIndicator: 'Page {current} sur {total}',
+    chapterIndicator: 'Chapitre {current} sur {total}',
     resetToDefaults: 'Réinitialiser',
     settingsTheme: 'Thème',
     themeLight: 'Clair',

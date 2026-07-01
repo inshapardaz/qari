@@ -1289,6 +1289,7 @@ export const Reader: React.FC<ReaderProps> = ({
         {/* Header bar with settings */}
         <div
           className="ebook-reader__header"
+          dir={t.uiDirection}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -1496,6 +1497,7 @@ export const Reader: React.FC<ReaderProps> = ({
               }}
             >
             <div
+              dir={t.uiDirection}
               style={{
                 background: 'var(--reader-bg, #fff)',
                 border: '1px solid var(--reader-border, #e0e0e0)',
@@ -1870,15 +1872,6 @@ export const Reader: React.FC<ReaderProps> = ({
           >
             {currentChapter && (
               <div>
-                <h2 style={{
-                  borderBottom: '1px solid var(--reader-border, #e0e0e0)',
-                  paddingBottom: '0.5rem',
-                  marginBottom: '1rem',
-                  breakAfter: 'avoid' as const,
-                  textAlign: state.direction === 'rtl' ? 'right' : 'left',
-                }}>
-                  {chapterTitle}
-                </h2>
                 {currentChapter.content.map((node, ni) => (
                   <ContentNodeRenderer key={`${currentChapterIdx}-${ni}`} node={node} />
                 ))}
@@ -1890,6 +1883,7 @@ export const Reader: React.FC<ReaderProps> = ({
         {/* Footer — page info */}
         <div
           className="ebook-reader__footer"
+          dir={t.uiDirection}
           style={{
             textAlign: 'center',
             padding: '0.4rem 1rem',
@@ -1901,6 +1895,9 @@ export const Reader: React.FC<ReaderProps> = ({
           }}
         >
           {interpolate(t.pageIndicator, { current: bookPageNumber, total: bookTotalPages, percent: overallProgress })}
+          {state.book && state.book.chapters.length > 1 && (
+            <> · {interpolate(t.chapterIndicator, { current: currentChapterIdx + 1, total: state.book.chapters.length, title: chapterTitle })}</>
+          )}
         </div>
 
         {/* Dictionary popover — positioned near selected text */}

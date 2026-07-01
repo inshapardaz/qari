@@ -1,4 +1,7 @@
 export interface TranslationStrings {
+  // Meta — UI layout direction for the translation language
+  uiDirection: 'ltr' | 'rtl';
+
   // Reader component
   loading: string;
   errorSource: string;
@@ -11,6 +14,7 @@ export interface TranslationStrings {
   previousPage: string;
   nextPage: string;
   pageIndicator: string; // supports {current}, {total}, {percent}
+  chapterIndicator: string; // supports {current}, {total}, {title}
   resetToDefaults: string;
 
   // Settings dialog

@@ -1,6 +1,9 @@
 import type { TranslationStrings } from './types';
 
 export const DEFAULT_TRANSLATIONS: TranslationStrings = {
+  // Meta
+  uiDirection: 'ltr',
+
   // Reader
   loading: 'Loading\u2026',
   errorSource: 'Source:',
@@ -12,7 +15,8 @@ export const DEFAULT_TRANSLATIONS: TranslationStrings = {
   exitFullscreen: 'Exit fullscreen',
   previousPage: 'Previous page',
   nextPage: 'Next page',
-  pageIndicator: 'Page {current}/{total}',
+  pageIndicator: 'Page {current} of {total}',
+  chapterIndicator: 'Chapter {current} of {total}',
   resetToDefaults: 'Reset to Defaults',
 
   // Settings dialog

@@ -20,6 +20,7 @@ const ALL_KEYS = Object.keys(DEFAULT_TRANSLATIONS) as (keyof TranslationStrings)
 /**
  * Generates a random Partial<TranslationStrings> by selecting a random subset
  * of keys and assigning arbitrary non-empty string values.
+ * The `uiDirection` key is handled specially since it's a union type.
  */
 const partialTranslationsArb = fc
   .subarray(ALL_KEYS, { minLength: 0, maxLength: ALL_KEYS.length })
@@ -35,7 +36,12 @@ const partialTranslationsArb = fc
   .map(([keys, values]) => {
     const partial: Partial<TranslationStrings> = {};
     keys.forEach((key, i) => {
-      partial[key] = values[i];
+      if (key === 'uiDirection') {
+        // uiDirection only accepts 'ltr' or 'rtl'
+        partial[key] = values[i].length % 2 === 0 ? 'ltr' : 'rtl';
+      } else {
+        (partial as any)[key] = values[i];
+      }
     });
     return partial;
   });
