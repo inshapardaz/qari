@@ -29,6 +29,7 @@ import {
   SegmentedControl,
   Button,
   Text,
+  Loader,
   mergeThemeOverrides,
 } from '@mantine/core';
 import type { MantineThemeOverride } from '@mantine/core';
@@ -1448,8 +1449,27 @@ export const Reader: React.FC<ReaderProps> = ({
   // ---------------------------------------------------------------------------
   if (state.loading) {
     return (
-      <div ref={rootRef} className="ebook-reader" data-testid="reader-loading" role="status" aria-label="Loading book">
-        <div className="ebook-reader__loading">{t.loading}</div>
+      <div
+        ref={rootRef}
+        className="ebook-reader"
+        data-testid="reader-loading"
+        role="status"
+        aria-label="Loading book"
+        style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      >
+        <MantineProvider
+          theme={resolvedMantineTheme}
+          cssVariablesSelector={mantineCssVariablesSelector}
+          env={typeof process !== 'undefined' && process.env?.NODE_ENV === 'test' ? 'test' : 'default'}
+        >
+          <div
+            className="ebook-reader__loading"
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}
+          >
+            <Loader />
+            <Text c="dimmed">{t.loading}</Text>
+          </div>
+        </MantineProvider>
       </div>
     );
   }
