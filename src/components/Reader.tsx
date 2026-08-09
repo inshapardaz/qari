@@ -35,6 +35,7 @@ import { DictionaryService } from '../services/dictionary-service';
 import { BookmarkStore } from '../services/bookmark-store';
 import { LocalStorageStore } from '../services/local-storage-store';
 import { ChapterNavigator } from '../services/chapter-navigator';
+import { URDU_WEB_FONT_OPTIONS, injectUrduWebFontsCss } from '../services/urdu-web-fonts';
 
 import { BookmarkPanel } from './BookmarkPanel';
 import { DictionaryPopover } from './DictionaryPopover';
@@ -87,12 +88,14 @@ export interface FontOption {
 }
 
 /**
- * Default font options with common cross-platform fonts.
+ * Default font options: common cross-platform fonts plus the full Urdu/Arabic
+ * script collection loaded live from https://github.com/inshapardaz/urdu-web-fonts.
  */
 export const DEFAULT_FONT_OPTIONS: FontOption[] = [
   { name: 'Serif', family: 'Georgia, "Times New Roman", serif' },
   { name: 'Sans', family: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' },
   { name: 'Mono', family: '"SF Mono", "Fira Code", "Cascadia Code", "Courier New", monospace' },
+  ...URDU_WEB_FONT_OPTIONS,
 ];
 
 export interface ReaderProps {
@@ -589,6 +592,14 @@ export const Reader: React.FC<ReaderProps> = ({
   const bookmarkStoreRef = useRef<BookmarkStore | null>(null);
   const chapterNavigatorRef = useRef<ChapterNavigator | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+
+  // ---------------------------------------------------------------------------
+  // Load the Urdu/Arabic web font CSS (only registers @font-face rules;
+  // actual font files are fetched lazily by the browser on first use)
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    injectUrduWebFontsCss();
+  }, []);
 
   // ---------------------------------------------------------------------------
   // Fullscreen toggle

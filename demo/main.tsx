@@ -1,21 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Reader, DEFAULT_FONT_OPTIONS } from '../src/components/Reader';
-import type { FontOption } from '../src/components/Reader';
+import { Reader } from '../src/components/Reader';
 import type { TranslationStrings } from '../src/i18n';
-
-// Import Urdu web fonts (local CSS with fixed @font-face declarations)
-import './urdu-fonts.css';
-
-/**
- * Demo font options: common English fonts + Urdu/Arabic Nastaliq fonts.
- */
-const DEMO_FONT_OPTIONS: FontOption[] = [
-  ...DEFAULT_FONT_OPTIONS,
-  { name: 'Nafees Nastaleeq', family: '"Nafees Nastaleeq", serif' },
-  { name: 'Pak Nastaleeq', family: '"Pak Nastaleeq", serif' },
-  { name: 'Nafees Naskh', family: '"Nafees Web Naskh", sans-serif' },
-];
 
 type SourceType = 'markdown' | 'epub' | 'url';
 
@@ -448,7 +434,6 @@ function App() {
           wordSpacing={wordSpacing}
           enableBookmarks={false}
           enableBuiltInDictionary={true}
-          fontOptions={DEMO_FONT_OPTIONS}
           margin={margin}
           columns={columns}
           translations={TRANSLATIONS[language]}

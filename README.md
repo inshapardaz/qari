@@ -288,7 +288,9 @@ The reader also exposes an in-app theme selector that the user can interact with
 
 ### Custom Fonts
 
-Provide custom font options for the in-app font selector:
+`DEFAULT_FONT_OPTIONS` ships with three generic system fonts (Serif, Sans, Mono) plus the full Urdu/Arabic script collection from [inshapardaz/urdu-web-fonts](https://github.com/inshapardaz/urdu-web-fonts) — Amiri, Lateef, Scheherazade New, Noto Nastaliq Urdu, Jameel Noori Nastaleeq, and 20+ others. The reader loads that collection's CSS live from jsDelivr's GitHub CDN (no npm dependency, no bundled font files); each `@font-face` rule is registered up front but the actual font file is only downloaded by the browser once a font is selected.
+
+To override the selector entirely, or add your own fonts on top:
 
 ```tsx
 import { Reader, DEFAULT_FONT_OPTIONS } from 'qari/components/Reader';
@@ -296,8 +298,7 @@ import type { FontOption } from 'qari/components/Reader';
 
 const myFonts: FontOption[] = [
   ...DEFAULT_FONT_OPTIONS,
-  { name: 'Noto Nastaliq', family: '"Noto Nastaliq Urdu", serif' },
-  { name: 'Amiri', family: '"Amiri", serif' },
+  { name: 'My Custom Font', family: '"My Custom Font", serif' },
 ];
 
 <Reader source={source} fontOptions={myFonts} />
@@ -456,7 +457,7 @@ When set to `"auto"`, the reader detects direction by analyzing character freque
 | `bookmarks` | `Bookmark[]` | `undefined` | Controlled bookmarks array |
 | `bookmarkStore` | `BookmarkStoreInterface` | localStorage | Custom bookmark persistence |
 | `bookmarkAdapter` | `CustomStoreAdapter` | `undefined` | Legacy store adapter |
-| `fontOptions` | `FontOption[]` | Serif, Sans, Mono | Custom font selector options |
+| `fontOptions` | `FontOption[]` | Serif, Sans, Mono + urdu-web-fonts | Custom font selector options |
 | `enableBuiltInDictionary` | `boolean` | `false` | Enable online dictionary lookup |
 | `hunspellDictionaries` | `HunspellDictionaryConfig[]` | `undefined` | Offline Hunspell dictionaries |
 | `dictionaryProviders` | `DictionaryProvider[]` | `undefined` | Custom dictionary providers |
