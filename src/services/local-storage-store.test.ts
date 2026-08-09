@@ -36,16 +36,16 @@ describe('LocalStorageStore edge cases', () => {
 
   describe('quota exceeded error handling (Requirement 2.6)', () => {
     it('should reject with quota exceeded error when localStorage.setItem throws QuotaExceededError', async () => {
+      // jsdom's Storage is Proxy-backed, so directly assigning
+      // `localStorage.setItem = ...` silently writes a "setItem" entry
+      // instead of overriding the method — spy on the prototype instead.
       const quotaError = new DOMException('Storage quota exceeded', 'QuotaExceededError');
-      const originalSetItem = localStorage.setItem.bind(localStorage);
-      localStorage.setItem = vi.fn().mockImplementation(() => {
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
         throw quotaError;
       });
 
       const bookmark = makeBookmark();
       await expect(store.save(bookmark)).rejects.toThrow('localStorage quota exceeded');
-
-      localStorage.setItem = originalSetItem;
     });
 
     it('should reject update with quota exceeded error when localStorage is full', async () => {
@@ -55,29 +55,23 @@ describe('LocalStorageStore edge cases', () => {
 
       // Now mock setItem to throw quota exceeded
       const quotaError = new DOMException('Storage quota exceeded', 'QuotaExceededError');
-      const originalSetItem = localStorage.setItem.bind(localStorage);
-      localStorage.setItem = vi.fn().mockImplementation(() => {
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
         throw quotaError;
       });
 
       const updated = { ...bookmark, name: 'Updated Name' };
       await expect(store.update(updated)).rejects.toThrow('localStorage quota exceeded');
-
-      localStorage.setItem = originalSetItem;
     });
   });
 
   describe('localStorage unavailability (Requirement 2.6)', () => {
     it('should reject save with unavailable error when localStorage.setItem throws a generic error', async () => {
-      const originalSetItem = localStorage.setItem.bind(localStorage);
-      localStorage.setItem = vi.fn().mockImplementation(() => {
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
         throw new Error('localStorage is disabled');
       });
 
       const bookmark = makeBookmark();
       await expect(store.save(bookmark)).rejects.toThrow('localStorage is unavailable');
-
-      localStorage.setItem = originalSetItem;
     });
 
     it('should reject remove with unavailable error when localStorage.setItem throws', async () => {
@@ -86,14 +80,11 @@ describe('LocalStorageStore edge cases', () => {
       await store.save(bookmark);
 
       // Now mock setItem to throw
-      const originalSetItem = localStorage.setItem.bind(localStorage);
-      localStorage.setItem = vi.fn().mockImplementation(() => {
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
         throw new Error('Access denied');
       });
 
       await expect(store.remove('to-remove')).rejects.toThrow('localStorage is unavailable');
-
-      localStorage.setItem = originalSetItem;
     });
 
     it('should reject update with unavailable error when localStorage.setItem throws', async () => {
@@ -102,15 +93,12 @@ describe('LocalStorageStore edge cases', () => {
       await store.save(bookmark);
 
       // Now mock setItem to throw
-      const originalSetItem = localStorage.setItem.bind(localStorage);
-      localStorage.setItem = vi.fn().mockImplementation(() => {
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
         throw new Error('Access denied');
       });
 
       const updated = { ...bookmark, name: 'New Name' };
       await expect(store.update(updated)).rejects.toThrow('localStorage is unavailable');
-
-      localStorage.setItem = originalSetItem;
     });
   });
 

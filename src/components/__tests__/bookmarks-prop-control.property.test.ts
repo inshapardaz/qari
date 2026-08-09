@@ -62,7 +62,10 @@ function createMockStore(): BookmarkStoreInterface & { load: ReturnType<typeof v
 
 /**
  * Reads the Reader component's internal bookmarks state from the React fiber tree.
- * Uses the fiber alternate (work-in-progress tree) for the most current committed state.
+ * The DOM node's `__reactFiber$` pointer always references the current
+ * (post-commit) fiber, so it already reflects the latest committed state —
+ * `.alternate` points at the *previous* commit's tree and is one render
+ * behind, so it must not be preferred over the fiber itself.
  */
 function getBookmarksFromFiber(container: HTMLElement): Bookmark[] | null {
   const el = container.querySelector('[data-testid="reader-content"]');
@@ -74,12 +77,10 @@ function getBookmarksFromFiber(container: HTMLElement): Bookmark[] | null {
   let fiber = (el as any)[fiberKey];
   while (fiber) {
     if (fiber.type === Reader) {
-      // Use alternate (most recent committed state) when available
-      const target = fiber.alternate || fiber;
-      const state = target.memoizedState?.memoizedState;
+      const state = fiber.memoizedState?.memoizedState;
       if (state && 'bookmarks' in state) return state.bookmarks;
-      // Fallback to current fiber
-      const state2 = fiber.memoizedState?.memoizedState;
+      // Fallback to alternate, in case the current tree's hook state is unavailable
+      const state2 = fiber.alternate?.memoizedState?.memoizedState;
       if (state2 && 'bookmarks' in state2) return state2.bookmarks;
     }
     fiber = fiber.return;

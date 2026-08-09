@@ -1023,7 +1023,13 @@ export const Reader: React.FC<ReaderProps> = ({
         readingProgress: navigator.getReadingProgress(),
         direction: resolvedDirection,
         directionConfidence: resolvedConfidence,
-        bookmarks,
+        // In controlled mode, defer to `prev.bookmarks`: the dedicated
+        // bookmarksProp-sync effect (above) is the source of truth and may
+        // have applied a newer prop value while this async load was in
+        // flight (e.g. epub/File/url sources with real awaits). Using the
+        // `bookmarks` captured at load-start would clobber that update with
+        // a stale one.
+        bookmarks: bookmarksProp !== undefined ? prev.bookmarks : bookmarks,
       }));
 
       // Initialize page count tracking per chapter (will be filled as chapters are visited)

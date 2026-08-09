@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ThemeEngine, THEMES, clampFontSize } from './theme-engine';
 
 describe('ThemeEngine', () => {
@@ -195,23 +195,24 @@ describe('ThemeEngine', () => {
     });
 
     it('should return false when localStorage throws on write', () => {
-      const originalSetItem = localStorage.setItem;
-      localStorage.setItem = () => {
+      // jsdom's Storage is Proxy-backed, so directly assigning
+      // `localStorage.setItem = ...` silently writes a "setItem" entry
+      // instead of overriding the method — spy on the prototype instead.
+      const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
         throw new Error('QuotaExceededError');
-      };
+      });
       const result = engine.persistPreferences();
       expect(result).toBe(false);
-      localStorage.setItem = originalSetItem;
+      spy.mockRestore();
     });
 
     it('should return null when localStorage throws on read', () => {
-      const originalGetItem = localStorage.getItem;
-      localStorage.getItem = () => {
+      const spy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
         throw new Error('SecurityError');
-      };
+      });
       const result = engine.loadPersistedPreferences();
       expect(result).toBeNull();
-      localStorage.getItem = originalGetItem;
+      spy.mockRestore();
     });
   });
 
