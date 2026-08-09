@@ -6,6 +6,7 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
+import { MantineProvider } from '@mantine/core';
 import { BookmarkPanel } from '../../components/BookmarkPanel';
 import { ReaderContext, ReaderContextValue } from '../../components/Reader';
 import { TranslationContext, DEFAULT_TRANSLATIONS } from '../index';
@@ -59,11 +60,13 @@ function createMockContext(overrides: Partial<ReaderContextValue> = {}): ReaderC
 function renderWithProviders(ui: React.ReactElement, context?: ReaderContextValue) {
   const ctx = context || createMockContext();
   return render(
-    <TranslationContext.Provider value={customTranslations}>
-      <ReaderContext.Provider value={ctx}>
-        {ui}
-      </ReaderContext.Provider>
-    </TranslationContext.Provider>
+    <MantineProvider env="test">
+      <TranslationContext.Provider value={customTranslations}>
+        <ReaderContext.Provider value={ctx}>
+          {ui}
+        </ReaderContext.Provider>
+      </TranslationContext.Provider>
+    </MantineProvider>
   );
 }
 

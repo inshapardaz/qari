@@ -12,6 +12,7 @@
  */
 
 import React, { useState } from 'react';
+import { Alert, Button, ActionIcon, Progress, Text, Group, Stack } from '@mantine/core';
 import { useReaderContext } from './Reader';
 
 export interface ProgressBarProps {
@@ -46,80 +47,82 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({ onDirectionChange }) =
   };
 
   return (
-    <div
+    <Stack
       className="ebook-reader__progress-bar-container"
       dir={state.direction}
       data-testid="progress-bar-container"
+      gap="xs"
     >
       {/* Low-confidence direction prompt */}
       {showDirectionPrompt && state.directionConfidence === 'low' && (
-        <div
+        <Alert
           className="ebook-reader__direction-prompt"
-          role="alert"
           data-testid="direction-prompt"
         >
-          <span className="ebook-reader__direction-prompt-text">
+          <Text className="ebook-reader__direction-prompt-text" size="sm" mb="xs">
             Text direction could not be determined with confidence. Please select:
-          </span>
-          <button
-            className="ebook-reader__direction-prompt-btn"
-            onClick={() => handleDirectionConfirm('ltr')}
-            data-testid="direction-ltr-btn"
-          >
-            Left-to-Right (LTR)
-          </button>
-          <button
-            className="ebook-reader__direction-prompt-btn"
-            onClick={() => handleDirectionConfirm('rtl')}
-            data-testid="direction-rtl-btn"
-          >
-            Right-to-Left (RTL)
-          </button>
-        </div>
+          </Text>
+          <Group gap="xs">
+            <Button
+              className="ebook-reader__direction-prompt-btn"
+              onClick={() => handleDirectionConfirm('ltr')}
+              data-testid="direction-ltr-btn"
+              size="xs"
+              variant="default"
+            >
+              Left-to-Right (LTR)
+            </Button>
+            <Button
+              className="ebook-reader__direction-prompt-btn"
+              onClick={() => handleDirectionConfirm('rtl')}
+              data-testid="direction-rtl-btn"
+              size="xs"
+              variant="default"
+            >
+              Right-to-Left (RTL)
+            </Button>
+          </Group>
+        </Alert>
       )}
 
       {/* Chapter title */}
-      <div className="ebook-reader__progress-chapter" data-testid="progress-chapter-title">
+      <Text className="ebook-reader__progress-chapter" data-testid="progress-chapter-title" size="sm" fw={500}>
         {currentChapterTitle}
-      </div>
+      </Text>
 
       {/* Progress bar */}
-      <div className="ebook-reader__progress-bar-wrapper">
-        <div
+      <Group className="ebook-reader__progress-bar-wrapper" gap="xs" wrap="nowrap">
+        <Progress.Root
           className="ebook-reader__progress-bar"
-          role="progressbar"
-          aria-valuenow={progress}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-label={`Reading progress: ${progress}%`}
           data-testid="progress-bar"
+          style={{ flex: 1 }}
         >
-          <div
+          <Progress.Section
             className="ebook-reader__progress-bar-fill"
-            style={{
-              width: `${progress}%`,
-              [isRTL ? 'marginRight' : 'marginLeft']: '0',
-              [isRTL ? 'marginLeft' : 'marginRight']: 'auto',
-            }}
+            value={progress}
+            aria-label={`Reading progress: ${progress}%`}
             data-testid="progress-bar-fill"
           />
-        </div>
-        <span className="ebook-reader__progress-text" data-testid="progress-text">
+        </Progress.Root>
+        <Text className="ebook-reader__progress-text" data-testid="progress-text" size="sm">
           {progress}%
-        </span>
-      </div>
+        </Text>
+      </Group>
 
       {/* Direction override toggle */}
-      <button
+      <ActionIcon
         className="ebook-reader__direction-toggle"
         onClick={handleDirectionToggle}
         aria-label={`Switch to ${isRTL ? 'LTR' : 'RTL'} direction`}
         data-testid="direction-toggle"
         title={`Current: ${state.direction.toUpperCase()}. Click to switch.`}
+        variant="subtle"
+        w="auto"
+        px="xs"
       >
         {isRTL ? '⟵ LTR' : 'RTL ⟶'}
-      </button>
-    </div>
+      </ActionIcon>
+    </Stack>
   );
 };
 

@@ -8,6 +8,7 @@
  */
 
 import React from 'react';
+import { ActionIcon, Group, Text } from '@mantine/core';
 import { useReaderContext } from './Reader';
 import { useTranslations, interpolate } from '../i18n';
 import type { PageChangeEvent } from '../models/events';
@@ -67,35 +68,38 @@ export const PageNavigation: React.FC<PageNavigationProps> = ({ onPageChange }) 
   const rightTestId = isRTL ? 'nav-previous' : 'nav-next';
 
   return (
-    <div
+    <Group
       className="ebook-reader__page-navigation"
       dir={state.direction}
       role="navigation"
       aria-label="Page navigation"
       data-testid="page-navigation"
+      justify="space-between"
     >
-      <button
+      <ActionIcon
         className="ebook-reader__nav-button ebook-reader__nav-button--left"
         onClick={leftAction}
         aria-label={leftLabel}
         data-testid={leftTestId}
+        variant="default"
       >
         ‹
-      </button>
+      </ActionIcon>
 
-      <span className="ebook-reader__page-indicator" data-testid="page-indicator">
+      <Text className="ebook-reader__page-indicator" data-testid="page-indicator" size="sm">
         {interpolate(t.pageIndicator, { current: state.currentPage + 1, total: state.totalPages })}
-      </span>
+      </Text>
 
-      <button
+      <ActionIcon
         className="ebook-reader__nav-button ebook-reader__nav-button--right"
         onClick={rightAction}
         aria-label={rightLabel}
         data-testid={rightTestId}
+        variant="default"
       >
         ›
-      </button>
-    </div>
+      </ActionIcon>
+    </Group>
   );
 };
 

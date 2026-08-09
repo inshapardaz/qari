@@ -3,10 +3,19 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent, type RenderOptions } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
+import { MantineProvider } from '@mantine/core';
 import { DictionaryPopover } from './DictionaryPopover';
 import type { DictionaryLookupResult } from '../services/dictionary-service';
+
+/** DictionaryPopover now uses Mantine components, which require a MantineProvider ancestor. */
+function render(ui: React.ReactElement, options?: RenderOptions) {
+  return rtlRender(ui, {
+    wrapper: ({ children }) => <MantineProvider env="test">{children}</MantineProvider>,
+    ...options,
+  });
+}
 
 const foundResult: DictionaryLookupResult = {
   word: 'ephemeral',
@@ -48,13 +57,13 @@ const noDictNoFallbackResult: DictionaryLookupResult = {
 
 describe('DictionaryPopover', () => {
   it('renders nothing when lookupResult is null', () => {
-    const { container } = render(<DictionaryPopover lookupResult={null} />);
-    expect(container.firstChild).toBeNull();
+    render(<DictionaryPopover lookupResult={null} />);
+    expect(screen.queryByTestId('dictionary-popover')).toBeNull();
   });
 
   it('renders nothing when visible is false', () => {
-    const { container } = render(<DictionaryPopover lookupResult={foundResult} visible={false} />);
-    expect(container.firstChild).toBeNull();
+    render(<DictionaryPopover lookupResult={foundResult} visible={false} />);
+    expect(screen.queryByTestId('dictionary-popover')).toBeNull();
   });
 
   it('displays the word and language', () => {
@@ -147,8 +156,8 @@ describe('DictionaryPopover - Loading State', () => {
   });
 
   it('renders nothing when loading is false and lookupResult is null', () => {
-    const { container } = render(<DictionaryPopover lookupResult={null} loading={false} />);
-    expect(container.firstChild).toBeNull();
+    render(<DictionaryPopover lookupResult={null} loading={false} />);
+    expect(screen.queryByTestId('dictionary-popover')).toBeNull();
   });
 });
 

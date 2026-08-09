@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useCallback } from 'react';
+import { TextInput, Button, ActionIcon, Alert, Title, Group } from '@mantine/core';
 import { useReaderContext } from './Reader';
 import { useTranslations } from '../i18n';
 import { getChapterCharCount } from '../services/chapter-navigator';
@@ -249,25 +250,24 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
 
   return (
     <div className="bookmark-panel" data-testid="bookmark-panel" role="region" aria-label="Bookmarks">
-      <h2 className="bookmark-panel__title">{t.bookmarksPanelTitle}</h2>
+      <Title order={2} size="h4" mb="sm">{t.bookmarksPanelTitle}</Title>
 
       {/* Error display */}
       {error && (
-        <div
-          className="bookmark-panel__error"
+        <Alert
           data-testid="bookmark-error"
           role="alert"
           aria-live="assertive"
+          color="red"
+          mb="sm"
         >
           {error}
-        </div>
+        </Alert>
       )}
 
       {/* Create bookmark form */}
-      <div className="bookmark-panel__create" data-testid="bookmark-create-form">
-        <input
-          type="text"
-          className="bookmark-panel__input"
+      <Group gap="xs" mb="sm" data-testid="bookmark-create-form" wrap="nowrap">
+        <TextInput
           data-testid="bookmark-name-input"
           placeholder={t.bookmarkNamePlaceholder}
           value={newBookmarkName}
@@ -278,20 +278,19 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
             setError(null);
           }}
           onKeyDown={(e) => handleKeyDown(e, handleCreate)}
+          style={{ flex: 1 }}
         />
-        <button
-          type="button"
-          className="bookmark-panel__create-btn"
+        <Button
           data-testid="bookmark-create-btn"
           aria-label={t.bookmarkCreateAriaLabel}
           onClick={handleCreate}
         >
           {t.bookmarkAdd}
-        </button>
-      </div>
+        </Button>
+      </Group>
 
       {/* Bookmark list */}
-      <ul className="bookmark-panel__list" data-testid="bookmark-list" role="list" aria-label="Bookmark list">
+      <ul className="bookmark-panel__list" data-testid="bookmark-list" role="list" aria-label="Bookmark list" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         {bookBookmarks.length === 0 && (
           <li className="bookmark-panel__empty" data-testid="bookmark-empty">
             {t.bookmarksEmpty}
@@ -304,10 +303,8 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
             data-testid={`bookmark-item-${bookmark.id}`}
           >
             {editingId === bookmark.id ? (
-              <div className="bookmark-panel__edit" data-testid="bookmark-edit-form">
-                <input
-                  type="text"
-                  className="bookmark-panel__edit-input"
+              <Group gap="xs" data-testid="bookmark-edit-form" wrap="nowrap" py="xs">
+                <TextInput
                   data-testid="bookmark-edit-input"
                   value={editName}
                   maxLength={MAX_NAME_LENGTH}
@@ -318,58 +315,60 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
                   }}
                   onKeyDown={(e) => handleKeyDown(e, handleRenameConfirm)}
                   autoFocus
+                  style={{ flex: 1 }}
                 />
-                <button
-                  type="button"
-                  className="bookmark-panel__save-btn"
+                <Button
                   data-testid="bookmark-save-btn"
                   aria-label="Save bookmark name"
                   onClick={handleRenameConfirm}
+                  size="xs"
                 >
                   {t.bookmarkSave}
-                </button>
-                <button
-                  type="button"
-                  className="bookmark-panel__cancel-btn"
+                </Button>
+                <Button
                   data-testid="bookmark-cancel-btn"
                   aria-label="Cancel rename"
                   onClick={handleRenameCancel}
+                  variant="subtle"
+                  size="xs"
                 >
                   {t.bookmarkCancel}
-                </button>
-              </div>
+                </Button>
+              </Group>
             ) : (
-              <div className="bookmark-panel__display">
-                <button
-                  type="button"
-                  className="bookmark-panel__name"
+              <Group justify="space-between" wrap="nowrap" py="xs" gap="xs">
+                <Button
                   data-testid={`bookmark-name-${bookmark.id}`}
                   aria-label={`Go to bookmark: ${bookmark.name}`}
                   onClick={() => handleBookmarkClick(bookmark)}
+                  variant="subtle"
+                  justify="start"
+                  style={{ flex: 1 }}
                 >
                   {bookmark.name}
-                </button>
-                <div className="bookmark-panel__actions">
-                  <button
-                    type="button"
-                    className="bookmark-panel__rename-btn"
+                </Button>
+                <Group gap={4} wrap="nowrap">
+                  <ActionIcon
                     data-testid={`bookmark-rename-${bookmark.id}`}
                     aria-label={`Rename bookmark: ${bookmark.name}`}
                     onClick={() => handleRenameStart(bookmark)}
+                    variant="subtle"
+                    size="sm"
                   >
-                    {t.bookmarkRename}
-                  </button>
-                  <button
-                    type="button"
-                    className="bookmark-panel__delete-btn"
+                    ✎
+                  </ActionIcon>
+                  <ActionIcon
                     data-testid={`bookmark-delete-${bookmark.id}`}
                     aria-label={`Delete bookmark: ${bookmark.name}`}
                     onClick={() => handleDelete(bookmark.id)}
+                    variant="subtle"
+                    color="red"
+                    size="sm"
                   >
-                    {t.bookmarkDelete}
-                  </button>
-                </div>
-              </div>
+                    ✕
+                  </ActionIcon>
+                </Group>
+              </Group>
             )}
           </li>
         ))}

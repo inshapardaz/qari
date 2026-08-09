@@ -3,10 +3,19 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render as rtlRender, screen, fireEvent, type RenderOptions } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { MantineProvider } from '@mantine/core';
 import { ThemeSelector } from './ThemeSelector';
 import { ReaderContext, ReaderContextValue } from './Reader';
+
+/** ThemeSelector now uses Mantine components, which require a MantineProvider ancestor. */
+function render(ui: React.ReactElement, options?: RenderOptions) {
+  return rtlRender(ui, {
+    wrapper: ({ children }) => <MantineProvider env="test">{children}</MantineProvider>,
+    ...options,
+  });
+}
 
 // Mock ThemeEngine
 function createMockThemeEngine() {
@@ -58,20 +67,20 @@ function renderWithContext(ui: React.ReactElement, context?: ReaderContextValue)
 }
 
 describe('ThemeSelector', () => {
-  it('renders theme buttons for all four themes', () => {
+  it('renders theme options for all four themes', () => {
     renderWithContext(<ThemeSelector />);
-    expect(screen.getByTestId('theme-btn-light')).toBeInTheDocument();
-    expect(screen.getByTestId('theme-btn-dark')).toBeInTheDocument();
-    expect(screen.getByTestId('theme-btn-sepia')).toBeInTheDocument();
-    expect(screen.getByTestId('theme-btn-high-contrast')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Light' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Dark' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Sepia' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'HC' })).toBeInTheDocument();
   });
 
-  it('renders font family buttons', () => {
+  it('renders font family options', () => {
     renderWithContext(<ThemeSelector />);
-    expect(screen.getByTestId('font-btn-serif')).toBeInTheDocument();
-    expect(screen.getByTestId('font-btn-sans-serif')).toBeInTheDocument();
-    expect(screen.getByTestId('font-btn-monospace')).toBeInTheDocument();
-    expect(screen.getByTestId('font-btn-nastaliq')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Serif' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Sans-Serif' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Monospace' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Nastaliq' })).toBeInTheDocument();
   });
 
   it('renders font size controls', () => {
@@ -82,37 +91,40 @@ describe('ThemeSelector', () => {
     expect(screen.getByTestId('font-size-value')).toHaveTextContent('16px');
   });
 
-  it('marks the active theme button as pressed', () => {
+  it('marks the active theme option as checked', () => {
     renderWithContext(<ThemeSelector />);
-    expect(screen.getByTestId('theme-btn-light')).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByTestId('theme-btn-dark')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('radio', { name: 'Light' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Dark' })).not.toBeChecked();
   });
 
-  it('calls themeEngine.setTheme when a theme button is clicked', () => {
+  it('calls themeEngine.setTheme when a theme option is selected', () => {
     const ctx = createMockContext();
     renderWithContext(<ThemeSelector />, ctx);
-    fireEvent.click(screen.getByTestId('theme-btn-dark'));
+    fireEvent.click(screen.getByRole('radio', { name: 'Dark' }));
     expect(ctx.themeEngine!.setTheme).toHaveBeenCalledWith('dark');
   });
 
-  it('calls themeEngine.setFont when a font button is clicked', () => {
+  it('calls themeEngine.setFont when a font option is selected', () => {
     const ctx = createMockContext();
     renderWithContext(<ThemeSelector />, ctx);
-    fireEvent.click(screen.getByTestId('font-btn-monospace'));
+    fireEvent.click(screen.getByRole('radio', { name: 'Monospace' }));
     expect(ctx.themeEngine!.setFont).toHaveBeenCalledWith('monospace');
   });
 
-  it('calls themeEngine.setFontSize when slider changes', () => {
+  it('calls themeEngine.setFontSize when the slider is moved via keyboard', () => {
     const ctx = createMockContext();
     renderWithContext(<ThemeSelector />, ctx);
-    fireEvent.change(screen.getByTestId('font-size-slider'), { target: { value: '24' } });
-    expect(ctx.themeEngine!.setFontSize).toHaveBeenCalledWith(24);
+    const slider = screen.getByTestId('font-size-slider').querySelector('[role="slider"]')!;
+    (slider as HTMLElement).focus();
+    fireEvent.keyDown(slider, { key: 'ArrowRight' });
+    // Step is 2, so one step from 16 lands on 18
+    expect(ctx.themeEngine!.setFontSize).toHaveBeenCalledWith(18);
   });
 
   it('persists preferences on change', () => {
     const ctx = createMockContext();
     renderWithContext(<ThemeSelector />, ctx);
-    fireEvent.click(screen.getByTestId('theme-btn-sepia'));
+    fireEvent.click(screen.getByRole('radio', { name: 'Sepia' }));
     expect(ctx.themeEngine!.persistPreferences).toHaveBeenCalled();
   });
 
@@ -120,7 +132,7 @@ describe('ThemeSelector', () => {
     const onChange = vi.fn();
     const ctx = createMockContext();
     renderWithContext(<ThemeSelector onChange={onChange} />, ctx);
-    fireEvent.click(screen.getByTestId('theme-btn-dark'));
+    fireEvent.click(screen.getByRole('radio', { name: 'Dark' }));
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ theme: 'dark' })
     );

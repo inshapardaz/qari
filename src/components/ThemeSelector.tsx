@@ -4,6 +4,7 @@
  */
 
 import React, { useCallback } from 'react';
+import { Fieldset, SegmentedControl, ActionIcon, Slider, Text, Group } from '@mantine/core';
 import { useReaderContext } from './Reader';
 import { useTranslations } from '../i18n';
 import type { ThemeName, FontFamily } from '../models/reader-state';
@@ -94,59 +95,43 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({ onChange }) => {
   return (
     <div className="theme-selector" data-testid="theme-selector" role="group" aria-label="Reading preferences">
       {/* Theme Picker */}
-      <fieldset className="theme-selector__themes">
-        <legend>{t.settingsTheme}</legend>
-        <div className="theme-selector__theme-options" role="radiogroup" aria-label="Color theme">
-          {THEMES.map(({ value, label }) => (
-            <button
-              key={value}
-              type="button"
-              className={`theme-selector__theme-btn${preferences.theme === value ? ' theme-selector__theme-btn--active' : ''}`}
-              data-testid={`theme-btn-${value}`}
-              aria-pressed={preferences.theme === value}
-              onClick={() => handleThemeChange(value)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </fieldset>
+      <Fieldset className="theme-selector__themes" legend={t.settingsTheme}>
+        <SegmentedControl
+          className="theme-selector__theme-options"
+          aria-label="Color theme"
+          value={preferences.theme}
+          onChange={(value) => handleThemeChange(value as ThemeName)}
+          data={THEMES.map(({ value, label }) => ({ value, label }))}
+          data-testid="theme-options"
+        />
+      </Fieldset>
 
       {/* Font Family Picker */}
-      <fieldset className="theme-selector__fonts">
-        <legend>Font</legend>
-        <div className="theme-selector__font-options" role="radiogroup" aria-label="Font family">
-          {FONTS.map(({ value, label }) => (
-            <button
-              key={value}
-              type="button"
-              className={`theme-selector__font-btn${preferences.fontFamily === value ? ' theme-selector__font-btn--active' : ''}`}
-              data-testid={`font-btn-${value}`}
-              aria-pressed={preferences.fontFamily === value}
-              onClick={() => handleFontChange(value)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </fieldset>
+      <Fieldset className="theme-selector__fonts" legend="Font">
+        <SegmentedControl
+          className="theme-selector__font-options"
+          aria-label="Font family"
+          value={preferences.fontFamily}
+          onChange={(value) => handleFontChange(value as FontFamily)}
+          data={FONTS.map(({ value, label }) => ({ value, label }))}
+          data-testid="font-options"
+        />
+      </Fieldset>
 
       {/* Font Size Stepper */}
-      <fieldset className="theme-selector__size">
-        <legend>Font Size</legend>
-        <div className="theme-selector__size-controls" role="group" aria-label="Font size">
-          <button
-            type="button"
+      <Fieldset className="theme-selector__size" legend="Font Size">
+        <Group className="theme-selector__size-controls" role="group" aria-label="Font size" wrap="nowrap">
+          <ActionIcon
             className="theme-selector__size-btn"
             data-testid="font-size-decrease"
             aria-label="Decrease font size"
             onClick={decrementFontSize}
             disabled={preferences.fontSize <= MIN_FONT_SIZE}
+            variant="default"
           >
             −
-          </button>
-          <input
-            type="range"
+          </ActionIcon>
+          <Slider
             className="theme-selector__size-slider"
             data-testid="font-size-slider"
             min={MIN_FONT_SIZE}
@@ -154,26 +139,25 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({ onChange }) => {
             step={FONT_SIZE_STEP}
             value={preferences.fontSize}
             aria-label="Font size"
-            aria-valuemin={MIN_FONT_SIZE}
-            aria-valuemax={MAX_FONT_SIZE}
-            aria-valuenow={preferences.fontSize}
-            onChange={(e) => handleFontSizeChange(Number(e.target.value))}
+            onChange={handleFontSizeChange}
+            label={null}
+            style={{ flex: 1 }}
           />
-          <span className="theme-selector__size-value" data-testid="font-size-value" aria-live="polite">
+          <Text className="theme-selector__size-value" data-testid="font-size-value" aria-live="polite" size="sm">
             {preferences.fontSize}px
-          </span>
-          <button
-            type="button"
+          </Text>
+          <ActionIcon
             className="theme-selector__size-btn"
             data-testid="font-size-increase"
             aria-label="Increase font size"
             onClick={incrementFontSize}
             disabled={preferences.fontSize >= MAX_FONT_SIZE}
+            variant="default"
           >
             +
-          </button>
-        </div>
-      </fieldset>
+          </ActionIcon>
+        </Group>
+      </Fieldset>
     </div>
   );
 };

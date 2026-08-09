@@ -14,7 +14,25 @@ import React, {
   useRef,
   useCallback,
   useMemo,
+  useId,
 } from 'react';
+
+import {
+  MantineProvider,
+  ActionIcon,
+  Menu,
+  Popover,
+  Modal,
+  Select,
+  Slider,
+  Switch,
+  SegmentedControl,
+  Button,
+  Text,
+  mergeThemeOverrides,
+} from '@mantine/core';
+import type { MantineThemeOverride } from '@mantine/core';
+import { DEFAULT_MANTINE_THEME } from '../theme/mantine-theme';
 
 import type { Book, ContentNode, InlineNode, FootnoteRefSpan } from '../models/book';
 import type { Bookmark } from '../models/bookmark';
@@ -125,6 +143,16 @@ export interface ReaderProps {
    * Defaults to DEFAULT_FONT_OPTIONS (Serif, Sans, Mono) if not provided.
    */
   fontOptions?: FontOption[];
+  /**
+   * Overrides for the Mantine theme used by the reader's UI chrome (header
+   * buttons, chapter menu, bookmarks popover, settings dialog). Deep-merged
+   * with the built-in default theme. If this Reader is rendered inside an
+   * app that already has its own `<MantineProvider>`, that app's theme is
+   * inherited automatically (Mantine nested-provider merging) and this prop
+   * only needs to specify what you want to override on top of it.
+   * See the "Theming" section in the README.
+   */
+  mantineTheme?: MantineThemeOverride;
   bookmarkAdapter?: CustomStoreAdapter;
   bookmarks?: Bookmark[];
   bookmarkStore?: BookmarkStoreInterface;
@@ -546,6 +574,7 @@ export const Reader: React.FC<ReaderProps> = ({
   enableBuiltInDictionary = false,
   enableBookmarks = true,
   fontOptions = DEFAULT_FONT_OPTIONS,
+  mantineTheme,
   bookmarkAdapter,
   bookmarks: bookmarksProp,
   bookmarkStore: bookmarkStoreProp,
@@ -592,6 +621,20 @@ export const Reader: React.FC<ReaderProps> = ({
   const bookmarkStoreRef = useRef<BookmarkStore | null>(null);
   const chapterNavigatorRef = useRef<ChapterNavigator | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+
+  // ---------------------------------------------------------------------------
+  // Mantine theming — merge the built-in default with the consumer's
+  // mantineTheme override, and scope the resulting CSS variables to this
+  // Reader instance (rather than :root) so multiple Readers with different
+  // themes on the same page don't clobber each other, and so we don't leak
+  // variables into the host app's own global scope.
+  // ---------------------------------------------------------------------------
+  const mantineScopeId = useId();
+  const mantineCssVariablesSelector = `[data-qari-mantine-scope="${mantineScopeId}"]`;
+  const resolvedMantineTheme = useMemo(
+    () => mergeThemeOverrides(DEFAULT_MANTINE_THEME, mantineTheme ?? {}),
+    [mantineTheme]
+  );
 
   // ---------------------------------------------------------------------------
   // Load the Urdu/Arabic web font CSS (only registers @font-face rules;
@@ -1245,15 +1288,11 @@ export const Reader: React.FC<ReaderProps> = ({
     });
   }, [currentPage, currentChapterIdx, pagesPerChapter, state.book]);
 
-  // Keyboard navigation
+  // Keyboard page navigation. Closing the chapter menu / bookmarks popover /
+  // settings dialog on Escape or outside-click is handled natively by
+  // Mantine's Menu, Popover, and Modal components — no manual wiring needed.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setChapterMenuOpen(false);
-        setSettingsOpen(false);
-        setBookmarksPanelOpen(false);
-        return;
-      }
       if (state.direction === 'rtl') {
         if (e.key === 'ArrowLeft') goToNextPage();
         else if (e.key === 'ArrowRight') goToPrevPage();
@@ -1262,27 +1301,11 @@ export const Reader: React.FC<ReaderProps> = ({
         else if (e.key === 'ArrowLeft') goToPrevPage();
       }
     };
-    const handleClickOutside = (e: MouseEvent) => {
-      // Ignore clicks inside popup containers (they use stopPropagation,
-      // but this is a safety check for capture-phase registration)
-      const header = rootRef.current?.querySelector('.ebook-reader__header');
-      if (header && header.contains(e.target as Node)) {
-        return;
-      }
-      setChapterMenuOpen(false);
-      setSettingsOpen(false);
-      setBookmarksPanelOpen(false);
-    };
     window.addEventListener('keydown', handleKeyDown);
-    if (chapterMenuOpen || settingsOpen || bookmarksPanelOpen) {
-      // Use mousedown instead of click to avoid race conditions with re-renders
-      document.addEventListener('mousedown', handleClickOutside);
-    }
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [goToNextPage, goToPrevPage, state.direction, chapterMenuOpen, settingsOpen, bookmarksPanelOpen]);
+  }, [goToNextPage, goToPrevPage, state.direction]);
 
   // ---------------------------------------------------------------------------
   // Context value (memoized)
@@ -1406,6 +1429,7 @@ export const Reader: React.FC<ReaderProps> = ({
       ref={rootRef}
       className="ebook-reader"
       data-testid="reader-content"
+      data-qari-mantine-scope={mantineScopeId}
       dir={state.direction}
       style={{
         zoom: `${state.zoom}%`,
@@ -1421,6 +1445,11 @@ export const Reader: React.FC<ReaderProps> = ({
         position: 'relative',
       }}
     >
+      <MantineProvider
+        theme={resolvedMantineTheme}
+        cssVariablesSelector={mantineCssVariablesSelector}
+        env={typeof process !== 'undefined' && process.env?.NODE_ENV === 'test' ? 'test' : 'default'}
+      >
       <ReaderContext.Provider value={contextValue}>
         <TranslationContext.Provider value={resolvedTranslations}>
         {/* Header bar with settings */}
@@ -1438,139 +1467,75 @@ export const Reader: React.FC<ReaderProps> = ({
             position: 'relative',
           }}
         >
-          {/* Chapter list button (left) */}
-          <div style={{ position: 'relative' }}>
-            <button
-              onClick={() => setChapterMenuOpen(!chapterMenuOpen)}
-              aria-label={t.tableOfContents}
-              aria-expanded={chapterMenuOpen}
-              style={{
-                padding: '0.4rem 0.6rem',
-                border: '1px solid var(--reader-border, #e0e0e0)',
-                borderRadius: '4px',
-                background: chapterMenuOpen ? 'var(--reader-accent, #0066cc)' : 'var(--reader-bg, #fff)',
-                color: chapterMenuOpen ? '#fff' : 'var(--reader-fg, #1a1a1a)',
-                cursor: 'pointer',
-                fontSize: '1rem',
-              }}
-            >
-              ☰
-            </button>
-
-            {chapterMenuOpen && (
-              <div
-                data-testid="chapter-menu-panel"
-                onClick={(e) => e.stopPropagation()}
-                onMouseDown={(e) => e.stopPropagation()}
-                style={{
-                  position: 'absolute',
-                  top: '100%',
-                  // Anchor to the same side the button sits on in the header,
-                  // which follows the UI direction (not the book's content
-                  // direction) since the header lays out with dir={t.uiDirection}.
-                  ...(t.uiDirection === 'rtl' ? { right: '0' } : { left: '0' }),
-                  marginTop: '0.5rem',
-                  background: 'var(--reader-bg, #fff)',
-                  border: '1px solid var(--reader-border, #e0e0e0)',
-                  borderRadius: '6px',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                  maxHeight: '300px',
-                  overflowY: 'auto',
-                  minWidth: '240px',
-                  zIndex: 200,
-                }}
+          {/* Chapter list menu (start) */}
+          <Menu
+            opened={chapterMenuOpen}
+            onChange={setChapterMenuOpen}
+            position={t.uiDirection === 'rtl' ? 'bottom-end' : 'bottom-start'}
+            withinPortal
+            shadow="md"
+            width={240}
+          >
+            <Menu.Target>
+              <ActionIcon
+                variant={chapterMenuOpen ? 'filled' : 'default'}
+                size="lg"
+                aria-label={t.tableOfContents}
               >
-                {state.book?.chapters.map((ch, idx) => (
-                  <button
-                    key={ch.id}
-                    onClick={() => {
-                      setCurrentChapterIdx(idx);
-                      setCurrentPage(0);
-                      setChapterMenuOpen(false);
-                    }}
-                    style={{
-                      display: 'block',
-                      width: '100%',
-                      padding: '0.6rem 1rem',
-                      border: 'none',
-                      background: idx === currentChapterIdx
-                        ? 'var(--reader-accent, #0066cc)'
-                        : 'transparent',
-                      color: idx === currentChapterIdx
-                        ? '#fff'
-                        : 'var(--reader-fg, #1a1a1a)',
-                      textAlign: state.direction === 'rtl' ? 'right' : 'left',
-                      cursor: 'pointer',
-                      fontSize: '0.85rem',
-                      borderBottom: '1px solid var(--reader-border, #e0e0e0)',
-                    }}
-                  >
-                    {ch.title}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+                ☰
+              </ActionIcon>
+            </Menu.Target>
+            <Menu.Dropdown data-testid="chapter-menu-panel" mah={300} style={{ overflowY: 'auto' }}>
+              {state.book?.chapters.map((ch, idx) => (
+                <Menu.Item
+                  key={ch.id}
+                  onClick={() => {
+                    setCurrentChapterIdx(idx);
+                    setCurrentPage(0);
+                    setChapterMenuOpen(false);
+                  }}
+                  bg={idx === currentChapterIdx ? 'var(--mantine-primary-color-filled)' : undefined}
+                  c={idx === currentChapterIdx ? 'white' : undefined}
+                  style={{
+                    textAlign: state.direction === 'rtl' ? 'right' : 'left',
+                    fontWeight: idx === currentChapterIdx ? 700 : 400,
+                  }}
+                >
+                  {ch.title}
+                </Menu.Item>
+              ))}
+            </Menu.Dropdown>
+          </Menu>
 
           {/* Chapter title (center) */}
-          <span style={{
-            fontSize: '0.85rem',
-            fontWeight: 500,
-            opacity: 0.8,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            flex: 1,
-            textAlign: 'center',
-          }}>
+          <Text size="sm" fw={500} truncate="end" style={{ opacity: 0.8, flex: 1, textAlign: 'center' }}>
             {chapterTitle}
-          </span>
+          </Text>
 
           {/* Settings button (right) */}
           <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
             {/* Bookmarks button */}
             {enableBookmarks && (
-            <div style={{ position: 'relative' }}>
-              <button
-                onClick={() => setBookmarksPanelOpen(!bookmarksPanelOpen)}
-                aria-label={t.bookmarks}
-                aria-expanded={bookmarksPanelOpen}
-                style={{
-                  padding: '0.4rem 0.6rem',
-                  border: '1px solid var(--reader-border, #e0e0e0)',
-                  borderRadius: '4px',
-                  background: bookmarksPanelOpen ? 'var(--reader-accent, #0066cc)' : 'var(--reader-bg, #fff)',
-                  color: bookmarksPanelOpen ? '#fff' : 'var(--reader-fg, #1a1a1a)',
-                  cursor: 'pointer',
-                  fontSize: '1rem',
-                }}
+              <Popover
+                opened={bookmarksPanelOpen}
+                onChange={setBookmarksPanelOpen}
+                position={t.uiDirection === 'rtl' ? 'bottom-start' : 'bottom-end'}
+                withinPortal
+                shadow="md"
+                width={280}
               >
-                🔖
-              </button>
-
-              {bookmarksPanelOpen && (
-                <div
-                  data-testid="bookmarks-panel"
-                  onClick={(e) => e.stopPropagation()}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  style={{
-                    position: 'absolute',
-                    top: '100%',
-                    // Anchor to the same side the button sits on in the header
-                    // (follows UI direction, not the book's content direction).
-                    ...(t.uiDirection === 'rtl' ? { left: '0' } : { right: '0' }),
-                    marginTop: '0.5rem',
-                    background: 'var(--reader-bg, #fff)',
-                    border: '1px solid var(--reader-border, #e0e0e0)',
-                    borderRadius: '8px',
-                    boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
-                    padding: '0.75rem',
-                    zIndex: 200,
-                    minWidth: '280px',
-                    maxHeight: '400px',
-                    overflowY: 'auto',
-                  }}
-                >
+                <Popover.Target>
+                  <ActionIcon
+                    variant={bookmarksPanelOpen ? 'filled' : 'default'}
+                    size="lg"
+                    aria-label={t.bookmarks}
+                    aria-expanded={bookmarksPanelOpen}
+                    onClick={() => setBookmarksPanelOpen((open) => !open)}
+                  >
+                    🔖
+                  </ActionIcon>
+                </Popover.Target>
+                <Popover.Dropdown data-testid="bookmarks-panel" mah={400} style={{ overflowY: 'auto' }}>
                   <BookmarkPanel
                     onNavigate={(chapterIdx, page) => {
                       setCurrentChapterIdx(chapterIdx);
@@ -1579,300 +1544,196 @@ export const Reader: React.FC<ReaderProps> = ({
                     }}
                     onPageChange={onPageChange}
                   />
-                </div>
-              )}
-            </div>
+                </Popover.Dropdown>
+              </Popover>
             )}
 
             {/* Fullscreen toggle */}
-            <button
+            <ActionIcon
+              variant={isFullscreen ? 'filled' : 'default'}
+              size="lg"
               onClick={toggleFullscreen}
               aria-label={isFullscreen ? t.exitFullscreen : t.enterFullscreen}
-              style={{
-                padding: '0.4rem 0.6rem',
-                border: '1px solid var(--reader-border, #e0e0e0)',
-                borderRadius: '4px',
-                background: isFullscreen ? 'var(--reader-accent, #0066cc)' : 'var(--reader-bg, #fff)',
-                color: isFullscreen ? '#fff' : 'var(--reader-fg, #1a1a1a)',
-                cursor: 'pointer',
-                fontSize: '1rem',
-              }}
             >
               {isFullscreen ? '⊗' : '⛶'}
-            </button>
+            </ActionIcon>
 
-            <button
+            <ActionIcon
+              variant={settingsOpen ? 'filled' : 'default'}
+              size="lg"
               onClick={() => setSettingsOpen(!settingsOpen)}
               aria-label={t.readingSettings}
               aria-expanded={settingsOpen}
-              style={{
-                padding: '0.4rem 0.6rem',
-                border: '1px solid var(--reader-border, #e0e0e0)',
-                borderRadius: '4px',
-                background: settingsOpen ? 'var(--reader-accent, #0066cc)' : 'var(--reader-bg, #fff)',
-                color: settingsOpen ? '#fff' : 'var(--reader-fg, #1a1a1a)',
-                cursor: 'pointer',
-                fontSize: '1rem',
-              }}
             >
               ⚙
-            </button>
+            </ActionIcon>
           </div>
 
           {/* Settings dialog */}
-          {settingsOpen && (
-            <div
-              style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                background: 'rgba(0,0,0,0.4)',
-                zIndex: 300,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '1rem',
-              }}
-              onClick={() => setSettingsOpen(false)}
-              onMouseDown={(e) => {
-                if (e.target === e.currentTarget) setSettingsOpen(false);
-              }}
-            >
-            <div
-              dir={t.uiDirection}
-              style={{
-                background: 'var(--reader-bg, #fff)',
-                border: '1px solid var(--reader-border, #e0e0e0)',
-                borderRadius: '8px',
-                boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
-                padding: '1.25rem',
-                width: '100%',
-                maxWidth: '320px',
-                maxHeight: '80vh',
-                overflowY: 'auto',
-              }}
-              onClick={(e) => e.stopPropagation()}
-              onMouseDown={(e) => e.stopPropagation()}
-            >
+          <Modal
+            opened={settingsOpen}
+            onClose={() => setSettingsOpen(false)}
+            title={t.readingSettings}
+            size="xs"
+          >
+            <div dir={t.uiDirection}>
               <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.4rem', fontWeight: 600, color: 'var(--reader-fg, #333)' }}>
+                <Text size="sm" fw={600} mb="xs">
                   {t.settingsTheme}
-                </label>
-                <div style={{ display: 'flex', gap: '0.4rem' }}>
+                </Text>
+                <Button.Group>
                   {(['light', 'dark', 'sepia', 'high-contrast'] as ThemeName[]).map(thm => (
-                    <button
+                    <Button
                       key={thm}
                       onClick={() => {
                         if (onSettingsChange) onSettingsChange({ theme: thm });
                       }}
+                      variant={theme === thm ? 'filled' : 'default'}
+                      size="xs"
+                      fullWidth
                       style={{
-                        flex: 1,
-                        padding: '0.4rem',
-                        border: theme === thm ? '2px solid var(--reader-accent, #0066cc)' : '1px solid var(--reader-border, #e0e0e0)',
-                        borderRadius: '4px',
-                        background: thm === 'light' ? '#fff' : thm === 'dark' ? '#1a1a2e' : thm === 'sepia' ? '#f4ecd8' : '#000',
-                        color: thm === 'dark' || thm === 'high-contrast' ? '#fff' : '#1a1a1a',
-                        cursor: 'pointer',
-                        fontSize: '0.7rem',
-                        fontWeight: theme === thm ? 700 : 400,
+                        background: theme === thm
+                          ? undefined
+                          : thm === 'light' ? '#fff' : thm === 'dark' ? '#1a1a2e' : thm === 'sepia' ? '#f4ecd8' : '#000',
+                        color: theme === thm
+                          ? undefined
+                          : thm === 'dark' || thm === 'high-contrast' ? '#fff' : '#1a1a1a',
                       }}
                     >
                       {thm === 'light' ? t.themeLight : thm === 'dark' ? t.themeDark : thm === 'sepia' ? t.themeSepia : t.themeHighContrast}
-                    </button>
+                    </Button>
                   ))}
-                </div>
+                </Button.Group>
               </div>
 
               <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.4rem', fontWeight: 600, color: 'var(--reader-fg, #333)' }}>
-                  {t.settingsFontFamily}
-                </label>
-                <select
+                <Select
+                  label={t.settingsFontFamily}
                   value={selectedFontFamily}
-                  onChange={(e) => {
-                    const family = e.target.value;
+                  onChange={(family) => {
+                    if (!family) return;
                     setSelectedFontFamily(family);
                     const opt = fontOptions.find(o => o.family === family);
                     if (onSettingsChange) onSettingsChange({ fontFamily: opt?.name ?? family });
                   }}
-                  style={{
-                    width: '100%',
-                    padding: '0.5rem',
-                    border: '1px solid var(--reader-border, #e0e0e0)',
-                    borderRadius: '4px',
-                    background: 'var(--reader-bg, #fff)',
-                    color: 'var(--reader-fg, #1a1a1a)',
-                    fontSize: '0.85rem',
-                    fontFamily: selectedFontFamily,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {fontOptions.map(opt => (
-                    <option key={opt.family} value={opt.family} style={{ fontFamily: opt.family }}>
-                      {t.fontNames[opt.name] ?? opt.name}
-                    </option>
-                  ))}
-                </select>
+                  data={fontOptions.map(opt => ({ value: opt.family, label: t.fontNames[opt.name] ?? opt.name }))}
+                  allowDeselect={false}
+                  comboboxProps={{ withinPortal: true }}
+                  styles={{ input: { fontFamily: selectedFontFamily } }}
+                />
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.4rem', fontWeight: 600, color: 'var(--reader-fg, #333)' }}>
+                <Text size="sm" fw={600} mb="xs">
                   {t.settingsFontSize}: {fontSize}px
-                </label>
+                </Text>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <button
+                  <ActionIcon
+                    variant="default"
                     onClick={() => {
                       if (onSettingsChange) onSettingsChange({ fontSize: Math.max(12, fontSize - 2) });
                     }}
-                    style={{
-                      width: '28px', height: '28px',
-                      border: '1px solid var(--reader-border, #e0e0e0)',
-                      borderRadius: '4px',
-                      background: 'var(--reader-bg, #fff)',
-                      color: 'var(--reader-fg, #1a1a1a)',
-                      cursor: fontSize <= 12 ? 'not-allowed' : 'pointer',
-                      fontSize: '1rem',
-                    }}
                     disabled={fontSize <= 12}
+                    aria-label={t.settingsFontSize}
                   >
                     A-
-                  </button>
-                  <input
-                    type="range"
+                  </ActionIcon>
+                  <Slider
                     min={12}
                     max={48}
                     step={2}
                     value={fontSize}
-                    onChange={(e) => {
-                      if (onSettingsChange) onSettingsChange({ fontSize: Number(e.target.value) });
+                    onChange={(value) => {
+                      if (onSettingsChange) onSettingsChange({ fontSize: value });
                     }}
+                    label={null}
                     style={{ flex: 1 }}
                   />
-                  <button
+                  <ActionIcon
+                    variant="default"
                     onClick={() => {
                       if (onSettingsChange) onSettingsChange({ fontSize: Math.min(48, fontSize + 2) });
                     }}
-                    style={{
-                      width: '28px', height: '28px',
-                      border: '1px solid var(--reader-border, #e0e0e0)',
-                      borderRadius: '4px',
-                      background: 'var(--reader-bg, #fff)',
-                      color: 'var(--reader-fg, #1a1a1a)',
-                      cursor: fontSize >= 48 ? 'not-allowed' : 'pointer',
-                      fontSize: '1rem',
-                    }}
                     disabled={fontSize >= 48}
+                    aria-label={t.settingsFontSize}
                   >
                     A+
-                  </button>
+                  </ActionIcon>
                 </div>
               </div>
 
               <div style={{ marginTop: '1rem' }}>
-                <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: 600, color: 'var(--reader-fg, #333)' }}>
-                  {t.settingsJustify}
-                  <button
-                    onClick={() => { if (onSettingsChange) onSettingsChange({ justify: !justify }); }}
-                    style={{
-                      width: '40px', height: '22px',
-                      borderRadius: '11px',
-                      border: 'none',
-                      background: justify ? 'var(--reader-accent, #0066cc)' : 'var(--reader-border, #ccc)',
-                      position: 'relative',
-                      cursor: 'pointer',
-                      transition: 'background 0.2s',
-                    }}
-                    aria-label="Toggle justify"
-                    role="switch"
-                    aria-checked={justify}
-                  >
-                    <span style={{
-                      position: 'absolute',
-                      top: '2px',
-                      left: justify ? '20px' : '2px',
-                      width: '18px', height: '18px',
-                      borderRadius: '50%',
-                      background: '#fff',
-                      transition: 'left 0.2s',
-                    }} />
-                  </button>
-                </label>
+                <Switch
+                  checked={justify}
+                  onChange={(e) => { if (onSettingsChange) onSettingsChange({ justify: e.currentTarget.checked }); }}
+                  label={t.settingsJustify}
+                  aria-label={t.settingsJustify}
+                  labelPosition="left"
+                  styles={{ body: { justifyContent: 'space-between' }, label: { fontSize: 'var(--mantine-font-size-sm)', fontWeight: 600 } }}
+                />
               </div>
 
               <div style={{ marginTop: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.4rem', fontWeight: 600, color: 'var(--reader-fg, #333)' }}>
+                <Text size="sm" fw={600} mb="xs">
                   {t.settingsLineSpacing}: {lineSpacing}×
-                </label>
-                <input
-                  type="range" min={1} max={3} step={0.25} value={lineSpacing}
-                  onChange={(e) => { if (onSettingsChange) onSettingsChange({ lineSpacing: Number(e.target.value) }); }}
-                  style={{ width: '100%' }}
+                </Text>
+                <Slider
+                  min={1} max={3} step={0.25} value={lineSpacing} label={null}
+                  onChange={(value) => { if (onSettingsChange) onSettingsChange({ lineSpacing: value }); }}
+                  aria-label={t.settingsLineSpacing}
                 />
               </div>
 
               <div style={{ marginTop: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.4rem', fontWeight: 600, color: 'var(--reader-fg, #333)' }}>
+                <Text size="sm" fw={600} mb="xs">
                   {t.settingsLetterSpacing}: {letterSpacing}px
-                </label>
-                <input
-                  type="range" min={0} max={5} step={0.5} value={letterSpacing}
-                  onChange={(e) => { if (onSettingsChange) onSettingsChange({ letterSpacing: Number(e.target.value) }); }}
-                  style={{ width: '100%' }}
+                </Text>
+                <Slider
+                  min={0} max={5} step={0.5} value={letterSpacing} label={null}
+                  onChange={(value) => { if (onSettingsChange) onSettingsChange({ letterSpacing: value }); }}
+                  aria-label={t.settingsLetterSpacing}
                 />
               </div>
 
               <div style={{ marginTop: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.4rem', fontWeight: 600, color: 'var(--reader-fg, #333)' }}>
+                <Text size="sm" fw={600} mb="xs">
                   {t.settingsWordSpacing}: {wordSpacing}px
-                </label>
-                <input
-                  type="range" min={0} max={10} step={1} value={wordSpacing}
-                  onChange={(e) => { if (onSettingsChange) onSettingsChange({ wordSpacing: Number(e.target.value) }); }}
-                  style={{ width: '100%' }}
+                </Text>
+                <Slider
+                  min={0} max={10} step={1} value={wordSpacing} label={null}
+                  onChange={(value) => { if (onSettingsChange) onSettingsChange({ wordSpacing: value }); }}
+                  aria-label={t.settingsWordSpacing}
                 />
               </div>
 
               <div style={{ marginTop: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.4rem', fontWeight: 600, color: 'var(--reader-fg, #333)' }}>
+                <Text size="sm" fw={600} mb="xs">
                   {t.settingsMargin}: {margin}px
-                </label>
-                <input
-                  type="range" min={0} max={100} step={8} value={margin}
-                  onChange={(e) => { if (onSettingsChange) onSettingsChange({ margin: Number(e.target.value) }); }}
-                  style={{ width: '100%' }}
+                </Text>
+                <Slider
+                  min={0} max={100} step={8} value={margin} label={null}
+                  onChange={(value) => { if (onSettingsChange) onSettingsChange({ margin: value }); }}
+                  aria-label={t.settingsMargin}
                 />
               </div>
 
               <div style={{ marginTop: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.4rem', fontWeight: 600, color: 'var(--reader-fg, #333)' }}>
+                <Text size="sm" fw={600} mb="xs">
                   {t.settingsColumns}
-                </label>
-                <div style={{ display: 'flex', gap: '0.4rem' }}>
-                  {([1, 2] as const).map(c => (
-                    <button
-                      key={c}
-                      onClick={() => { if (onSettingsChange) onSettingsChange({ columns: c }); }}
-                      style={{
-                        flex: 1,
-                        padding: '0.4rem',
-                        border: columns === c ? '2px solid var(--reader-accent, #0066cc)' : '1px solid var(--reader-border, #e0e0e0)',
-                        borderRadius: '4px',
-                        background: 'var(--reader-bg, #fff)',
-                        color: 'var(--reader-fg, #1a1a1a)',
-                        cursor: 'pointer',
-                        fontSize: '0.8rem',
-                        fontWeight: columns === c ? 700 : 400,
-                      }}
-                    >
-                      {c === 1 ? '▐' : '▐▐'}
-                    </button>
-                  ))}
-                </div>
+                </Text>
+                <SegmentedControl
+                  fullWidth
+                  value={String(columns)}
+                  onChange={(value) => { if (onSettingsChange) onSettingsChange({ columns: Number(value) as 1 | 2 }); }}
+                  data={[
+                    { value: '1', label: '▐' },
+                    { value: '2', label: '▐▐' },
+                  ]}
+                  aria-label={t.settingsColumns}
+                />
               </div>
 
-              <button
+              <Button
                 onClick={() => {
                   if (onSettingsChange) onSettingsChange({
                     theme: 'light',
@@ -1886,23 +1747,14 @@ export const Reader: React.FC<ReaderProps> = ({
                     columns: 1,
                   });
                 }}
-                style={{
-                  marginTop: '1.25rem',
-                  width: '100%',
-                  padding: '0.5rem',
-                  border: '1px solid var(--reader-border, #e0e0e0)',
-                  borderRadius: '4px',
-                  background: 'transparent',
-                  color: 'var(--reader-fg, #1a1a1a)',
-                  cursor: 'pointer',
-                  fontSize: '0.8rem',
-                }}
+                variant="default"
+                fullWidth
+                mt="lg"
               >
                 {t.resetToDefaults}
-              </button>
+              </Button>
             </div>
-            </div>
-          )}
+          </Modal>
         </div>
 
         {/* Page viewport — fixed height, no scroll */}
@@ -2076,6 +1928,7 @@ export const Reader: React.FC<ReaderProps> = ({
         )}
         </TranslationContext.Provider>
       </ReaderContext.Provider>
+      </MantineProvider>
     </div>
   );
 };

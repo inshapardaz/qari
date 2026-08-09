@@ -9,6 +9,7 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
+import { MantineProvider } from '@mantine/core';
 import { TranslationContext, DEFAULT_TRANSLATIONS } from '../index';
 import { ChapterIndex } from '../../components/ChapterIndex';
 import { ReaderContext, ReaderContextValue } from '../../components/Reader';
@@ -82,11 +83,13 @@ function renderChapterIndexWithTranslations(translations: TranslationStrings) {
   };
 
   return render(
-    <TranslationContext.Provider value={translations}>
-      <ReaderContext.Provider value={contextValue}>
-        <ChapterIndex />
-      </ReaderContext.Provider>
-    </TranslationContext.Provider>
+    <MantineProvider env="test">
+      <TranslationContext.Provider value={translations}>
+        <ReaderContext.Provider value={contextValue}>
+          <ChapterIndex />
+        </ReaderContext.Provider>
+      </TranslationContext.Provider>
+    </MantineProvider>
   );
 }
 

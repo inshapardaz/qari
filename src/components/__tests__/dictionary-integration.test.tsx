@@ -8,8 +8,17 @@
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
+import { render as rtlRender, screen, waitFor, fireEvent, act, type RenderOptions } from '@testing-library/react';
+import { MantineProvider } from '@mantine/core';
 import { DictionaryPopover } from '../DictionaryPopover';
+
+/** DictionaryPopover now uses Mantine components, which require a MantineProvider ancestor. */
+function render(ui: React.ReactElement, options?: RenderOptions) {
+  return rtlRender(ui, {
+    wrapper: ({ children }) => <MantineProvider env="test">{children}</MantineProvider>,
+    ...options,
+  });
+}
 import { DictionaryService } from '../../services/dictionary-service';
 import type { DictionaryLookupResult } from '../../services/dictionary-service';
 import { useSelectionHandler } from '../../hooks/useSelectionHandler';

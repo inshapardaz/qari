@@ -10,6 +10,7 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { MantineProvider } from '@mantine/core';
 import { TranslationContext, DEFAULT_TRANSLATIONS } from '../index';
 import { ZoomControls } from '../../components/ZoomController';
 
@@ -22,9 +23,11 @@ const customTranslations = {
 
 function renderWithTranslations(ui: React.ReactElement) {
   return render(
-    <TranslationContext.Provider value={customTranslations}>
-      {ui}
-    </TranslationContext.Provider>
+    <MantineProvider env="test">
+      <TranslationContext.Provider value={customTranslations}>
+        {ui}
+      </TranslationContext.Provider>
+    </MantineProvider>
   );
 }
 

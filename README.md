@@ -90,6 +90,8 @@ The demo source lives in `demo/main.tsx` — modify it freely to test different 
 
 ## Usage
 
+> **Peer dependencies:** the reader's UI is built with [Mantine](https://mantine.dev). Install `@mantine/core` and `@mantine/hooks` alongside `qari`, and import `@mantine/core/styles.css` once in your app's entry point. See [UI Chrome Theming](#ui-chrome-theming-mantine) below for details and how to customize or inherit an existing Mantine setup.
+
 ### React
 
 ```tsx
@@ -310,6 +312,71 @@ const myFonts: FontOption[] = [
 <Reader source={source} zoom={120} />  // 50-300, clamped to 10% increments
 ```
 
+## UI Chrome Theming (Mantine)
+
+The reader's interactive chrome — header buttons, the chapter menu, the bookmarks popover, the settings dialog, sliders, switches, and selects — is built with [Mantine](https://mantine.dev). This is separate from the reading-content theming above (`theme`, `fontFamily`, etc.), which controls the *book's* appearance, not the surrounding controls.
+
+### Setup
+
+`@mantine/core` and `@mantine/hooks` are peer dependencies — install them alongside `qari`:
+
+```bash
+npm install qari @mantine/core @mantine/hooks
+```
+
+Import Mantine's base stylesheet **once**, anywhere in your app's entry point:
+
+```tsx
+import '@mantine/core/styles.css';
+```
+
+If your app already uses Mantine, you've already done this — nothing else is required. Qari does not import this CSS itself, since a component library forcing a global CSS side-effect import breaks under plain Node ESM and gives you no control over load order; see the note in [`src/services/urdu-web-fonts.ts`](src/services/urdu-web-fonts.ts) for the same reasoning applied to font CSS.
+
+### Default styling
+
+Out of the box, the reader ships a small default theme (a blue primary color and a small border radius) so it looks reasonable with zero configuration. You do **not** need to wrap `<Reader>` in your own `<MantineProvider>` — it renders one internally.
+
+### Customizing the theme
+
+Pass a `mantineTheme` prop with any [`MantineThemeOverride`](https://mantine.dev/theming/theme-object/) to change colors, radius, fonts, spacing, or per-component default props:
+
+```tsx
+import { Reader } from 'qari/components/Reader';
+
+<Reader
+  source={source}
+  mantineTheme={{
+    primaryColor: 'grape',
+    defaultRadius: 'md',
+  }}
+/>
+```
+
+This is deep-merged with the reader's built-in default theme, so you only need to specify what you want to change.
+
+### Inheriting your app's Mantine theme
+
+If your app already renders its own `<MantineProvider>` (i.e. you already use Mantine elsewhere), the Reader's internal provider is a *nested* Mantine provider — Mantine merges nested provider themes automatically, so the reader's chrome inherits your app's colors, fonts, and component defaults with no extra configuration:
+
+```tsx
+import { MantineProvider } from '@mantine/core';
+import { Reader } from 'qari/components/Reader';
+import '@mantine/core/styles.css';
+
+function App() {
+  return (
+    <MantineProvider theme={{ primaryColor: 'violet' }}>
+      {/* Your app's own Mantine-based UI */}
+      <Reader source={source} />
+    </MantineProvider>
+  );
+}
+```
+
+The reader's own `mantineTheme` prop, if provided, is layered on top of whatever it inherits — use it for reader-specific overrides without affecting the rest of your app, or omit it entirely to match your app's look exactly.
+
+The reader also scopes its Mantine CSS variables to its own root element (rather than `:root`), so its theme never leaks into the rest of your page, and multiple `<Reader>` instances with different `mantineTheme` props on the same page stay independent.
+
 Pinch-to-zoom is supported on touch devices and snaps to the nearest 10% increment.
 
 ### Listening for Settings Changes
@@ -479,6 +546,7 @@ When set to `"auto"`, the reader detects direction by analyzing character freque
 | `bookmarkStore` | `BookmarkStoreInterface` | localStorage | Custom bookmark persistence |
 | `bookmarkAdapter` | `CustomStoreAdapter` | `undefined` | Legacy store adapter |
 | `fontOptions` | `FontOption[]` | Serif, Sans, Mono + urdu-web-fonts | Custom font selector options |
+| `mantineTheme` | `MantineThemeOverride` | `undefined` | Overrides for the UI chrome's Mantine theme (deep-merged with defaults) |
 | `enableBuiltInDictionary` | `boolean` | `false` | Enable online dictionary lookup |
 | `hunspellDictionaries` | `HunspellDictionaryConfig[]` | `undefined` | Offline Hunspell dictionaries |
 | `dictionaryProviders` | `DictionaryProvider[]` | `undefined` | Custom dictionary providers |

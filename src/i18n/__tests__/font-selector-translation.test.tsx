@@ -4,7 +4,7 @@
 
 import React from 'react';
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { Reader, DEFAULT_FONT_OPTIONS } from '../../components/Reader';
 import type { ReaderSource } from '../../components/Reader';
 import { DEFAULT_TRANSLATIONS } from '../defaults';
@@ -14,9 +14,36 @@ function createMarkdownSource(content = '# Test Book\n\n## Chapter 1\n\nHello wo
   return { type: 'markdown', content };
 }
 
-async function openSettingsPanel(readingSettingsLabel: string) {
+/**
+ * Mantine's Select associates its `label` prop with both the `<input>` and
+ * the (initially hidden) options listbox via `aria-labelledby`, so
+ * `getByLabelText` matches more than one element — filter down to the input.
+ */
+function getFontSelectInput(fontFamilyLabel: string): HTMLElement {
+  const matches = screen.getAllByLabelText(fontFamilyLabel);
+  const input = matches.find((el) => el.tagName === 'INPUT');
+  if (!input) throw new Error(`Could not find the font family <input> labeled "${fontFamilyLabel}"`);
+  return input;
+}
+
+async function openSettingsPanel(readingSettingsLabel: string, fontFamilyLabel: string) {
   const settingsButton = await screen.findByRole('button', { name: readingSettingsLabel });
   fireEvent.click(settingsButton);
+  // Mantine's Modal renders via a portal — wait for its content to land in the DOM.
+  await waitFor(() => getFontSelectInput(fontFamilyLabel));
+}
+
+/**
+ * Opens Mantine's Select dropdown and returns the labels of its options.
+ * The options are only mounted once the combobox is opened, and Mantine
+ * renders them via a portal, so they must be queried from `screen`, not
+ * scoped `within` the select input.
+ */
+async function getFontOptionLabels(fontFamilyLabel: string): Promise<(string | null)[]> {
+  const input = getFontSelectInput(fontFamilyLabel);
+  fireEvent.click(input);
+  const options = await screen.findAllByRole('option');
+  return options.map((o) => o.textContent);
 }
 
 describe('Font selector translation integration', () => {
@@ -31,10 +58,9 @@ describe('Font selector translation integration', () => {
     await waitFor(() => {
       expect(screen.getByTestId('reader-content')).toBeInTheDocument();
     });
-    await openSettingsPanel(DEFAULT_TRANSLATIONS.readingSettings);
+    await openSettingsPanel(DEFAULT_TRANSLATIONS.readingSettings, DEFAULT_TRANSLATIONS.settingsFontFamily);
 
-    const select = screen.getByRole('combobox');
-    const optionLabels = within(select).getAllByRole('option').map((o) => o.textContent);
+    const optionLabels = await getFontOptionLabels(DEFAULT_TRANSLATIONS.settingsFontFamily);
 
     for (const opt of DEFAULT_FONT_OPTIONS) {
       expect(optionLabels).toContain(opt.name);
@@ -48,10 +74,9 @@ describe('Font selector translation integration', () => {
     await waitFor(() => {
       expect(screen.getByTestId('reader-content')).toBeInTheDocument();
     });
-    await openSettingsPanel(ur.readingSettings);
+    await openSettingsPanel(ur.readingSettings, ur.settingsFontFamily);
 
-    const select = screen.getByRole('combobox');
-    const optionLabels = within(select).getAllByRole('option').map((o) => o.textContent);
+    const optionLabels = await getFontOptionLabels(ur.settingsFontFamily);
 
     expect(optionLabels).toContain(ur.fontNames['Serif']);
     expect(optionLabels).toContain(ur.fontNames['Amiri']);
@@ -67,10 +92,9 @@ describe('Font selector translation integration', () => {
     await waitFor(() => {
       expect(screen.getByTestId('reader-content')).toBeInTheDocument();
     });
-    await openSettingsPanel(fr.readingSettings);
+    await openSettingsPanel(fr.readingSettings, fr.settingsFontFamily);
 
-    const select = screen.getByRole('combobox');
-    const optionLabels = within(select).getAllByRole('option').map((o) => o.textContent);
+    const optionLabels = await getFontOptionLabels(fr.settingsFontFamily);
 
     expect(optionLabels).toContain(fr.fontNames['Serif']); // 'Empattement'
     // Proper-noun typeface names are intentionally left untranslated
@@ -84,10 +108,9 @@ describe('Font selector translation integration', () => {
     await waitFor(() => {
       expect(screen.getByTestId('reader-content')).toBeInTheDocument();
     });
-    await openSettingsPanel(ur.readingSettings);
+    await openSettingsPanel(ur.readingSettings, DEFAULT_TRANSLATIONS.settingsFontFamily);
 
-    const select = screen.getByRole('combobox');
-    const optionLabels = within(select).getAllByRole('option').map((o) => o.textContent);
+    const optionLabels = await getFontOptionLabels(DEFAULT_TRANSLATIONS.settingsFontFamily);
 
     // No fontNames override was provided, so English defaults are used
     expect(optionLabels).toContain('Serif');
@@ -105,10 +128,9 @@ describe('Font selector translation integration', () => {
     await waitFor(() => {
       expect(screen.getByTestId('reader-content')).toBeInTheDocument();
     });
-    await openSettingsPanel(DEFAULT_TRANSLATIONS.readingSettings);
+    await openSettingsPanel(DEFAULT_TRANSLATIONS.readingSettings, DEFAULT_TRANSLATIONS.settingsFontFamily);
 
-    const select = screen.getByRole('combobox');
-    const optionLabels = within(select).getAllByRole('option').map((o) => o.textContent);
+    const optionLabels = await getFontOptionLabels(DEFAULT_TRANSLATIONS.settingsFontFamily);
 
     expect(optionLabels).toContain('Custom Serif Label');
     expect(optionLabels).not.toContain('Serif');

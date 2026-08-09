@@ -5,6 +5,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { MantineProvider } from '@mantine/core';
 import { BookmarkPanel } from './BookmarkPanel';
 import { ReaderContext, ReaderContextValue } from './Reader';
 import type { Bookmark } from '../models/bookmark';
@@ -63,9 +64,11 @@ function createMockContext(overrides: Partial<ReaderContextValue> = {}): ReaderC
 function renderWithContext(ui: React.ReactElement, context?: ReaderContextValue) {
   const ctx = context || createMockContext();
   return render(
-    <ReaderContext.Provider value={ctx}>
-      {ui}
-    </ReaderContext.Provider>
+    <MantineProvider env="test">
+      <ReaderContext.Provider value={ctx}>
+        {ui}
+      </ReaderContext.Provider>
+    </MantineProvider>
   );
 }
 

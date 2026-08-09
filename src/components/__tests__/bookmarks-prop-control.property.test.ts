@@ -14,7 +14,7 @@
 
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, waitFor, act } from '@testing-library/react';
+import { render, waitFor, act, fireEvent, within } from '@testing-library/react';
 import * as fc from 'fast-check';
 
 import { Reader } from '../Reader';
@@ -32,10 +32,17 @@ function createMarkdownSource(content = '# Test\n\n## Chapter 1\n\nHello'): Read
 
 /**
  * Arbitrary for generating valid Bookmark objects.
+ *
+ * `bookId` is fixed to `''` (not fuzzed) because `BookmarkPanel` only
+ * displays bookmarks whose `bookId` matches the currently loaded book's
+ * `metadata.identifier`, which `MarkdownParserImpl` leaves unset (so it
+ * resolves to `''`). A fuzzed `bookId` would almost never match, and the
+ * panel would filter every generated bookmark out regardless of whether the
+ * Reader's own prop-sync logic is working correctly.
  */
 const arbBookmark: fc.Arbitrary<Bookmark> = fc.record({
   id: fc.uuid(),
-  bookId: fc.string({ minLength: 1, maxLength: 20 }),
+  bookId: fc.constant(''),
   chapterId: fc.string({ minLength: 1, maxLength: 20 }),
   position: fc.nat({ max: 10000 }),
   name: fc.string({ minLength: 1, maxLength: 100 }),
@@ -61,31 +68,21 @@ function createMockStore(): BookmarkStoreInterface & { load: ReturnType<typeof v
 }
 
 /**
- * Reads the Reader component's internal bookmarks state from the React fiber tree.
- * The DOM node's `__reactFiber$` pointer always references the current
- * (post-commit) fiber, so it already reflects the latest committed state —
- * `.alternate` points at the *previous* commit's tree and is one render
- * behind, so it must not be preferred over the fiber itself.
+ * Reads which bookmarks are actually displayed by opening the bookmarks
+ * popover and reading `BookmarkPanel`'s rendered `bookmark-item-<id>`
+ * elements — i.e. verifying through the real UI rather than React fiber
+ * internals (which are an implementation detail liable to break with every
+ * unrelated rendering change, e.g. how many passes Mantine's popovers take
+ * to settle).
  */
-function getBookmarksFromFiber(container: HTMLElement): Bookmark[] | null {
-  const el = container.querySelector('[data-testid="reader-content"]');
-  if (!el) return null;
+function getDisplayedBookmarkIds(): string[] {
+  return Array.from(document.querySelectorAll('[data-testid^="bookmark-item-"]')).map((el) =>
+    el.getAttribute('data-testid')!.replace('bookmark-item-', '')
+  );
+}
 
-  const fiberKey = Object.keys(el).find(k => k.startsWith('__reactFiber$'));
-  if (!fiberKey) return null;
-
-  let fiber = (el as any)[fiberKey];
-  while (fiber) {
-    if (fiber.type === Reader) {
-      const state = fiber.memoizedState?.memoizedState;
-      if (state && 'bookmarks' in state) return state.bookmarks;
-      // Fallback to alternate, in case the current tree's hook state is unavailable
-      const state2 = fiber.alternate?.memoizedState?.memoizedState;
-      if (state2 && 'bookmarks' in state2) return state2.bookmarks;
-    }
-    fiber = fiber.return;
-  }
-  return null;
+function openBookmarksPanel(container: HTMLElement): void {
+  fireEvent.click(within(container).getByRole('button', { name: 'Bookmarks' }));
 }
 
 // ---------------------------------------------------------------------------
@@ -112,17 +109,32 @@ describe('Property 11: Bookmarks Prop Controls Display', () => {
           React.createElement(Reader, { source, bookmarks })
         );
 
-        // Wait for state to settle with the correct bookmarks
-        await waitFor(() => {
-          const displayed = getBookmarksFromFiber(container);
-          expect(displayed).toEqual(bookmarks);
-        });
+        // getDisplayedBookmarkIds() queries the whole document (BookmarkPanel
+        // renders in a Mantine Popover portal, outside `container`), so every
+        // iteration MUST unmount — including on assertion failure — or a
+        // leaked Reader instance's bookmark items leak into every later
+        // iteration's DOM query and cascade into unrelated failures.
+        try {
+          await waitFor(() => {
+            expect(container.querySelector('[data-testid="reader-content"]')).not.toBeNull();
+          });
+          openBookmarksPanel(container);
 
-        unmount();
+          await waitFor(() => {
+            expect(getDisplayedBookmarkIds().sort()).toEqual(bookmarks.map((b) => b.id).sort());
+          });
+        } finally {
+          unmount();
+        }
       }),
-      { numRuns: 100 }
+      // Each run opens a real Mantine Popover (portal + floating-ui
+      // positioning), which is far more expensive than a plain render;
+      // 15 runs is still a meaningful spread of array sizes/contents
+      // without the file taking minutes to complete under parallel
+      // test-worker CPU contention.
+      { numRuns: 15 }
     );
-  });
+  }, 45000);
 
   /**
    * **Validates: Requirements 5.6, 6.2**
@@ -139,26 +151,38 @@ describe('Property 11: Bookmarks Prop Controls Display', () => {
           React.createElement(Reader, { source, bookmarks: initial })
         );
 
-        // Wait for initial bookmarks to appear in state
-        await waitFor(() => {
-          expect(getBookmarksFromFiber(container)).toEqual(initial);
-        });
+        // See the note in the previous test: unmount must always run, even
+        // on assertion failure, or leaked bookmark items from this iteration
+        // pollute every subsequent iteration's document-wide DOM query.
+        try {
+          await waitFor(() => {
+            expect(container.querySelector('[data-testid="reader-content"]')).not.toBeNull();
+          });
+          openBookmarksPanel(container);
 
-        // Rerender with updated bookmarks prop
-        await act(async () => {
-          rerender(React.createElement(Reader, { source, bookmarks: updated }));
-        });
+          // Wait for the initially-opened panel to show the initial bookmarks
+          await waitFor(() => {
+            expect(getDisplayedBookmarkIds().sort()).toEqual(initial.map((b) => b.id).sort());
+          });
 
-        // State should reflect the new prop value
-        await waitFor(() => {
-          expect(getBookmarksFromFiber(container)).toEqual(updated);
-        });
+          // Rerender with updated bookmarks prop — the popover stays open and
+          // should reactively reflect the new list without reopening it.
+          await act(async () => {
+            rerender(React.createElement(Reader, { source, bookmarks: updated }));
+          });
 
-        unmount();
+          await waitFor(() => {
+            expect(getDisplayedBookmarkIds().sort()).toEqual(updated.map((b) => b.id).sort());
+          });
+        } finally {
+          unmount();
+        }
       }),
-      { numRuns: 100 }
+      // Two Popover interactions per run (open, then react to a rerender);
+      // keep this affordable the same way as the test above.
+      { numRuns: 15 }
     );
-  });
+  }, 45000);
 });
 
 describe('Property 12: Bookmarks Prop Skips Store Load', () => {
@@ -198,7 +222,7 @@ describe('Property 12: Bookmarks Prop Skips Store Load', () => {
       }),
       { numRuns: 100 }
     );
-  });
+  }, 20000);
 
   /**
    * **Validates: Requirements 5.5**

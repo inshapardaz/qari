@@ -11,11 +11,20 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import * as fc from 'fast-check';
-import { render, cleanup } from '@testing-library/react';
+import { render as rtlRender, cleanup, type RenderOptions } from '@testing-library/react';
 import React from 'react';
+import { MantineProvider } from '@mantine/core';
 
 import { DictionaryPopover } from '../DictionaryPopover';
 import type { DictionaryLookupResult } from '../../services/dictionary-service';
+
+/** DictionaryPopover now uses Mantine components, which require a MantineProvider ancestor. */
+function render(ui: React.ReactElement, options?: RenderOptions) {
+  return rtlRender(ui, {
+    wrapper: ({ children }) => React.createElement(MantineProvider, { env: 'test' }, children),
+    ...options,
+  });
+}
 
 describe('Feature: language-dictionaries, Property 16: Accessible aria-label contains looked-up word', () => {
   afterEach(() => {

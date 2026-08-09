@@ -7,6 +7,7 @@
  */
 
 import React from 'react';
+import { NavLink, Title } from '@mantine/core';
 import { useReaderContext } from './Reader';
 import { useTranslations, interpolate } from '../i18n';
 
@@ -44,8 +45,8 @@ export const ChapterIndex: React.FC<ChapterIndexProps> = ({ onChapterSelect }) =
       aria-label={t.tableOfContents}
       data-testid="chapter-index"
     >
-      <h2 className="ebook-reader__chapter-index-title">{t.chaptersTitle}</h2>
-      <ol className="ebook-reader__chapter-list" role="list">
+      <Title order={2} size="h5" className="ebook-reader__chapter-index-title">{t.chaptersTitle}</Title>
+      <ol className="ebook-reader__chapter-list" role="list" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         {chapters.map((chapter, index) => {
           const isCurrent = index === currentChapter;
           return (
@@ -54,15 +55,19 @@ export const ChapterIndex: React.FC<ChapterIndexProps> = ({ onChapterSelect }) =
               className={`ebook-reader__chapter-item${isCurrent ? ' ebook-reader__chapter-item--active' : ''}`}
               aria-current={isCurrent ? 'true' : undefined}
             >
-              <button
+              <NavLink
                 className="ebook-reader__chapter-button"
                 onClick={() => handleChapterClick(index)}
                 aria-label={interpolate(t.goToChapter, { title: chapter.title })}
                 data-testid={`chapter-item-${index}`}
-              >
-                <span className="ebook-reader__chapter-order">{chapter.order + 1}.</span>
-                <span className="ebook-reader__chapter-title">{chapter.title}</span>
-              </button>
+                active={isCurrent}
+                label={
+                  <>
+                    <span className="ebook-reader__chapter-order">{chapter.order + 1}.</span>{' '}
+                    <span className="ebook-reader__chapter-title">{chapter.title}</span>
+                  </>
+                }
+              />
             </li>
           );
         })}

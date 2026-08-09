@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
+// Required once by any app using the Reader — see the README's "Theming" section.
+import '@mantine/core/styles.css';
 import { Reader } from '../src/components/Reader';
 import { LOCALES } from '../src/i18n';
 import type { LocaleCode } from '../src/i18n';

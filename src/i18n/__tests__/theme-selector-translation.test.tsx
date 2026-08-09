@@ -6,6 +6,7 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
+import { MantineProvider } from '@mantine/core';
 import { ThemeSelector } from '../../components/ThemeSelector';
 import { ReaderContext, ReaderContextValue } from '../../components/Reader';
 import { TranslationContext, DEFAULT_TRANSLATIONS } from '../index';
@@ -52,16 +53,18 @@ function createMockContext(): ReaderContextValue {
 function renderWithTranslations(translations: TranslationStrings) {
   const ctx = createMockContext();
   return render(
-    <TranslationContext.Provider value={translations}>
-      <ReaderContext.Provider value={ctx}>
-        <ThemeSelector />
-      </ReaderContext.Provider>
-    </TranslationContext.Provider>
+    <MantineProvider env="test">
+      <TranslationContext.Provider value={translations}>
+        <ReaderContext.Provider value={ctx}>
+          <ThemeSelector />
+        </ReaderContext.Provider>
+      </TranslationContext.Provider>
+    </MantineProvider>
   );
 }
 
 describe('ThemeSelector translation integration', () => {
-  it('renders translated theme button labels from context', () => {
+  it('renders translated theme option labels from context', () => {
     const frenchTranslations: TranslationStrings = {
       ...DEFAULT_TRANSLATIONS,
       themeLight: 'Clair',
@@ -72,10 +75,10 @@ describe('ThemeSelector translation integration', () => {
 
     renderWithTranslations(frenchTranslations);
 
-    expect(screen.getByTestId('theme-btn-light')).toHaveTextContent('Clair');
-    expect(screen.getByTestId('theme-btn-dark')).toHaveTextContent('Sombre');
-    expect(screen.getByTestId('theme-btn-sepia')).toHaveTextContent('Sépia');
-    expect(screen.getByTestId('theme-btn-high-contrast')).toHaveTextContent('Contraste');
+    expect(screen.getByRole('radio', { name: 'Clair' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Sombre' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Sépia' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Contraste' })).toBeInTheDocument();
   });
 
   it('renders translated settingsTheme legend from context', () => {

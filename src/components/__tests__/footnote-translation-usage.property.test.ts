@@ -11,10 +11,19 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import * as fc from 'fast-check';
-import { render, cleanup } from '@testing-library/react';
+import { render as rtlRender, cleanup, type RenderOptions } from '@testing-library/react';
+import { MantineProvider } from '@mantine/core';
 import { TranslationContext, DEFAULT_TRANSLATIONS, interpolate } from '../../i18n';
 import { FootnotePopover } from '../FootnotePopover';
 import type { FootnoteRefSpan } from '../../models/book';
+
+/** FootnotePopover now uses Mantine components, which require a MantineProvider ancestor. */
+function render(ui: React.ReactElement, options?: RenderOptions) {
+  return rtlRender(ui, {
+    wrapper: ({ children }) => React.createElement(MantineProvider, { env: 'test' }, children),
+    ...options,
+  });
+}
 
 describe('Property 7: Translation strings are used for popover accessibility labels', () => {
   /**

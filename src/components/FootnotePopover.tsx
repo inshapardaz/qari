@@ -4,6 +4,7 @@
  */
 
 import React, { useEffect, useRef, useCallback } from 'react';
+import { Paper, ActionIcon, Group } from '@mantine/core';
 import type { InlineNode, FootnoteRefSpan } from '../models/book';
 import { useTranslations, interpolate } from '../i18n';
 
@@ -156,12 +157,6 @@ export const FootnotePopover: React.FC<FootnotePopoverProps> = ({
         left: `${anchorPosition.left}px`,
         transform: 'translateX(-50%)',
         zIndex: 1000,
-        background: 'var(--reader-bg, #ffffff)',
-        color: 'var(--reader-fg, #1a1a1a)',
-        border: '1px solid var(--reader-border, #e0e0e0)',
-        borderRadius: '8px',
-        boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-        padding: '12px 16px',
         maxWidth: '340px',
         maxHeight: '50vh',
         overflowY: 'auto',
@@ -171,39 +166,33 @@ export const FootnotePopover: React.FC<FootnotePopoverProps> = ({
     : { position: 'relative' as const };
 
   return (
-    <div
+    <Paper
       data-testid="footnote-popover"
       role="dialog"
       aria-label={interpolate(t.footnoteDialogLabel, { label: footnote.label })}
       style={style}
       ref={popoverRef}
       tabIndex={-1}
+      shadow="md"
+      withBorder
+      p="sm"
     >
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '4px' }}>
-        <button
-          type="button"
+      <Group justify="flex-end" mb={4}>
+        <ActionIcon
           data-testid="footnote-close"
           aria-label={t.footnoteClose}
           onClick={handleClose}
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            fontSize: '18px',
-            lineHeight: 1,
-            padding: '2px 6px',
-            borderRadius: '4px',
-            color: 'var(--reader-fg, #666)',
-            opacity: 0.7,
-          }}
+          variant="subtle"
+          color="gray"
+          size="sm"
         >
           ×
-        </button>
-      </div>
+        </ActionIcon>
+      </Group>
       <div data-testid="footnote-content">
         {footnote.content.map((node, i) => renderInlineNode(node, i))}
       </div>
-    </div>
+    </Paper>
   );
 };
 

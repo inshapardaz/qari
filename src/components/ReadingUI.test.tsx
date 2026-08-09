@@ -7,8 +7,17 @@
 
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent, type RenderOptions } from '@testing-library/react';
+import { MantineProvider } from '@mantine/core';
 import { ReaderContext, ReaderContextValue } from './Reader';
+
+/** These components now use Mantine components, which require a MantineProvider ancestor. */
+function render(ui: React.ReactElement, options?: RenderOptions) {
+  return rtlRender(ui, {
+    wrapper: ({ children }) => <MantineProvider env="test">{children}</MantineProvider>,
+    ...options,
+  });
+}
 import { ChapterIndex } from './ChapterIndex';
 import { PageNavigation } from './PageNavigation';
 import { ProgressBar } from './ProgressBar';
@@ -319,18 +328,22 @@ describe('ProgressBar', () => {
   it('renders a progress bar with correct aria attributes', () => {
     renderWithContext(<ProgressBar />);
 
-    const bar = screen.getByTestId('progress-bar');
-    expect(bar.getAttribute('role')).toBe('progressbar');
-    expect(bar.getAttribute('aria-valuenow')).toBe('15');
-    expect(bar.getAttribute('aria-valuemin')).toBe('0');
-    expect(bar.getAttribute('aria-valuemax')).toBe('100');
+    // Mantine's Progress places role/aria-value* on the inner Section (the
+    // value-bearing fill), not the outer Root (the track).
+    const fill = screen.getByTestId('progress-bar-fill');
+    expect(fill.getAttribute('role')).toBe('progressbar');
+    expect(fill.getAttribute('aria-valuenow')).toBe('15');
+    expect(fill.getAttribute('aria-valuemin')).toBe('0');
+    expect(fill.getAttribute('aria-valuemax')).toBe('100');
   });
 
   it('shows progress bar fill width matching progress percentage', () => {
     renderWithContext(<ProgressBar />);
 
+    // Mantine's Progress.Section sets its width via the
+    // --progress-section-size CSS variable rather than inline style.width.
     const fill = screen.getByTestId('progress-bar-fill');
-    expect(fill.style.width).toBe('15%');
+    expect(fill.style.getPropertyValue('--progress-section-size')).toBe('15%');
   });
 
   it('includes a direction toggle button', () => {

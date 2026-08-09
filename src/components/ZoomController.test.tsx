@@ -4,7 +4,8 @@
 
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent, act, type RenderOptions } from '@testing-library/react';
+import { MantineProvider } from '@mantine/core';
 import {
   ZoomController,
   ZoomControls,
@@ -12,6 +13,14 @@ import {
   computePinchZoom,
   snapZoom,
 } from './ZoomController';
+
+/** ZoomControls/ZoomController now use Mantine components, which require a MantineProvider ancestor. */
+function render(ui: React.ReactElement, options?: RenderOptions) {
+  return rtlRender(ui, {
+    wrapper: ({ children }) => <MantineProvider env="test">{children}</MantineProvider>,
+    ...options,
+  });
+}
 
 // Helper to test the hook in isolation
 function TestHookConsumer({

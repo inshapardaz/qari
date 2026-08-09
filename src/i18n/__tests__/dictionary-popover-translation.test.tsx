@@ -9,19 +9,26 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
+import { MantineProvider } from '@mantine/core';
 import { TranslationContext, DEFAULT_TRANSLATIONS } from '../index';
 import { DictionaryPopover } from '../../components/DictionaryPopover';
 import type { TranslationStrings } from '../types';
 
-/** Helper to render DictionaryPopover within a custom TranslationContext */
+/**
+ * Helper to render DictionaryPopover within a custom TranslationContext.
+ * DictionaryPopover now uses Mantine components, which require a
+ * MantineProvider ancestor.
+ */
 function renderWithTranslations(
   ui: React.ReactElement,
   translations: TranslationStrings
 ) {
   return render(
-    <TranslationContext.Provider value={translations}>
-      {ui}
-    </TranslationContext.Provider>
+    <MantineProvider env="test">
+      <TranslationContext.Provider value={translations}>
+        {ui}
+      </TranslationContext.Provider>
+    </MantineProvider>
   );
 }
 

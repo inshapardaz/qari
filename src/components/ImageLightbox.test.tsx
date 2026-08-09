@@ -7,6 +7,7 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { MantineProvider } from '@mantine/core';
 import { ImageLightbox } from './ImageLightbox';
 
 const defaultProps = {
@@ -17,7 +18,12 @@ const defaultProps = {
 
 function renderLightbox(props = {}) {
   const merged = { ...defaultProps, onClose: vi.fn(), ...props };
-  return { ...render(<ImageLightbox {...merged} />), onClose: merged.onClose };
+  return {
+    ...render(<ImageLightbox {...merged} />, {
+      wrapper: ({ children }) => <MantineProvider env="test">{children}</MantineProvider>,
+    }),
+    onClose: merged.onClose,
+  };
 }
 
 describe('ImageLightbox', () => {
@@ -73,7 +79,7 @@ describe('ImageLightbox', () => {
 
     it('calls onClose when backdrop is clicked directly', () => {
       const { onClose } = renderLightbox();
-      const backdrop = screen.getByTestId('image-lightbox');
+      const backdrop = screen.getByTestId('lightbox-backdrop');
       fireEvent.click(backdrop);
       expect(onClose).toHaveBeenCalledTimes(1);
     });

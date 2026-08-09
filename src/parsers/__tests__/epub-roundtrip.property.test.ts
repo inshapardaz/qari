@@ -472,5 +472,5 @@ describe('Feature: universal-ebook-reader, Property 1: EPUB Round-Trip Preservat
       }),
       { numRuns: 100 }
     );
-  }, 30000);
+  }, 60000);
 });

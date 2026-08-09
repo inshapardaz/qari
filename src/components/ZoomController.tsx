@@ -18,6 +18,7 @@ import React, {
   useEffect,
 } from 'react';
 
+import { ActionIcon, Group, Text } from '@mantine/core';
 import { clampZoom } from './Reader';
 import { useTranslations } from '../i18n';
 
@@ -173,41 +174,45 @@ export const ZoomControls: React.FC<ZoomControlsProps> = ({
 }) => {
   const t = useTranslations();
   return (
-    <div
+    <Group
       className="zoom-controls"
       data-testid="zoom-controls"
       role="toolbar"
       aria-label={t.zoomControls}
+      gap="xs"
     >
-      <button
+      <ActionIcon
         className="zoom-controls__btn zoom-controls__btn--out"
         data-testid="zoom-out-btn"
         onClick={onZoomOut}
         disabled={!canZoomOut}
         aria-label={`${t.zoomOut}. Current zoom ${zoom}%`}
         title={t.zoomOut}
+        variant="default"
       >
         −
-      </button>
-      <span
+      </ActionIcon>
+      <Text
         className="zoom-controls__level"
         data-testid="zoom-level"
         aria-live="polite"
         aria-atomic="true"
+        size="sm"
       >
         {zoom}%
-      </span>
-      <button
+      </Text>
+      <ActionIcon
         className="zoom-controls__btn zoom-controls__btn--in"
         data-testid="zoom-in-btn"
         onClick={onZoomIn}
         disabled={!canZoomIn}
         aria-label={`${t.zoomIn}. Current zoom ${zoom}%`}
         title={t.zoomIn}
+        variant="default"
       >
         +
-      </button>
-    </div>
+      </ActionIcon>
+    </Group>
   );
 };
 

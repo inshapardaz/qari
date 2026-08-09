@@ -5,6 +5,7 @@
  */
 
 import React, { useEffect, useRef, useCallback } from 'react';
+import { Paper, ActionIcon, Button, Loader, Text, Group } from '@mantine/core';
 import type { DictionaryLookupResult } from '../services/dictionary-service';
 import { useTranslations, interpolate } from '../i18n';
 
@@ -37,17 +38,6 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
   const t = useTranslations();
   const popoverRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
-
-  // Inject spinner keyframes once
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
-    const id = 'dictionary-popover-keyframes';
-    if (document.getElementById(id)) return;
-    const style = document.createElement('style');
-    style.id = id;
-    style.textContent = '@keyframes spin { to { transform: rotate(360deg); } }';
-    document.head.appendChild(style);
-  }, []);
 
   // Store the previously focused element when the popover becomes visible
   useEffect(() => {
@@ -176,12 +166,6 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
           left: `${anchorPosition.left}px`,
           transform: 'translateX(-50%)',
           zIndex: 1000,
-          background: 'var(--reader-bg, #ffffff)',
-          color: 'var(--reader-fg, #1a1a1a)',
-          border: '1px solid var(--reader-border, #e0e0e0)',
-          borderRadius: '8px',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-          padding: '12px 16px',
           maxWidth: '320px',
           maxHeight: '50vh',
           overflowY: 'auto',
@@ -191,7 +175,7 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
       : { position: 'relative' as const };
 
     return (
-      <div
+      <Paper
         className="dictionary-popover"
         data-testid="dictionary-popover"
         role="dialog"
@@ -199,18 +183,21 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
         style={style}
         ref={popoverRef}
         tabIndex={-1}
+        shadow="md"
+        withBorder
+        p="sm"
       >
-        <div
-          className="dictionary-popover__loading"
+        <Group
+          gap="xs"
           data-testid="dictionary-loading"
           role="status"
           aria-live="polite"
-          style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--reader-fg, #666)' }}
+          style={{ color: 'var(--reader-fg, #666)' }}
         >
-          <span style={{ display: 'inline-block', width: '14px', height: '14px', border: '2px solid currentColor', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+          <Loader size={14} />
           {t.dictionaryLoading}
-        </div>
-      </div>
+        </Group>
+      </Paper>
     );
   }
 
@@ -234,12 +221,6 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
         left: `${anchorPosition.left}px`,
         transform: 'translateX(-50%)',
         zIndex: 1000,
-        background: 'var(--reader-bg, #ffffff)',
-        color: 'var(--reader-fg, #1a1a1a)',
-        border: '1px solid var(--reader-border, #e0e0e0)',
-        borderRadius: '8px',
-        boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-        padding: '12px 16px',
         maxWidth: '340px',
         minWidth: '220px',
         maxHeight: '50vh',
@@ -250,7 +231,7 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
     : { position: 'relative' as const };
 
   return (
-    <div
+    <Paper
       className="dictionary-popover"
       data-testid="dictionary-popover"
       role="dialog"
@@ -258,42 +239,48 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
       style={style}
       ref={popoverRef}
       tabIndex={-1}
+      shadow="md"
+      withBorder
+      p="sm"
     >
       {/* Loading indicator when loading with existing result */}
       {loading && (
-        <div
-          className="dictionary-popover__loading"
+        <Group
+          gap="xs"
           data-testid="dictionary-loading"
           role="status"
           aria-live="polite"
-          style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', color: 'var(--reader-fg, #666)', opacity: 0.7, fontSize: '13px' }}
+          mb="xs"
+          style={{ color: 'var(--reader-fg, #666)', opacity: 0.7, fontSize: '13px' }}
         >
-          <span style={{ display: 'inline-block', width: '12px', height: '12px', border: '2px solid currentColor', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+          <Loader size={12} />
           {t.dictionaryLoading}
-        </div>
+        </Group>
       )}
 
       {/* Header */}
-      <div className="dictionary-popover__header" style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '8px', paddingBottom: '8px', borderBottom: '1px solid var(--reader-border, #e8e8e8)' }}>
-        <span className="dictionary-popover__word" data-testid="dictionary-word" style={{ fontWeight: 700, fontSize: '16px' }}>
+      <Group gap="xs" align="baseline" mb="xs" pb="xs" style={{ borderBottom: '1px solid var(--reader-border, #e8e8e8)' }}>
+        <Text className="dictionary-popover__word" data-testid="dictionary-word" fw={700} size="md">
           {word}
-        </span>
-        <span className="dictionary-popover__language" data-testid="dictionary-language" style={{ fontSize: '12px', opacity: 0.6 }}>
+        </Text>
+        <Text className="dictionary-popover__language" data-testid="dictionary-language" size="xs" c="dimmed">
           ({language})
-        </span>
+        </Text>
         {onClose && (
-          <button
-            type="button"
+          <ActionIcon
             className="dictionary-popover__close"
             data-testid="dictionary-close"
             aria-label={t.dictionaryClose}
             onClick={handleClose}
-            style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', lineHeight: 1, padding: '2px 6px', borderRadius: '4px', color: 'var(--reader-fg, #666)', opacity: 0.7 }}
+            variant="subtle"
+            color="gray"
+            size="sm"
+            ml="auto"
           >
             ×
-          </button>
+          </ActionIcon>
         )}
-      </div>
+      </Group>
 
       {/* Spell-check status */}
       {lookupResult.spellCheck && (
@@ -327,16 +314,16 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
                 >
                   {lookupResult.spellCheck.suggestions.map((suggestion, index) => (
                     <li key={index} className="dictionary-popover__suggestion-item">
-                      <button
-                        type="button"
+                      <Button
                         className="dictionary-popover__suggestion-btn"
                         data-testid={`suggestion-${index}`}
                         onClick={() => onSuggestionSelect?.(suggestion)}
                         aria-label={`Use suggestion: ${suggestion}`}
-                        style={{ padding: '2px 8px', fontSize: '12px', background: 'var(--reader-bg, #f3f4f6)', border: '1px solid var(--reader-border, #d1d5db)', borderRadius: '4px', cursor: 'pointer', color: 'var(--reader-fg, #374151)' }}
+                        variant="default"
+                        size="compact-xs"
                       >
                         {suggestion}
-                      </button>
+                      </Button>
                     </li>
                   ))}
                 </ul>
@@ -353,16 +340,17 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
             {t.dictionaryNoDictionary}
           </p>
           {fallbackLanguage && (
-            <button
-              type="button"
+            <Button
               className="dictionary-popover__fallback-btn"
               data-testid="dictionary-fallback-btn"
               aria-label={`Look up in ${fallbackLanguage} instead`}
               onClick={() => onFallbackLookup?.(fallbackLanguage)}
-              style={{ marginTop: '8px', padding: '4px 12px', fontSize: '13px', background: 'var(--reader-bg, #f3f4f6)', border: '1px solid var(--reader-border, #d1d5db)', borderRadius: '4px', cursor: 'pointer', color: 'var(--reader-fg, #374151)' }}
+              variant="default"
+              size="compact-sm"
+              mt="xs"
             >
               {interpolate(t.dictionaryTryIn, { language: fallbackLanguage })}
-            </button>
+            </Button>
           )}
         </div>
       )}
@@ -416,7 +404,7 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
           ))}
         </ul>
       )}
-    </div>
+    </Paper>
   );
 };
 

@@ -13,6 +13,7 @@
  */
 
 import React, { useState } from 'react';
+import { Modal, ActionIcon, Group, Text } from '@mantine/core';
 import { useTranslations } from '../i18n';
 
 // ---------------------------------------------------------------------------
@@ -54,30 +55,20 @@ export interface ImageLightboxProps {
 // Inline Styles
 // ---------------------------------------------------------------------------
 
-const overlayStyle: React.CSSProperties = {
-  position: 'fixed',
-  top: 0,
-  left: 0,
-  width: '100vw',
-  height: '100vh',
-  backgroundColor: 'rgba(0, 0, 0, 0.85)',
+const bodyStyle: React.CSSProperties = {
+  position: 'relative',
+  width: '100%',
+  height: '100%',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  zIndex: 99999,
 };
 
 const closeButtonStyle: React.CSSProperties = {
   position: 'absolute',
   top: '1rem',
   right: '1rem',
-  background: 'transparent',
-  border: 'none',
   color: '#fff',
-  fontSize: '1.5rem',
-  cursor: 'pointer',
-  padding: '0.5rem',
-  lineHeight: 1,
 };
 
 const controlsStyle: React.CSSProperties = {
@@ -91,17 +82,6 @@ const controlsStyle: React.CSSProperties = {
   background: 'rgba(0, 0, 0, 0.6)',
   borderRadius: '8px',
   padding: '0.5rem 1rem',
-};
-
-const zoomButtonStyle: React.CSSProperties = {
-  background: 'transparent',
-  border: '1px solid rgba(255, 255, 255, 0.4)',
-  color: '#fff',
-  fontSize: '1.2rem',
-  cursor: 'pointer',
-  padding: '0.25rem 0.75rem',
-  borderRadius: '4px',
-  lineHeight: 1,
 };
 
 const zoomLevelStyle: React.CSSProperties = {
@@ -141,71 +121,82 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({ src, alt, onClose 
   };
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Only close if the backdrop itself was clicked, not child elements
+    // Only close if the backdrop itself was clicked, not child elements.
+    // Mantine's Modal.Overlay sits behind the full-screen Content and isn't
+    // reachable by clicks in fullScreen mode, so this reproduces
+    // click-outside-to-close on the content's own background area.
     if (e.target === e.currentTarget) {
       onClose();
     }
   };
 
   return (
-    <div
-      role="dialog"
-      aria-label={t.lightboxLabel}
-      style={overlayStyle}
-      onClick={handleBackdropClick}
-      data-testid="image-lightbox"
-    >
-      {/* Close button */}
-      <button
-        onClick={onClose}
-        aria-label={t.lightboxClose}
-        style={closeButtonStyle}
-        data-testid="lightbox-close-btn"
+    <Modal.Root opened onClose={onClose} fullScreen radius={0}>
+      <Modal.Overlay />
+      <Modal.Content
+        data-testid="image-lightbox"
+        aria-label={t.lightboxLabel}
+        style={{ backgroundColor: 'rgba(0, 0, 0, 0.85)' }}
       >
-        ✕
-      </button>
+      <Modal.Body style={{ height: '100%', padding: 0 }}>
+      <div style={bodyStyle} onClick={handleBackdropClick} data-testid="lightbox-backdrop">
+        {/* Close button */}
+        <ActionIcon
+          onClick={onClose}
+          aria-label={t.lightboxClose}
+          style={closeButtonStyle}
+          data-testid="lightbox-close-btn"
+          variant="subtle"
+          color="gray"
+          size="lg"
+        >
+          ✕
+        </ActionIcon>
 
-      {/* Zoom controls */}
-      <div style={controlsStyle} role="toolbar" aria-label={t.zoomControls}>
-        <button
-          onClick={handleZoomOut}
-          disabled={!canZoomOut}
-          aria-label={t.lightboxZoomOut}
-          data-testid="lightbox-zoom-out-btn"
-          style={zoomButtonStyle}
-        >
-          −
-        </button>
-        <span
-          aria-live="polite"
-          aria-atomic="true"
-          data-testid="lightbox-zoom-level"
-          style={zoomLevelStyle}
-        >
-          {zoomLevel}%
-        </span>
-        <button
-          onClick={handleZoomIn}
-          disabled={!canZoomIn}
-          aria-label={t.lightboxZoomIn}
-          data-testid="lightbox-zoom-in-btn"
-          style={zoomButtonStyle}
-        >
-          +
-        </button>
+        {/* Zoom controls */}
+        <Group style={controlsStyle} role="toolbar" aria-label={t.zoomControls} gap="sm">
+          <ActionIcon
+            onClick={handleZoomOut}
+            disabled={!canZoomOut}
+            aria-label={t.lightboxZoomOut}
+            data-testid="lightbox-zoom-out-btn"
+            variant="default"
+          >
+            −
+          </ActionIcon>
+          <Text
+            aria-live="polite"
+            aria-atomic="true"
+            data-testid="lightbox-zoom-level"
+            style={zoomLevelStyle}
+          >
+            {zoomLevel}%
+          </Text>
+          <ActionIcon
+            onClick={handleZoomIn}
+            disabled={!canZoomIn}
+            aria-label={t.lightboxZoomIn}
+            data-testid="lightbox-zoom-in-btn"
+            variant="default"
+          >
+            +
+          </ActionIcon>
+        </Group>
+
+        {/* Image */}
+        <img
+          src={src}
+          alt={alt}
+          style={{
+            ...imageStyle,
+            transform: `scale(${zoomLevel / 100})`,
+          }}
+          data-testid="lightbox-image"
+        />
       </div>
-
-      {/* Image */}
-      <img
-        src={src}
-        alt={alt}
-        style={{
-          ...imageStyle,
-          transform: `scale(${zoomLevel / 100})`,
-        }}
-        data-testid="lightbox-image"
-      />
-    </div>
+      </Modal.Body>
+      </Modal.Content>
+    </Modal.Root>
   );
 };
 

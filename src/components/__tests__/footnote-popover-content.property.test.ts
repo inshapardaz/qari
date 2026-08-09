@@ -10,11 +10,20 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import * as fc from 'fast-check';
-import { render } from '@testing-library/react';
+import { render as rtlRender, type RenderOptions } from '@testing-library/react';
 import React from 'react';
+import { MantineProvider } from '@mantine/core';
 
 import { FootnotePopover } from '../../components/FootnotePopover';
 import type { InlineNode, FootnoteRefSpan } from '../../models/book';
+
+/** FootnotePopover now uses Mantine components, which require a MantineProvider ancestor. */
+function render(ui: React.ReactElement, options?: RenderOptions) {
+  return rtlRender(ui, {
+    wrapper: ({ children }) => React.createElement(MantineProvider, { env: 'test' }, children),
+    ...options,
+  });
+}
 
 /**
  * Generator for a simple alphanumeric string to avoid special characters

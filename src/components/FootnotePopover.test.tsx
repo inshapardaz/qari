@@ -5,10 +5,19 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent, act, type RenderOptions } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { MantineProvider } from '@mantine/core';
 import { FootnotePopover } from './FootnotePopover';
 import type { FootnoteRefSpan, InlineNode } from '../models/book';
+
+/** FootnotePopover now uses Mantine components, which require a MantineProvider ancestor. */
+function render(ui: React.ReactElement, options?: RenderOptions) {
+  return rtlRender(ui, {
+    wrapper: ({ children }) => <MantineProvider env="test">{children}</MantineProvider>,
+    ...options,
+  });
+}
 
 const sampleFootnote: FootnoteRefSpan = {
   type: 'footnote-ref',
@@ -40,32 +49,32 @@ const defaultRenderInlineNode = (node: InlineNode, index: number) => {
 describe('FootnotePopover', () => {
   describe('rendering nothing when inactive', () => {
     it('renders nothing when footnote is null', () => {
-      const { container } = render(
+      render(
         <FootnotePopover footnote={null} renderInlineNode={defaultRenderInlineNode} />
       );
-      expect(container.firstChild).toBeNull();
+      expect(screen.queryByTestId('footnote-popover')).toBeNull();
     });
 
     it('renders nothing when visible is false', () => {
-      const { container } = render(
+      render(
         <FootnotePopover
           footnote={sampleFootnote}
           visible={false}
           renderInlineNode={defaultRenderInlineNode}
         />
       );
-      expect(container.firstChild).toBeNull();
+      expect(screen.queryByTestId('footnote-popover')).toBeNull();
     });
 
     it('renders nothing when both footnote is null and visible is false', () => {
-      const { container } = render(
+      render(
         <FootnotePopover
           footnote={null}
           visible={false}
           renderInlineNode={defaultRenderInlineNode}
         />
       );
-      expect(container.firstChild).toBeNull();
+      expect(screen.queryByTestId('footnote-popover')).toBeNull();
     });
   });
 

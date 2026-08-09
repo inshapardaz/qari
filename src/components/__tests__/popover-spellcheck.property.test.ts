@@ -13,11 +13,20 @@
 
 import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
-import { render } from '@testing-library/react';
+import { render as rtlRender, type RenderOptions } from '@testing-library/react';
 import React from 'react';
+import { MantineProvider } from '@mantine/core';
 
 import { DictionaryPopover } from '../../components/DictionaryPopover';
 import type { DictionaryLookupResult } from '../../services/dictionary-service';
+
+/** DictionaryPopover now uses Mantine components, which require a MantineProvider ancestor. */
+function render(ui: React.ReactElement, options?: RenderOptions) {
+  return rtlRender(ui, {
+    wrapper: ({ children }) => React.createElement(MantineProvider, { env: 'test' }, children),
+    ...options,
+  });
+}
 
 /**
  * Generator for non-empty word strings.

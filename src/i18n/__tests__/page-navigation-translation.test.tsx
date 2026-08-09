@@ -10,6 +10,7 @@
 import React from 'react';
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { MantineProvider } from '@mantine/core';
 import { TranslationContext, DEFAULT_TRANSLATIONS } from '../index';
 import { PageNavigation } from '../../components/PageNavigation';
 import { ReaderContext } from '../../components/Reader';
@@ -79,11 +80,13 @@ function renderWithTranslationsAndContext(
   };
 
   return render(
-    <TranslationContext.Provider value={translations}>
-      <ReaderContext.Provider value={contextValue}>
-        {ui}
-      </ReaderContext.Provider>
-    </TranslationContext.Provider>
+    <MantineProvider env="test">
+      <TranslationContext.Provider value={translations}>
+        <ReaderContext.Provider value={contextValue}>
+          {ui}
+        </ReaderContext.Provider>
+      </TranslationContext.Provider>
+    </MantineProvider>
   );
 }
 
