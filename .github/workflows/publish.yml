@@ -9,6 +9,7 @@ on:
       - main
 
 permissions:
+  id-token: write
   contents: read
 
 jobs:
@@ -82,7 +83,7 @@ jobs:
           if npm view "$PKG_NAME@$PKG_VERSION" version >/dev/null 2>&1; then
             echo "Version $PKG_VERSION is already published. Bump the version in package.json to publish. Skipping."
           else
-            npm publish --tag latest --provenance
+            npm publish --tag latest --provenance --access public
           fi
 
       - name: Publish dev version (other branches)
@@ -93,4 +94,4 @@ jobs:
           BASE_VERSION=$(node -p "require('./package.json').version.split('-')[0]")
           DEV_VERSION="${BASE_VERSION}-dev.${{ github.run_number }}"
           npm version "$DEV_VERSION" --no-git-tag-version --allow-same-version
-          npm publish --tag dev --provenance
+          npm publish --tag dev --provenance --access public
