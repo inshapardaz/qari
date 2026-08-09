@@ -43,8 +43,11 @@ jobs:
     needs: build-and-test
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    concurrency:
+      group: npm-publish-main
+      cancel-in-progress: false
     permissions:
-      contents: read
+      contents: write
       id-token: write
     steps:
       - name: Checkout
@@ -70,6 +73,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Bump patch version (main)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          npm version patch -m "chore(release): v%s [skip ci]"
+
+      - name: Push version bump
+        if: github.ref == 'refs/heads/main'
+        run: git push origin HEAD:main --follow-tags
+
       - name: Build
         run: npm run build
 
@@ -81,7 +95,7 @@ jobs:
           PKG_NAME=$(node -p "require('./package.json').name")
           PKG_VERSION=$(node -p "require('./package.json').version")
           if npm view "$PKG_NAME@$PKG_VERSION" version >/dev/null 2>&1; then
-            echo "Version $PKG_VERSION is already published. Bump the version in package.json to publish. Skipping."
+            echo "Version $PKG_VERSION is already published. Skipping."
           else
             npm publish --tag latest --provenance --access public
           fi
