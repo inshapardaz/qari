@@ -49,6 +49,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verify NPM_TOKEN is configured
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "::error::The NPM_TOKEN secret is empty or not visible to this workflow."
+            echo "::error::Add it under Settings > Secrets and variables > Actions > 'New repository secret' on this repo (not an Environment, Dependabot, or Codespaces secret), named exactly NPM_TOKEN."
+            exit 1
+          fi
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
