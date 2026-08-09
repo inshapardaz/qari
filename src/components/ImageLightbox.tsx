@@ -49,6 +49,13 @@ export interface ImageLightboxProps {
   alt: string;
   /** Callback invoked when the lightbox should close. */
   onClose: () => void;
+  /**
+   * Element to portal the modal into instead of `document.body`. Pass the
+   * reader's own root element so the lightbox stays visible when the reader
+   * is the fullscreened element — content portaled outside a fullscreen
+   * element's subtree renders behind it regardless of z-index.
+   */
+  portalTarget?: HTMLElement;
 }
 
 // ---------------------------------------------------------------------------
@@ -105,7 +112,7 @@ const imageStyle: React.CSSProperties = {
 // Component
 // ---------------------------------------------------------------------------
 
-export const ImageLightbox: React.FC<ImageLightboxProps> = ({ src, alt, onClose }) => {
+export const ImageLightbox: React.FC<ImageLightboxProps> = ({ src, alt, onClose, portalTarget }) => {
   const t = useTranslations();
   const [zoomLevel, setZoomLevel] = useState<number>(DEFAULT_ZOOM);
 
@@ -131,7 +138,7 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({ src, alt, onClose 
   };
 
   return (
-    <Modal.Root opened onClose={onClose} fullScreen radius={0}>
+    <Modal.Root opened onClose={onClose} fullScreen radius={0} portalProps={{ target: portalTarget }}>
       <Modal.Overlay />
       <Modal.Content
         data-testid="image-lightbox"

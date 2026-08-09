@@ -613,6 +613,7 @@ export const Reader: React.FC<ReaderProps> = ({
   const contentRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
+  const lastPointerPositionRef = useRef<{ x: number; y: number } | null>(null);
 
   // Refs for services that persist across renders
   const themeEngineRef = useRef<ThemeEngine | null>(null);
@@ -635,6 +636,31 @@ export const Reader: React.FC<ReaderProps> = ({
     () => mergeThemeOverrides(DEFAULT_MANTINE_THEME, mantineTheme ?? {}),
     [mantineTheme]
   );
+  // Mantine's Menu/Popover/Modal/Select portal into document.body by default.
+  // When the reader itself is the fullscreened element (via the Fullscreen
+  // API), anything portaled outside of it renders behind it — the browser's
+  // fullscreen top layer sits above everything not inside the fullscreen
+  // element's own subtree, regardless of z-index. Portaling into the
+  // reader's own root keeps these dropdowns/dialogs inside that subtree so
+  // they stay visible in fullscreen too.
+  const mantinePortalTarget = rootRef.current ?? undefined;
+
+  // ---------------------------------------------------------------------------
+  // Track the pointer's last known position (ref only, no re-render) so we
+  // can tell whether it's over the viewport at any given moment without
+  // relying on `mouseenter`/`mouseleave` events, which don't fire just
+  // because an overlay covering the viewport was removed from the DOM. See
+  // the hover-resync effect below.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      lastPointerPositionRef.current = { x: e.clientX, y: e.clientY };
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+    };
+  }, []);
 
   // ---------------------------------------------------------------------------
   // Load the Urdu/Arabic web font CSS (only registers @font-face rules;
@@ -1308,6 +1334,47 @@ export const Reader: React.FC<ReaderProps> = ({
   }, [goToNextPage, goToPrevPage, state.direction]);
 
   // ---------------------------------------------------------------------------
+  // Re-sync hover state when an overlay covering the viewport closes.
+  // The chapter menu, bookmarks popover, settings dialog, dictionary/footnote
+  // popovers, and image lightbox can all render on top of the viewport while
+  // open, which makes the browser fire `mouseleave` on it (the pointer is now
+  // over the overlay, not the viewport) — correctly hiding the hover nav
+  // arrows. But removing that overlay on close doesn't make the browser fire
+  // a fresh `mouseenter` just because the pointer is suddenly exposed again
+  // without moving — this is true no matter how the overlay closed (a button
+  // inside it, Escape, or clicking outside of it), so `hovered` stays stuck
+  // at `false` and the arrows never come back until the mouse physically
+  // moves. Re-derive it directly from the last known pointer position
+  // whenever an overlay finishes closing, instead of waiting for an event
+  // that will never come.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (
+      chapterMenuOpen ||
+      bookmarksPanelOpen ||
+      settingsOpen ||
+      lightboxImage ||
+      activeFootnote ||
+      dictionaryLoading ||
+      dictionaryResult
+    ) {
+      return;
+    }
+    const pos = lastPointerPositionRef.current;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (
+      pos &&
+      rect &&
+      pos.x >= rect.left &&
+      pos.x <= rect.right &&
+      pos.y >= rect.top &&
+      pos.y <= rect.bottom
+    ) {
+      setHovered(true);
+    }
+  }, [chapterMenuOpen, bookmarksPanelOpen, settingsOpen, lightboxImage, activeFootnote, dictionaryLoading, dictionaryResult]);
+
+  // ---------------------------------------------------------------------------
   // Context value (memoized)
   // ---------------------------------------------------------------------------
   // Bookmark state management callbacks (exposed via context)
@@ -1473,6 +1540,7 @@ export const Reader: React.FC<ReaderProps> = ({
             onChange={setChapterMenuOpen}
             position={t.uiDirection === 'rtl' ? 'bottom-end' : 'bottom-start'}
             withinPortal
+            portalProps={{ target: mantinePortalTarget }}
             shadow="md"
             width={240}
           >
@@ -1521,6 +1589,7 @@ export const Reader: React.FC<ReaderProps> = ({
                 onChange={setBookmarksPanelOpen}
                 position={t.uiDirection === 'rtl' ? 'bottom-start' : 'bottom-end'}
                 withinPortal
+                portalProps={{ target: mantinePortalTarget }}
                 shadow="md"
                 width={280}
               >
@@ -1575,6 +1644,7 @@ export const Reader: React.FC<ReaderProps> = ({
             onClose={() => setSettingsOpen(false)}
             title={t.readingSettings}
             size="xs"
+            portalProps={{ target: mantinePortalTarget }}
           >
             <div dir={t.uiDirection}>
               <div style={{ marginBottom: '1rem' }}>
@@ -1618,7 +1688,7 @@ export const Reader: React.FC<ReaderProps> = ({
                   }}
                   data={fontOptions.map(opt => ({ value: opt.family, label: t.fontNames[opt.name] ?? opt.name }))}
                   allowDeselect={false}
-                  comboboxProps={{ withinPortal: true }}
+                  comboboxProps={{ withinPortal: true, portalProps: { target: mantinePortalTarget } }}
                   styles={{ input: { fontFamily: selectedFontFamily } }}
                 />
               </div>
@@ -1924,6 +1994,7 @@ export const Reader: React.FC<ReaderProps> = ({
             src={lightboxImage.src}
             alt={lightboxImage.alt}
             onClose={() => setLightboxImage(null)}
+            portalTarget={mantinePortalTarget}
           />
         )}
         </TranslationContext.Provider>
