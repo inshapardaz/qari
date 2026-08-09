@@ -390,7 +390,28 @@ import { DEFAULT_TRANSLATIONS } from 'qari/i18n';
 console.log(DEFAULT_TRANSLATIONS);
 ```
 
-The full set of keys covers: Reader chrome, settings dialog, dictionary popover, bookmark panel, chapter index, and zoom controls. See `src/i18n/types.ts` for the complete interface.
+The full set of keys covers: Reader chrome, settings dialog, dictionary popover, bookmark panel, chapter index, zoom controls, and font selector display names (`fontNames`). See `src/i18n/types.ts` for the complete interface.
+
+### Built-in Locales
+
+Complete translations ship for English, Urdu, and French as separate files under `src/i18n/locales`:
+
+```tsx
+import { Reader } from 'qari/components/Reader';
+import { LOCALES } from 'qari/i18n';
+
+<Reader source={source} translations={LOCALES.ur} />
+```
+
+```tsx
+import { en, ur, fr } from 'qari/i18n';
+```
+
+Each locale is a complete `TranslationStrings` object, including a `fontNames` map that gives every built-in `FontOption` (Serif/Sans/Mono plus the full [urdu-web-fonts](https://github.com/inshapardaz/urdu-web-fonts) collection) a localized display label in the font selector — e.g. Urdu renders "Serif" as "سیرف" and typeface names like "Jameel Noori Nastaleeq" in Urdu script. `fontNames` is deep-merged with the defaults, so a partial `translations` override only needs to include the font names it wants to change:
+
+```tsx
+<Reader source={source} translations={{ fontNames: { Serif: 'My Serif Label' } }} />
+```
 
 ### Using Outside the Reader
 

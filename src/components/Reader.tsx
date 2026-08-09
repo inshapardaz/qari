@@ -1326,7 +1326,13 @@ export const Reader: React.FC<ReaderProps> = ({
   // Resolved translations (memoized merge of defaults + overrides)
   // ---------------------------------------------------------------------------
   const resolvedTranslations = useMemo(
-    () => ({ ...DEFAULT_TRANSLATIONS, ...translations }),
+    () => ({
+      ...DEFAULT_TRANSLATIONS,
+      ...translations,
+      // Deep-merge fontNames so a partial override doesn't drop the
+      // built-in font name translations it didn't mention.
+      fontNames: { ...DEFAULT_TRANSLATIONS.fontNames, ...translations?.fontNames },
+    }),
     [translations]
   );
 
@@ -1698,7 +1704,7 @@ export const Reader: React.FC<ReaderProps> = ({
                 >
                   {fontOptions.map(opt => (
                     <option key={opt.family} value={opt.family} style={{ fontFamily: opt.family }}>
-                      {opt.name}
+                      {t.fontNames[opt.name] ?? opt.name}
                     </option>
                   ))}
                 </select>

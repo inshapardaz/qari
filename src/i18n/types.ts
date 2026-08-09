@@ -74,4 +74,10 @@ export interface TranslationStrings {
   // Footnote popover
   footnoteClose: string;
   footnoteDialogLabel: string; // supports {label}
+
+  /**
+   * Localized display labels for font selector entries (FontOption.name -> label).
+   * Fonts without an entry fall back to their FontOption.name as-is.
+   */
+  fontNames: Record<string, string>;
 }
