@@ -1459,6 +1459,7 @@ export const Reader: React.FC<ReaderProps> = ({
 
             {chapterMenuOpen && (
               <div
+                data-testid="chapter-menu-panel"
                 onClick={(e) => e.stopPropagation()}
                 onMouseDown={(e) => e.stopPropagation()}
                 style={{
@@ -1549,12 +1550,15 @@ export const Reader: React.FC<ReaderProps> = ({
 
               {bookmarksPanelOpen && (
                 <div
+                  data-testid="bookmarks-panel"
                   onClick={(e) => e.stopPropagation()}
                   onMouseDown={(e) => e.stopPropagation()}
                   style={{
                     position: 'absolute',
                     top: '100%',
-                    ...(state.direction === 'rtl' ? { left: '0' } : { right: '0' }),
+                    // Anchor to the same side the button sits on in the header
+                    // (follows UI direction, not the book's content direction).
+                    ...(t.uiDirection === 'rtl' ? { left: '0' } : { right: '0' }),
                     marginTop: '0.5rem',
                     background: 'var(--reader-bg, #fff)',
                     border: '1px solid var(--reader-border, #e0e0e0)',
