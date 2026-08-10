@@ -1,6 +1,6 @@
 {
   "name": "@inshapardaz/qari",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Universal Ebook Reader - Framework-agnostic ebook reading component",
   "repository": {
     "type": "git",
