@@ -148,6 +148,29 @@ import { EbookReader } from 'qari/wrappers/vue/EbookReader';
 | EPUB     | `{ type: 'epub', data: ArrayBuffer }`                 |
 | URL      | `{ type: 'url', url: 'https://...' }`                |
 | Markdown | `{ type: 'markdown', content: '# Title\n## Ch1...' }`|
+| PDF      | `{ type: 'pdf', data: ArrayBuffer }`                  |
+
+### PDF Support
+
+```tsx
+<Reader source={{ type: 'pdf', data: pdfArrayBuffer }} />
+```
+
+PDFs are fixed-layout documents, not reflowable text like EPUB/Markdown. Each page is rasterized to an image (via [PDF.js](https://mozilla.github.io/pdf.js/)) and shown as its own page — one page in, one page out, matching the original PDF's real layout exactly. `data` also accepts a `File`.
+
+Trade-offs versus EPUB/Markdown, inherent to rendering pages as images:
+- No dictionary word lookup or footnote popovers on PDF content — there's no selectable text, just a raster image.
+- Bookmarks and chapter/page navigation work per-page, but bookmark position within a page isn't meaningful (a PDF page is always a single "position").
+- `columns={2}` isn't useful for PDFs (each page is already a complete image); it's ignored in practice since each page is its own single-page chapter.
+
+PDF rendering uses a Web Worker (via `pdfjs-dist`, loaded lazily so it doesn't add to your bundle unless you actually load a PDF). By default the worker script loads from a version-pinned jsDelivr CDN URL; override it with `pdfWorkerSrc` if you need to self-host it (offline use, strict CSP):
+
+```tsx
+<Reader
+  source={{ type: 'pdf', data: pdfArrayBuffer }}
+  pdfWorkerSrc="/assets/pdf.worker.min.mjs"
+/>
+```
 
 ## Bookmark Storage
 
@@ -538,6 +561,7 @@ When set to `"auto"`, the reader detects direction by analyzing character freque
 | `wordSpacing` | `number` | `0` | Word spacing in pixels (0-10) |
 | `margin` | `number` | `32` | Content margin in pixels (0-100) |
 | `columns` | `1 \| 2` | `1` | Number of text columns |
+| `pdfWorkerSrc` | `string` | jsDelivr CDN URL | Override the PDF.js worker script URL (only relevant for `{ type: 'pdf' }` sources) |
 | `zoom` | `number` | `100` | Zoom level (50-300, snaps to 10%) |
 | `translations` | `Partial<TranslationStrings>` | English defaults | UI string overrides for i18n |
 | `direction` | `'ltr' \| 'rtl' \| 'auto'` | `'auto'` | Text direction override |

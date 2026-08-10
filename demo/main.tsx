@@ -6,7 +6,7 @@ import { Reader } from '../src/components/Reader';
 import { LOCALES } from '../src/i18n';
 import type { LocaleCode } from '../src/i18n';
 
-type SourceType = 'markdown' | 'epub' | 'url';
+type SourceType = 'markdown' | 'epub' | 'pdf' | 'url';
 
 // ---------------------------------------------------------------------------
 // UI translations for demo language selector — built into the library
@@ -172,6 +172,10 @@ function App() {
       const buffer = await file.arrayBuffer();
       setSource({ type: 'epub', data: buffer });
       setSourceLabel(file.name);
+    } else if (name.endsWith('.pdf')) {
+      const buffer = await file.arrayBuffer();
+      setSource({ type: 'pdf', data: buffer });
+      setSourceLabel(file.name);
     } else if (name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.txt')) {
       const text = await file.text();
       setSource({ type: 'markdown', content: text });
@@ -261,7 +265,7 @@ function App() {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".epub,.md,.markdown,.txt"
+              accept=".epub,.pdf,.md,.markdown,.txt"
               onChange={handleFileSelect}
               style={{ fontSize: '0.9rem' }}
             />

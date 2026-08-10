@@ -33,7 +33,8 @@ export type ContentNode =
   | ImageNode
   | CodeBlockNode
   | ListNode
-  | OpaqueNode; // For unsupported EPUB elements
+  | OpaqueNode // For unsupported EPUB elements
+  | PdfPageNode;
 
 export interface ParagraphNode {
   type: 'paragraph';
@@ -73,6 +74,21 @@ export interface OpaqueNode {
   originalTag: string;
   rawContent: string; // Preserved verbatim for round-trip
   attributes: Record<string, string>;
+}
+
+/**
+ * A single rasterized PDF page, rendered to an image (data URL) at parse
+ * time. Unlike other content nodes, this has no extractable/selectable
+ * text — dictionary lookup and footnote popovers don't apply to it.
+ */
+export interface PdfPageNode {
+  type: 'pdf-page';
+  src: string; // data URL of the rendered page raster; empty while pending
+  pageNumber: number; // 1-based page number within the source PDF
+  width: number; // raster (or, while pending, estimated) width in px
+  height: number; // raster (or, while pending, estimated) height in px
+  /** True until this page's raster has actually been rendered. */
+  pending?: boolean;
 }
 
 export type InlineNode =

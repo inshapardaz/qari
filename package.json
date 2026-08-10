@@ -43,7 +43,8 @@
   "dependencies": {
     "jszip": "^3.10.1",
     "markdown-it": "^14.2.0",
-    "nspell": "^2.1.5"
+    "nspell": "^2.1.5",
+    "pdfjs-dist": "^4.10.38"
   },
   "peerDependencies": {
     "@mantine/core": "^8.0.0",

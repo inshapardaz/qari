@@ -1,0 +1,141 @@
+/**
+ * Integration test: loading a `{ type: 'pdf' }` source renders each PDF page
+ * as its own single-page "chapter" containing a `pdf-page` image, and page
+ * navigation (via the chapter menu) moves between rendered pages.
+ *
+ * `pdfjs-dist` and canvas rendering are mocked — see pdf-parser.test.ts for
+ * why (jsdom has no real PDF parsing or 2D canvas support).
+ */
+
+import React from 'react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { Reader } from '../Reader';
+import type { ReaderSource } from '../Reader';
+
+function createFakePdfDocument(numPages: number) {
+  return {
+    numPages,
+    getPage: () =>
+      Promise.resolve({
+        getViewport: ({ scale }: { scale: number }) => ({ width: 100 * scale, height: 200 * scale }),
+        render: () => ({ promise: Promise.resolve() }),
+      }),
+    getMetadata: () => Promise.resolve({ info: { Title: 'Test PDF' } }),
+  };
+}
+
+vi.mock('pdfjs-dist', () => ({
+  GlobalWorkerOptions: { workerSrc: '' },
+  getDocument: vi.fn(),
+}));
+
+describe('Reader with a PDF source', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({} as unknown as RenderingContext);
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockImplementation(
+      function (this: HTMLCanvasElement) {
+        return `data:image/png;base64,fake-${this.width}x${this.height}`;
+      }
+    );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('renders the first PDF page as an image', async () => {
+    const pdfjsLib = await import('pdfjs-dist');
+    (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+      promise: Promise.resolve(createFakePdfDocument(2)),
+    });
+
+    const source: ReaderSource = { type: 'pdf', data: new ArrayBuffer(8) };
+    render(<Reader source={source} />);
+
+    const page = await screen.findByTestId('pdf-page');
+    const img = page.querySelector('img');
+    expect(img).not.toBeNull();
+    expect(img?.getAttribute('src')).toMatch(/^data:image\/png;base64,/);
+    expect(img?.getAttribute('alt')).toBe('Page 1');
+  });
+
+  it('does not open the image lightbox when a PDF page is clicked', async () => {
+    const pdfjsLib = await import('pdfjs-dist');
+    (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+      promise: Promise.resolve(createFakePdfDocument(1)),
+    });
+
+    const source: ReaderSource = { type: 'pdf', data: new ArrayBuffer(8) };
+    render(<Reader source={source} />);
+
+    const page = await screen.findByTestId('pdf-page');
+    const img = page.querySelector('img')!;
+    fireEvent.click(img);
+
+    expect(screen.queryByTestId('image-lightbox')).toBeNull();
+  });
+
+  it('navigates to the next PDF page via the chapter menu', async () => {
+    const pdfjsLib = await import('pdfjs-dist');
+    (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+      promise: Promise.resolve(createFakePdfDocument(2)),
+    });
+
+    const source: ReaderSource = { type: 'pdf', data: new ArrayBuffer(8) };
+    render(<Reader source={source} />);
+
+    await screen.findByTestId('pdf-page');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Table of contents' }));
+    await screen.findByTestId('chapter-menu-panel');
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Page 2' }));
+
+    await waitFor(() => {
+      const img = screen.getByTestId('pdf-page').querySelector('img');
+      expect(img?.getAttribute('alt')).toBe('Page 2');
+    });
+  });
+
+  it('accepts a File as the pdf data source', async () => {
+    const pdfjsLib = await import('pdfjs-dist');
+    (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+      promise: Promise.resolve(createFakePdfDocument(1)),
+    });
+
+    const file = new File([new ArrayBuffer(8)], 'test.pdf', { type: 'application/pdf' });
+    const source: ReaderSource = { type: 'pdf', data: file };
+    render(<Reader source={source} />);
+
+    await screen.findByTestId('pdf-page');
+  });
+
+  it('shows a placeholder for a page beyond the initial batch, then renders it once it loads', async () => {
+    // Default initialPageCount is 3, so page 5 starts out pending.
+    const pdfjsLib = await import('pdfjs-dist');
+    (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+      promise: Promise.resolve(createFakePdfDocument(5)),
+    });
+
+    const source: ReaderSource = { type: 'pdf', data: new ArrayBuffer(8) };
+    render(<Reader source={source} />);
+
+    await screen.findByTestId('pdf-page');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Table of contents' }));
+    await screen.findByTestId('chapter-menu-panel');
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Page 5' }));
+
+    // Navigating to a still-pending page triggers an on-demand render for
+    // it, replacing the placeholder with the real image (the mocked render
+    // resolves near-instantly, so the placeholder itself isn't reliably
+    // observable here — see pdf-parser.test.ts for the pending-state
+    // assertion on the parser's own output, which is timing-independent).
+    await waitFor(() => {
+      const img = screen.getByTestId('pdf-page').querySelector('img');
+      expect(img?.getAttribute('alt')).toBe('Page 5');
+      expect(img?.getAttribute('src')).toMatch(/^data:image\/png;base64,/);
+    });
+  });
+});

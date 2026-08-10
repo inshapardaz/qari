@@ -51,6 +51,8 @@ function extractContentNodeText(node: ContentNode): string {
       return extractInlineText(node.children);
     case 'image':
       return node.alt ?? '';
+    case 'pdf-page':
+      return '';
     case 'code-block':
       return node.content;
     case 'list':

@@ -74,6 +74,7 @@ import type { DictionaryLookupResult } from '../services/dictionary-service';
 import { EPUBParserImpl } from '../parsers/epub-parser';
 import { MarkdownParserImpl } from '../parsers/markdown-parser';
 import { loadFromUrl } from '../parsers/url-loader';
+import type { PDFParserImpl } from '../parsers/pdf-parser';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -82,8 +83,9 @@ import { loadFromUrl } from '../parsers/url-loader';
 export type EpubSource = { type: 'epub'; data: ArrayBuffer | File };
 export type UrlSource = { type: 'url'; url: string };
 export type MarkdownSource = { type: 'markdown'; content: string | File };
+export type PdfSource = { type: 'pdf'; data: ArrayBuffer | File };
 
-export type ReaderSource = EpubSource | UrlSource | MarkdownSource;
+export type ReaderSource = EpubSource | UrlSource | MarkdownSource | PdfSource;
 
 export type LineSpacing = 1 | 1.5 | 2 | 2.5 | 3;
 
@@ -129,6 +131,13 @@ export interface ReaderProps {
   wordSpacing?: number;
   margin?: number;
   columns?: 1 | 2;
+  /**
+   * Override the PDF.js worker script URL used to render PDF pages.
+   * Defaults to a version-pinned jsDelivr CDN URL; set this if you need to
+   * self-host the worker (e.g. offline use or a strict CSP). Only relevant
+   * when loading a `{ type: 'pdf' }` source.
+   */
+  pdfWorkerSrc?: string;
   zoom?: number;
   direction?: 'ltr' | 'rtl' | 'auto';
   dictionaryProviders?: DictionaryProvider[];
@@ -292,6 +301,8 @@ function extractContentNodeText(node: ContentNode): string {
       return node.content;
     case 'image':
       return node.alt || '';
+    case 'pdf-page':
+      return '';
     case 'list':
       return node.items
         .map(item => item.children.map(extractContentNodeText).join(''))
@@ -331,6 +342,8 @@ function getSourceName(source: ReaderSource): string {
       return source.url;
     case 'markdown':
       return source.content instanceof File ? source.content.name : 'markdown-content';
+    case 'pdf':
+      return source.data instanceof File ? source.data.name : 'pdf-buffer';
   }
 }
 
@@ -342,6 +355,8 @@ function getSourceFormat(source: ReaderSource): string {
       return 'url';
     case 'markdown':
       return 'markdown';
+    case 'pdf':
+      return 'pdf';
   }
 }
 
@@ -357,6 +372,10 @@ function contentNodeToHtml(node: ContentNode): string {
       return `<h${node.level}>${inlineNodesToHtml(node.children)}</h${node.level}>`;
     case 'image':
       return `<img src="${node.src}" alt="${node.alt || ''}" style="max-width:100%;max-height:calc(100vh - 120px);width:100%;height:auto;object-fit:contain" />`;
+    case 'pdf-page':
+      return node.pending
+        ? ''
+        : `<img src="${node.src}" alt="Page ${node.pageNumber}" style="max-width:100%;max-height:calc(100vh - 120px);width:auto;height:auto;object-fit:contain" />`;
     case 'code-block':
       return `<pre><code>${escapeHtml(node.content)}</code></pre>`;
     case 'list': {
@@ -515,6 +534,53 @@ const ContentNodeRenderer: React.FC<{ node: ContentNode; onImageClick?: (src: st
           )}
         </figure>
       );
+    case 'pdf-page':
+      if (node.pending) {
+        return (
+          <div
+            data-testid="pdf-page"
+            data-pending="true"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              breakInside: 'avoid',
+              maxWidth: '100%',
+              maxHeight: 'calc(100vh - 120px)',
+              aspectRatio: `${node.width} / ${node.height}`,
+              margin: '0 auto',
+            }}
+          >
+            <Loader />
+          </div>
+        );
+      }
+      return (
+        <div
+          data-testid="pdf-page"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            breakInside: 'avoid',
+          }}
+        >
+          <img
+            src={node.src}
+            alt={`Page ${node.pageNumber}`}
+            loading="lazy"
+            onError={(e) => console.warn(`[qari] PDF page ${node.pageNumber} failed to render`, e)}
+            style={{
+              maxWidth: '100%',
+              maxHeight: 'calc(100vh - 120px)',
+              width: 'auto',
+              height: 'auto',
+              objectFit: 'contain',
+              display: 'block',
+            }}
+          />
+        </div>
+      );
     case 'code-block':
       return (
         <pre>
@@ -568,6 +634,7 @@ export const Reader: React.FC<ReaderProps> = ({
   wordSpacing = 0,
   margin = 32,
   columns = 1,
+  pdfWorkerSrc,
   zoom = 100,
   direction = 'auto',
   dictionaryProviders,
@@ -615,6 +682,7 @@ export const Reader: React.FC<ReaderProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
   const lastPointerPositionRef = useRef<{ x: number; y: number } | null>(null);
+  const pdfParserRef = useRef<PDFParserImpl | null>(null);
 
   // Refs for services that persist across renders
   const themeEngineRef = useRef<ThemeEngine | null>(null);
@@ -1011,6 +1079,7 @@ export const Reader: React.FC<ReaderProps> = ({
   // ---------------------------------------------------------------------------
   const loadBook = useCallback(async (src: ReaderSource) => {
     setState(prev => ({ ...prev, loading: true, error: null }));
+    pdfParserRef.current = null;
 
     try {
       let book: Book;
@@ -1040,6 +1109,31 @@ export const Reader: React.FC<ReaderProps> = ({
         }
         case 'url': {
           book = await loadFromUrl(src.url);
+          break;
+        }
+        case 'pdf': {
+          const { PDFParserImpl } = await import('../parsers/pdf-parser');
+          let data: ArrayBuffer;
+          if (src.data instanceof File) {
+            data = await readFileAsArrayBuffer(src.data);
+          } else {
+            data = src.data;
+          }
+          const parser = new PDFParserImpl();
+          pdfParserRef.current = parser;
+          book = await parser.parse(data, {
+            workerSrc: pdfWorkerSrc,
+            onPageRendered: (pageNumber, node) => {
+              setState(prev => {
+                if (!prev.book) return prev;
+                const idx = pageNumber - 1;
+                if (!prev.book.chapters[idx]) return prev;
+                const chapters = prev.book.chapters.slice();
+                chapters[idx] = { ...chapters[idx], content: [node] };
+                return { ...prev, book: { ...prev.book, chapters } };
+              });
+            },
+          });
           break;
         }
       }
@@ -1153,7 +1247,7 @@ export const Reader: React.FC<ReaderProps> = ({
         onError(readerError);
       }
     }
-  }, [direction, onReady, onError, bookmarksProp]);
+  }, [direction, onReady, onError, bookmarksProp, pdfWorkerSrc]);
 
   useEffect(() => {
     loadBook(source);
@@ -1222,6 +1316,16 @@ export const Reader: React.FC<ReaderProps> = ({
     const counts: number[] = [];
 
     for (const chapter of state.book.chapters) {
+      // PDF pages are always a single full-bleed image sized to fit one
+      // screen — skip the DOM measurement pass entirely for them, both as
+      // an optimization (background page renders patch `state.book` one
+      // page at a time, which would otherwise re-measure every chapter on
+      // every single page arrival) and because measuring an unrendered
+      // (pending) page's empty placeholder would be meaningless anyway.
+      if (chapter.content.length === 1 && chapter.content[0].type === 'pdf-page') {
+        counts.push(1);
+        continue;
+      }
       // Build simple HTML for measurement
       let html = `<h2>${chapter.title}</h2>`;
       for (const node of chapter.content) {
@@ -1235,6 +1339,17 @@ export const Reader: React.FC<ReaderProps> = ({
     measurer.innerHTML = '';
     setPagesPerChapter(counts);
   }, [state.book, columns, margin, fontSize, lineSpacing, letterSpacing, wordSpacing]);
+
+  // ---------------------------------------------------------------------------
+  // Render a pending PDF page on demand if the reader navigates to it before
+  // the background rendering pass gets there.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const node = state.book?.chapters[currentChapterIdx]?.content[0];
+    if (node && node.type === 'pdf-page' && node.pending) {
+      pdfParserRef.current?.requestPage(node.pageNumber);
+    }
+  }, [state.book, currentChapterIdx]);
 
   // ---------------------------------------------------------------------------
   // Page navigation

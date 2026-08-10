@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 const distDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dist');
 
-const SPECIFIER_RE = /((?:import|export)(?:[\s\S]*?\bfrom)?\s+)(['"])(\.\.?\/[^'"]+)\2/g;
+const SPECIFIER_RE = /(import\(\s*|(?:import|export)(?:[\s\S]*?\bfrom)?\s+)(['"])(\.\.?\/[^'"]+)\2/g;
 
 function resolveSpecifier(fileDir, specifier) {
   const abs = path.resolve(fileDir, specifier);
