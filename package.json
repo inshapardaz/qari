@@ -2,6 +2,10 @@
   "name": "@inshapardaz/qari",
   "version": "0.1.2",
   "description": "Universal Ebook Reader - Framework-agnostic ebook reading component",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/inshapardaz/qari"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
