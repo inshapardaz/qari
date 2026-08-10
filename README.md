@@ -90,7 +90,7 @@ The demo source lives in `demo/main.tsx` — modify it freely to test different 
 
 ## Usage
 
-> **Peer dependencies:** the reader's UI is built with [Mantine](https://mantine.dev). Install `@mantine/core` and `@mantine/hooks` alongside `qari`, and import `@mantine/core/styles.css` once in your app's entry point. See [UI Chrome Theming](#ui-chrome-theming-mantine) below for details and how to customize or inherit an existing Mantine setup.
+> **Peer dependencies:** the reader's UI is built with [Mantine](https://mantine.dev) (v8 or v9). Install `@mantine/core` and `@mantine/hooks` alongside `qari`, and import `@mantine/core/styles.css` once in your app's entry point. See [UI Chrome Theming](#ui-chrome-theming-mantine) below for details and how to customize or inherit an existing Mantine setup.
 
 ### React
 
@@ -341,11 +341,13 @@ The reader's interactive chrome — header buttons, the chapter menu, the bookma
 
 ### Setup
 
-`@mantine/core` and `@mantine/hooks` are peer dependencies — install them alongside `qari`:
+`@mantine/core` and `@mantine/hooks` are peer dependencies — install them alongside `qari`. Both Mantine 8 and Mantine 9 are supported:
 
 ```bash
 npm install qari @mantine/core @mantine/hooks
 ```
+
+The reader renders its own internal `MantineProvider`, so its UI chrome doesn't clash with a different Mantine major your app might already use elsewhere — you don't need to match versions with the rest of your app, only satisfy Mantine's own peer requirements for whichever major you install (Mantine 9 requires React 19.2+; Mantine 8 supports React 18.3+ and 19).
 
 Import Mantine's base stylesheet **once**, anywhere in your app's entry point:
 

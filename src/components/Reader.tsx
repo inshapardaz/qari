@@ -495,7 +495,7 @@ const ContentNodeRenderer: React.FC<{ node: ContentNode; onImageClick?: (src: st
         </p>
       );
     case 'heading': {
-      const Tag = `h${node.level}` as keyof JSX.IntrinsicElements;
+      const Tag = `h${node.level}` as keyof React.JSX.IntrinsicElements;
       return (
         <Tag>
           {node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} onImageClick={onImageClick} onFootnoteClick={onFootnoteClick} onLinkClick={onLinkClick} />)}
