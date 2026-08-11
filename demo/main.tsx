@@ -271,7 +271,15 @@ function App() {
           📖 Qari — Ebook Reader Demo
         </h1>
         <p style={{ color: '#666', fontSize: '0.9rem' }}>
-          Live demo with hot-reload. Edit source files and see changes instantly.
+          Try the reader with your own EPUB, PDF, or Markdown files.{' '}
+          <a
+            href="https://github.com/inshapardaz/qari"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: '#2563eb' }}
+          >
+            View on GitHub
+          </a>
         </p>
       </header>
 

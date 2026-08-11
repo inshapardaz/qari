@@ -39,6 +39,7 @@
   "scripts": {
     "dev": "vite serve demo",
     "build": "tsc -p tsconfig.build.json && node scripts/fix-esm-extensions.mjs",
+    "build:demo": "vite build --config demo/vite.config.ts",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build",
     "test": "vitest run",

@@ -2,6 +2,8 @@
 
 A framework-agnostic ebook reading component built with React at its core, exposing wrapper layers for Vue 3 and vanilla Web Components. Supports EPUB files, remote URLs, and Markdown input with full RTL/Urdu Nastaliq support, theming, dictionary integration, and configurable bookmark storage.
 
+**[Live Demo](https://inshapardaz.github.io/qari/)** — try the reader in your browser, no install required. Source: [github.com/inshapardaz/qari](https://github.com/inshapardaz/qari).
+
 ## Features
 
 - Read EPUB files, Markdown documents, or fetch content from URLs
@@ -69,10 +71,13 @@ npm run build
 | `npm test`           | Run all tests once (Vitest)                       |
 | `npm run test:watch` | Run tests in watch mode                           |
 | `npm run build`      | TypeScript type-check (no emit)                   |
+| `npm run build:demo` | Build the static demo site (used by GitHub Pages) |
 
 ## Demo
 
-The project includes a live demo page with hot-reload for testing the reader interactively.
+A hosted build of this demo is live at **[inshapardaz.github.io/qari](https://inshapardaz.github.io/qari/)** — no setup required. It's redeployed automatically (via [`.github/workflows/deploy-demo.yml`](.github/workflows/deploy-demo.yml)) on every push to `main`.
+
+To run it locally instead, with hot-reload for testing the reader interactively:
 
 ```bash
 npm run dev
