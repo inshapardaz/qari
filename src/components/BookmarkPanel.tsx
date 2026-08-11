@@ -7,7 +7,7 @@
 import React, { useState, useCallback } from 'react';
 import { TextInput, Button, ActionIcon, Alert, Title, Group } from '@mantine/core';
 import { useReaderContext } from './Reader';
-import { useTranslations } from '../i18n';
+import { useTranslations, interpolate } from '../i18n';
 import { getChapterCharCount } from '../services/chapter-navigator';
 import type { Bookmark } from '../models/bookmark';
 import type { BookmarkEvent, PageChangeEvent } from '../models/events';
@@ -45,7 +45,7 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
 }) => {
   const { state, bookmarkStore, chapterNavigator, addBookmark, removeBookmark, updateBookmark } = useReaderContext();
   const t = useTranslations();
-  const { bookmarks, book, currentChapter } = state;
+  const { bookmarks, book, currentChapter, currentPage } = state;
 
   const [newBookmarkName, setNewBookmarkName] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -157,10 +157,16 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
   };
 
   const handleCreate = useCallback(async () => {
-    const validationError = validateName(newBookmarkName);
-    if (validationError) {
-      setError(validationError);
-      return;
+    // A custom name is optional — leaving the field blank auto-names the
+    // bookmark from where it actually is (chapter + page), rather than
+    // requiring the user to type something just to place a bookmark.
+    const trimmedName = newBookmarkName.trim();
+    if (trimmedName) {
+      const validationError = validateName(trimmedName);
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
     }
 
     if (!bookmarkStore || !book) {
@@ -169,15 +175,19 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
     }
 
     const chapterId = book.chapters[currentChapter]?.id || '';
-    // Use current position (simplified: position 0 for current chapter start)
-    const position = 0;
+    // Approximate char offset for the current page, inverting the
+    // charsPerPage-based `position -> page` calculation used elsewhere in
+    // this component (handleBookmarkClick) so navigating back to this
+    // bookmark lands on the same page it was created from.
+    const position = currentPage * charsPerPage;
+    const name = trimmedName || interpolate(t.bookmarkAutoName, { chapter: currentChapter + 1, page: currentPage + 1 });
 
     try {
       const bookmark = await bookmarkStore.create(
         currentBookId,
         chapterId,
         position,
-        newBookmarkName.trim()
+        name
       );
 
       addBookmark(bookmark);
@@ -190,7 +200,7 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to create bookmark.');
     }
-  }, [newBookmarkName, bookmarkStore, book, currentChapter, currentBookId, onBookmarkCreate, addBookmark]);
+  }, [newBookmarkName, bookmarkStore, book, currentChapter, currentPage, charsPerPage, currentBookId, onBookmarkCreate, addBookmark, t]);
 
   const handleRenameStart = useCallback((bookmark: Bookmark) => {
     setEditingId(bookmark.id);

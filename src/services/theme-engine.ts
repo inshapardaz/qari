@@ -18,30 +18,35 @@ const MAX_FONT_SIZE = 48;
 const FONT_SIZE_STEP = 2;
 
 /**
- * Four built-in themes.
- * high-contrast meets WCAG AAA ≥ 7:1 contrast ratio (black bg + white text = 21:1).
+ * Four built-in themes. light/dark/sepia are tuned after the reading themes
+ * of leading e-reader apps (Apple Books, Kindle): soft near-black text
+ * rather than pure black on the light theme, a warm parchment sepia, and a
+ * true-black dark theme with off-white (not pure white) text to cut glare.
+ * high-contrast is a distinct accessibility theme, not an aesthetic one —
+ * it meets WCAG AAA ≥ 7:1 contrast (black bg + white text = 21:1) and keeps
+ * that guarantee regardless of the other three themes' tuning.
  */
 export const THEMES: Record<ThemeName, ThemeColors> = {
   light: {
     background: '#ffffff',
     foreground: '#1a1a1a',
-    accent: '#0066cc',
-    surface: '#f5f5f5',
-    border: '#e0e0e0',
+    accent: '#0071e3',
+    surface: '#f5f5f7',
+    border: '#d2d2d7',
   },
   dark: {
-    background: '#1a1a2e',
-    foreground: '#e8e8e8',
-    accent: '#4da6ff',
-    surface: '#252540',
-    border: '#3a3a5c',
+    background: '#000000',
+    foreground: '#d6d6d6',
+    accent: '#4da3ff',
+    surface: '#1c1c1e',
+    border: '#38383a',
   },
   sepia: {
-    background: '#f4ecd8',
-    foreground: '#3b2e1a',
-    accent: '#8b5e3c',
-    surface: '#ede3cc',
-    border: '#d4c5a9',
+    background: '#f6ecd8',
+    foreground: '#5b4636',
+    accent: '#8b5e34',
+    surface: '#efe1c6',
+    border: '#ddcba6',
   },
   'high-contrast': {
     background: '#000000',

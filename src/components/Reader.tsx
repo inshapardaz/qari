@@ -19,14 +19,13 @@ import React, {
 
 import {
   MantineProvider,
+  DirectionProvider,
   ActionIcon,
   Menu,
   Popover,
-  Modal,
   Select,
   Slider,
   Switch,
-  SegmentedControl,
   Button,
   Text,
   Loader,
@@ -48,7 +47,7 @@ import type { DictionaryProvider } from '../interfaces/dictionary';
 import type { CustomStoreAdapter } from '../interfaces/store-adapter';
 import type { BookmarkStoreInterface, BookmarkChangeEvent } from '../interfaces/bookmark-store';
 
-import { ThemeEngine } from '../services/theme-engine';
+import { ThemeEngine, THEMES } from '../services/theme-engine';
 import { DefaultDirectionDetector } from '../services/direction-detector';
 import { DictionaryService } from '../services/dictionary-service';
 import { BookmarkStore } from '../services/bookmark-store';
@@ -99,6 +98,8 @@ export interface ReaderSettings {
   wordSpacing?: number; // in px, 0-10
   margin?: number; // in px, 0-100
   columns?: 1 | 2;
+  /** Continuous vertical scroll within the current chapter, instead of paginated columns. Defaults to false. */
+  scroll?: boolean;
 }
 
 export interface FontOption {
@@ -131,6 +132,8 @@ export interface ReaderProps {
   wordSpacing?: number;
   margin?: number;
   columns?: 1 | 2;
+  /** Continuous vertical scroll within the current chapter, instead of paginated columns. Defaults to false. */
+  scroll?: boolean;
   /**
    * Override the PDF.js worker script URL used to render PDF pages.
    * Defaults to a version-pinned jsDelivr CDN URL; set this if you need to
@@ -166,6 +169,8 @@ export interface ReaderProps {
   bookmarkAdapter?: CustomStoreAdapter;
   bookmarks?: Bookmark[];
   bookmarkStore?: BookmarkStoreInterface;
+  /** Show a close button in the header. Defaults to false. */
+  showCloseButton?: boolean;
   onBookmarkChange?: (event: BookmarkChangeEvent) => void;
   onPageChange?: (event: PageChangeEvent) => void;
   onBookmarkCreate?: (event: BookmarkEvent) => void;
@@ -173,6 +178,8 @@ export interface ReaderProps {
   onReady?: (event: BookLoadedEvent) => void;
   onSettingsChange?: (settings: ReaderSettings) => void;
   onProgressChange?: (progress: ReadingProgress) => void;
+  /** Called when the close button (see `showCloseButton`) is clicked. */
+  onClose?: () => void;
 }
 
 export interface ReadingProgress {
@@ -634,6 +641,7 @@ export const Reader: React.FC<ReaderProps> = ({
   wordSpacing = 0,
   margin = 32,
   columns = 1,
+  scroll = false,
   pdfWorkerSrc,
   zoom = 100,
   direction = 'auto',
@@ -646,6 +654,7 @@ export const Reader: React.FC<ReaderProps> = ({
   bookmarkAdapter,
   bookmarks: bookmarksProp,
   bookmarkStore: bookmarkStoreProp,
+  showCloseButton = false,
   onBookmarkChange,
   onPageChange,
   onBookmarkCreate,
@@ -653,6 +662,7 @@ export const Reader: React.FC<ReaderProps> = ({
   onReady,
   onSettingsChange,
   onProgressChange,
+  onClose,
 }) => {
   const [state, setState] = useState<ReaderState>(createInitialState);
   const [currentChapterIdx, setCurrentChapterIdx] = useState(0);
@@ -661,7 +671,10 @@ export const Reader: React.FC<ReaderProps> = ({
   const [pagesPerChapter, setPagesPerChapter] = useState<number[]>([]); // cached page counts per chapter
   const [chapterMenuOpen, setChapterMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [moreSettingsOpen, setMoreSettingsOpen] = useState(false);
   const [bookmarksPanelOpen, setBookmarksPanelOpen] = useState(false);
+  const [themePanelOpen, setThemePanelOpen] = useState(false);
+  const [layoutPanelOpen, setLayoutPanelOpen] = useState(false);
   const [selectedFontFamily, setSelectedFontFamily] = useState<string>(() => {
     // Try to match the fontFamily prop against available font options
     if (fontFamily) {
@@ -1258,11 +1271,26 @@ export const Reader: React.FC<ReaderProps> = ({
   // Calculate total pages whenever chapter or layout changes
   // ---------------------------------------------------------------------------
   const recalcPages = useCallback(() => {
+    // Scroll mode has no pages — the whole chapter is one continuously
+    // scrollable flow.
+    if (scroll) {
+      setTotalPages(1);
+      setPagesPerChapter(prev => {
+        const updated = [...prev];
+        updated[currentChapterIdx] = 1;
+        return updated;
+      });
+      return;
+    }
     if (!contentRef.current || !containerRef.current) return;
     const scrollWidth = contentRef.current.scrollWidth;
     const containerWidth = containerRef.current.clientWidth;
     if (containerWidth === 0) return;
-    const computed = Math.max(1, Math.round(scrollWidth / containerWidth));
+    // See `pagePitch` near the render return for why this isn't just
+    // `scrollWidth / containerWidth` — the 64px inter-column gap and the
+    // margin-as-padding both throw off the naive per-page pixel distance.
+    const pagePitch = containerWidth - margin * 2 + 64;
+    const computed = Math.max(1, Math.round(scrollWidth / pagePitch));
     setTotalPages(computed);
     // Update cached pages for current chapter
     setPagesPerChapter(prev => {
@@ -1270,7 +1298,7 @@ export const Reader: React.FC<ReaderProps> = ({
       updated[currentChapterIdx] = computed;
       return updated;
     });
-  }, [currentChapterIdx]);
+  }, [currentChapterIdx, scroll, margin]);
 
   // Recalculate on chapter change, font/zoom change, or window resize
   useEffect(() => {
@@ -1281,7 +1309,7 @@ export const Reader: React.FC<ReaderProps> = ({
     // Small delay to let DOM settle after content render
     const timer = setTimeout(recalcPages, 50);
     return () => clearTimeout(timer);
-  }, [currentChapterIdx, state.book, state.preferences.fontSize, state.preferences.fontFamily, state.zoom, columns, margin, lineSpacing, letterSpacing, wordSpacing, recalcPages]);
+  }, [currentChapterIdx, state.book, state.preferences.fontSize, state.preferences.fontFamily, state.zoom, columns, margin, scroll, lineSpacing, letterSpacing, wordSpacing, recalcPages]);
 
   useEffect(() => {
     const handleResize = () => recalcPages();
@@ -1293,12 +1321,23 @@ export const Reader: React.FC<ReaderProps> = ({
   // Measure all chapters' page counts on book load
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    if (!state.book || !containerRef.current || !measureRef.current) return;
+    if (!state.book) return;
+
+    // Scroll mode has no pages — every chapter is a single continuous flow.
+    if (scroll) {
+      setPagesPerChapter(new Array(state.book.chapters.length).fill(1));
+      return;
+    }
+
+    if (!containerRef.current || !measureRef.current) return;
 
     const containerWidth = containerRef.current.clientWidth;
     if (containerWidth === 0) return;
 
     const colWidth = (containerWidth - margin * 2 - (columns === 2 ? 64 : 0)) / columns;
+    // Same page-pitch correction as recalcPages — see the comment above
+    // the `pagePitch` const near the render return.
+    const pagePitch = containerWidth - margin * 2 + 64;
     const measurer = measureRef.current;
 
     // Apply same column styles as the real content
@@ -1332,13 +1371,13 @@ export const Reader: React.FC<ReaderProps> = ({
         html += contentNodeToHtml(node);
       }
       measurer.innerHTML = html;
-      const pages = Math.max(1, Math.round(measurer.scrollWidth / containerWidth));
+      const pages = Math.max(1, Math.round(measurer.scrollWidth / pagePitch));
       counts.push(pages);
     }
 
     measurer.innerHTML = '';
     setPagesPerChapter(counts);
-  }, [state.book, columns, margin, fontSize, lineSpacing, letterSpacing, wordSpacing]);
+  }, [state.book, columns, margin, scroll, fontSize, lineSpacing, letterSpacing, wordSpacing]);
 
   // ---------------------------------------------------------------------------
   // Render a pending PDF page on demand if the reader navigates to it before
@@ -1350,6 +1389,18 @@ export const Reader: React.FC<ReaderProps> = ({
       pdfParserRef.current?.requestPage(node.pageNumber);
     }
   }, [state.book, currentChapterIdx]);
+
+  // ---------------------------------------------------------------------------
+  // In scroll mode, jump the scroll position back to the top whenever the
+  // chapter changes (e.g. via the previous/next chapter hover arrows, or the
+  // chapter menu) — the scrollable content div persists across chapters, so
+  // its scrollTop wouldn't otherwise reset on its own.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (scroll && contentRef.current) {
+      contentRef.current.scrollTop = 0;
+    }
+  }, [currentChapterIdx, scroll]);
 
   // ---------------------------------------------------------------------------
   // Page navigation
@@ -1414,6 +1465,26 @@ export const Reader: React.FC<ReaderProps> = ({
     }
   }, [totalPages, currentPage]);
 
+  // ---------------------------------------------------------------------------
+  // Keep the exposed ReaderState's currentChapter/currentPage/totalPages in
+  // sync with the real navigation state. These only ever got set once, at
+  // book-load time (see createInitialState / loadBook), and were never
+  // updated as the reader paginated — so `useReaderContext().state` was
+  // stuck reporting chapter 0, page 0 for the rest of the session.
+  // Consumers that read the current position directly off context (e.g.
+  // BookmarkPanel, to know where to place a new bookmark) need this to
+  // track the same currentChapterIdx/currentPage/totalPages used for
+  // rendering, not just their initial values.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    setState(prev => {
+      if (prev.currentChapter === currentChapterIdx && prev.currentPage === currentPage && prev.totalPages === totalPages) {
+        return prev;
+      }
+      return { ...prev, currentChapter: currentChapterIdx, currentPage, totalPages };
+    });
+  }, [currentChapterIdx, currentPage, totalPages]);
+
   // Fire progress callback on navigation
   useEffect(() => {
     if (!onProgressChange || !state.book) return;
@@ -1468,6 +1539,8 @@ export const Reader: React.FC<ReaderProps> = ({
     if (
       chapterMenuOpen ||
       bookmarksPanelOpen ||
+      themePanelOpen ||
+      layoutPanelOpen ||
       settingsOpen ||
       lightboxImage ||
       activeFootnote ||
@@ -1488,7 +1561,7 @@ export const Reader: React.FC<ReaderProps> = ({
     ) {
       setHovered(true);
     }
-  }, [chapterMenuOpen, bookmarksPanelOpen, settingsOpen, lightboxImage, activeFootnote, dictionaryLoading, dictionaryResult]);
+  }, [chapterMenuOpen, bookmarksPanelOpen, themePanelOpen, layoutPanelOpen, settingsOpen, lightboxImage, activeFootnote, dictionaryLoading, dictionaryResult]);
 
   // ---------------------------------------------------------------------------
   // Context value (memoized)
@@ -1572,19 +1645,21 @@ export const Reader: React.FC<ReaderProps> = ({
         aria-label="Loading book"
         style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       >
-        <MantineProvider
-          theme={resolvedMantineTheme}
-          cssVariablesSelector={mantineCssVariablesSelector}
-          env={typeof process !== 'undefined' && process.env?.NODE_ENV === 'test' ? 'test' : 'default'}
-        >
-          <div
-            className="ebook-reader__loading"
-            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}
+        <DirectionProvider initialDirection={t.uiDirection} detectDirection={false} key={t.uiDirection}>
+          <MantineProvider
+            theme={resolvedMantineTheme}
+            cssVariablesSelector={mantineCssVariablesSelector}
+            env={typeof process !== 'undefined' && process.env?.NODE_ENV === 'test' ? 'test' : 'default'}
           >
-            <Loader />
-            <Text c="dimmed">{t.loading}</Text>
-          </div>
-        </MantineProvider>
+            <div
+              className="ebook-reader__loading"
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}
+            >
+              <Loader />
+              <Text c="dimmed">{t.loading}</Text>
+            </div>
+          </MantineProvider>
+        </DirectionProvider>
       </div>
     );
   }
@@ -1626,515 +1701,709 @@ export const Reader: React.FC<ReaderProps> = ({
   const bookPageNumber = pagesBefore + currentPage + 1;
   const bookTotalPages = pagesPerChapter.reduce((sum, p) => sum + (p || 1), 0);
 
+  // The CSS-column pagination trick advances the flow one virtual "column
+  // group" at a time, with a fixed 64px gap between every column (page
+  // boundaries included) but with `margin` applied as padding on the same
+  // element — which only lands once at the very start/end of the whole
+  // flow, not on every page. So the true pixel distance from one page's
+  // columns to the next is `containerWidth - margin*2 + 64`, not
+  // `containerWidth` on its own; using the raw container width for the
+  // page-turn transform (and for the page-count math) only happened to
+  // line up when margin was exactly half the gap (the 32px default).
+  const pagePitch = (containerRef.current?.clientWidth ?? 0) - margin * 2 + 64;
+
   return (
     <div
       ref={rootRef}
       className="ebook-reader"
       data-testid="reader-content"
       data-qari-mantine-scope={mantineScopeId}
-      dir={state.direction}
+      // Intentionally the UI direction, not the book's `state.direction`:
+      // this element is also the Mantine portal target (mantinePortalTarget
+      // below), and Mantine's own CSS keys RTL mirroring off a plain
+      // `[dir="rtl"]` ancestor-selector match — which matches ANY ancestor
+      // with that attribute, not just the nearest one. So if this root
+      // carried the book's (possibly RTL) direction, every floating
+      // Mantine control (Modal, Menu, Popover, Select, and especially
+      // Slider, whose thumb/track positioning is selector-driven) would
+      // render mirrored whenever book direction differs from UI direction,
+      // no matter what `dir` a nested wrapper re-asserts — a `[dir="rtl"]`
+      // descendant-combinator match isn't overridden by a closer `dir="ltr"`
+      // in between. The book content itself sets its own `dir={state.direction}`
+      // independently further down, so this doesn't affect its rendering.
+      dir={t.uiDirection}
       style={{
         zoom: `${state.zoom}%`,
         fontFamily: 'system-ui, -apple-system, sans-serif',
         fontSize: '14px',
         backgroundColor: 'var(--reader-bg, #ffffff)',
-        color: 'var(--reader-fg, #1a1a1a)',
+        // Deliberately NOT `var(--reader-fg)` here — this is the color
+        // every descendant inherits by default (header, chapter/bookmarks/
+        // theme/layout/settings menus and popovers), and those are UI
+        // chrome, not book content. The reading theme's foreground color
+        // is applied explicitly to the actual content div below instead,
+        // so it only affects what's rendered inside the book.
+        color: 'var(--mantine-color-text, #1a1a1a)',
         height: '100%',
         transition: 'background-color 0.1s, color 0.1s',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
         position: 'relative',
+        // A harmless identity transform establishes this element as the
+        // containing block for `position: fixed` descendants. Mantine's
+        // Modal (and other overlays) use position:fixed internally, which
+        // is normally viewport-relative — but we portal them into this
+        // element (mantinePortalTarget below, for the fullscreen z-index
+        // fix), so without this they'd center/size against the whole
+        // browser window instead of the reader's own box. That's wrong
+        // whenever the reader is embedded in a constrained area rather
+        // than filling the viewport (e.g. the demo's `height: 70vh` box).
+        transform: 'translate(0, 0)',
       }}
     >
-      <MantineProvider
-        theme={resolvedMantineTheme}
-        cssVariablesSelector={mantineCssVariablesSelector}
-        env={typeof process !== 'undefined' && process.env?.NODE_ENV === 'test' ? 'test' : 'default'}
-      >
-      <ReaderContext.Provider value={contextValue}>
-        <TranslationContext.Provider value={resolvedTranslations}>
-        {/* Header bar with settings */}
-        <div
-          className="ebook-reader__header"
-          dir={t.uiDirection}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '0.5rem 1rem',
-            borderBottom: '1px solid var(--reader-border, #e0e0e0)',
-            backgroundColor: 'var(--reader-surface, #f5f5f5)',
-            flexShrink: 0,
-            position: 'relative',
-          }}
+      <DirectionProvider initialDirection={t.uiDirection} detectDirection={false} key={t.uiDirection}>
+        <MantineProvider
+          theme={resolvedMantineTheme}
+          cssVariablesSelector={mantineCssVariablesSelector}
+          env={typeof process !== 'undefined' && process.env?.NODE_ENV === 'test' ? 'test' : 'default'}
         >
-          {/* Chapter list menu (start) */}
-          <Menu
-            opened={chapterMenuOpen}
-            onChange={setChapterMenuOpen}
-            position={t.uiDirection === 'rtl' ? 'bottom-end' : 'bottom-start'}
-            withinPortal
-            portalProps={{ target: mantinePortalTarget }}
-            shadow="md"
-            width={240}
-          >
-            <Menu.Target>
-              <ActionIcon
-                variant={chapterMenuOpen ? 'filled' : 'default'}
-                size="lg"
-                aria-label={t.tableOfContents}
+          <ReaderContext.Provider value={contextValue}>
+            <TranslationContext.Provider value={resolvedTranslations}>
+              {/* Header bar with settings */}
+              <div
+                className="ebook-reader__header"
+                dir={t.uiDirection}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '0.5rem 1rem',
+                  borderBottom: '1px solid var(--reader-border, #e0e0e0)',
+                  backgroundColor: 'var(--reader-surface, #f5f5f5)',
+                  flexShrink: 0,
+                  position: 'relative',
+                }}
               >
-                ☰
-              </ActionIcon>
-            </Menu.Target>
-            <Menu.Dropdown data-testid="chapter-menu-panel" mah={300} style={{ overflowY: 'auto' }}>
-              {state.book?.chapters.map((ch, idx) => (
-                <Menu.Item
-                  key={ch.id}
-                  onClick={() => {
-                    setCurrentChapterIdx(idx);
-                    setCurrentPage(0);
-                    setChapterMenuOpen(false);
-                  }}
-                  bg={idx === currentChapterIdx ? 'var(--mantine-primary-color-filled)' : undefined}
-                  c={idx === currentChapterIdx ? 'white' : undefined}
+                {/* Chapter list menu (start) */}
+                <Menu
+                  opened={chapterMenuOpen}
+                  onChange={setChapterMenuOpen}
+                  position={t.uiDirection === 'rtl' ? 'bottom-end' : 'bottom-start'}
+                  withinPortal
+                  portalProps={{ target: mantinePortalTarget }}
+                  shadow="md"
+                  width={240}
+                >
+                  <Menu.Target>
+                    <ActionIcon
+                      variant={chapterMenuOpen ? 'filled' : 'default'}
+                      size="lg"
+                      aria-label={t.tableOfContents}
+                    >
+                      ☰
+                    </ActionIcon>
+                  </Menu.Target>
+                  <Menu.Dropdown data-testid="chapter-menu-panel" mah={300} style={{ overflowY: 'auto' }}>
+                    {state.book?.chapters.map((ch, idx) => (
+                      <Menu.Item
+                        key={ch.id}
+                        onClick={() => {
+                          setCurrentChapterIdx(idx);
+                          setCurrentPage(0);
+                          setChapterMenuOpen(false);
+                        }}
+                        bg={idx === currentChapterIdx ? 'var(--mantine-primary-color-filled)' : undefined}
+                        c={idx === currentChapterIdx ? 'white' : undefined}
+                        style={{
+                          textAlign: state.direction === 'rtl' ? 'right' : 'left',
+                          fontWeight: idx === currentChapterIdx ? 700 : 400,
+                        }}
+                      >
+                        {ch.title}
+                      </Menu.Item>
+                    ))}
+                  </Menu.Dropdown>
+                </Menu>
+
+                {/* Chapter title (center) */}
+                <Text size="sm" fw={500} truncate="end" style={{ opacity: 0.8, flex: 1, textAlign: 'center' }}>
+                  {chapterTitle}
+                </Text>
+
+                {/* Settings button (right) */}
+                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                  {/* Bookmarks button */}
+                  {enableBookmarks && (
+                    <Popover
+                      opened={bookmarksPanelOpen}
+                      onChange={setBookmarksPanelOpen}
+                      position={t.uiDirection === 'rtl' ? 'bottom-start' : 'bottom-end'}
+                      withinPortal
+                      portalProps={{ target: mantinePortalTarget }}
+                      shadow="md"
+                      width={280}
+                    >
+                      <Popover.Target>
+                        <ActionIcon
+                          variant={bookmarksPanelOpen ? 'filled' : 'default'}
+                          size="lg"
+                          aria-label={t.bookmarks}
+                          aria-expanded={bookmarksPanelOpen}
+                          onClick={() => setBookmarksPanelOpen((open) => !open)}
+                        >
+                          🔖
+                        </ActionIcon>
+                      </Popover.Target>
+                      <Popover.Dropdown data-testid="bookmarks-panel" mah={400} style={{ overflowY: 'auto' }}>
+                        <BookmarkPanel
+                          onNavigate={(chapterIdx, page) => {
+                            setCurrentChapterIdx(chapterIdx);
+                            setCurrentPage(page);
+                            setBookmarksPanelOpen(false);
+                          }}
+                          onPageChange={onPageChange}
+                        />
+                      </Popover.Dropdown>
+                    </Popover>
+                  )}
+
+                  {/* Theme button — its own title-bar item rather than a
+                      section buried in the settings panel. */}
+                  <Popover
+                    opened={themePanelOpen}
+                    onChange={setThemePanelOpen}
+                    position={t.uiDirection === 'rtl' ? 'bottom-start' : 'bottom-end'}
+                    withinPortal
+                    portalProps={{ target: mantinePortalTarget }}
+                    shadow="md"
+                    radius="lg"
+                  >
+                    <Popover.Target>
+                      <ActionIcon
+                        variant={themePanelOpen ? 'filled' : 'default'}
+                        size="lg"
+                        onClick={() => setThemePanelOpen((open) => !open)}
+                        aria-label={t.settingsTheme}
+                        aria-expanded={themePanelOpen}
+                      >
+                        🎨
+                      </ActionIcon>
+                    </Popover.Target>
+                    <Popover.Dropdown data-testid="theme-panel" p="sm">
+                      <div dir={t.uiDirection} style={{ display: 'flex', gap: '0.75rem' }}>
+                        {(['light', 'dark', 'sepia', 'high-contrast'] as ThemeName[]).map(thm => {
+                          const active = theme === thm;
+                          const label = thm === 'light' ? t.themeLight : thm === 'dark' ? t.themeDark : thm === 'sepia' ? t.themeSepia : t.themeHighContrast;
+                          return (
+                            <div key={thm} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem' }}>
+                              <button
+                                type="button"
+                                onClick={() => { if (onSettingsChange) onSettingsChange({ theme: thm }); }}
+                                aria-pressed={active}
+                                aria-label={label}
+                                style={{
+                                  width: '3rem',
+                                  height: '3rem',
+                                  borderRadius: 'var(--mantine-radius-lg)',
+                                  border: active ? '2px solid var(--mantine-primary-color-filled)' : '1px solid var(--mantine-color-default-border)',
+                                  boxShadow: active ? '0 2px 6px rgba(0, 0, 0, 0.15)' : 'none',
+                                  backgroundColor: THEMES[thm].background,
+                                  color: THEMES[thm].foreground,
+                                  fontWeight: 700,
+                                  fontSize: '1.1rem',
+                                  cursor: 'pointer',
+                                  padding: 0,
+                                  transition: 'box-shadow 0.15s, border-color 0.15s',
+                                }}
+                              >
+                                Aa
+                              </button>
+                              <Text size="10px" c="dimmed" fw={active ? 700 : 500} style={{ textAlign: 'center', lineHeight: 1.15, maxWidth: '3.5rem' }}>
+                                {label}
+                              </Text>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </Popover.Dropdown>
+                  </Popover>
+
+                  {/* Layout button — its own title-bar item; the icon
+                      tracks whichever layout is currently active. */}
+                  <Popover
+                    opened={layoutPanelOpen}
+                    onChange={setLayoutPanelOpen}
+                    position={t.uiDirection === 'rtl' ? 'bottom-start' : 'bottom-end'}
+                    withinPortal
+                    portalProps={{ target: mantinePortalTarget }}
+                    shadow="md"
+                    radius="lg"
+                  >
+                    <Popover.Target>
+                      <ActionIcon
+                        variant={layoutPanelOpen ? 'filled' : 'default'}
+                        size="lg"
+                        onClick={() => setLayoutPanelOpen((open) => !open)}
+                        aria-label={t.settingsLayout}
+                        aria-expanded={layoutPanelOpen}
+                      >
+                        {scroll ? '📜' : columns === 2 ? '📖' : '📄'}
+                      </ActionIcon>
+                    </Popover.Target>
+                    <Popover.Dropdown data-testid="layout-panel" p="sm">
+                      <div dir={t.uiDirection} style={{ display: 'flex', gap: '0.5rem' }}>
+                        {([
+                          { key: 'single', active: !scroll && columns === 1, icon: '📄', label: t.settingsLayoutSingle, onClick: () => { if (onSettingsChange) onSettingsChange({ scroll: false, columns: 1 }); } },
+                          { key: 'double', active: !scroll && columns === 2, icon: '📖', label: t.settingsLayoutDouble, onClick: () => { if (onSettingsChange) onSettingsChange({ scroll: false, columns: 2 }); } },
+                          { key: 'scroll', active: scroll, icon: '📜', label: t.settingsLayoutScroll, onClick: () => { if (onSettingsChange) onSettingsChange({ scroll: true }); } },
+                        ] as const).map(opt => (
+                          <button
+                            key={opt.key}
+                            type="button"
+                            onClick={opt.onClick}
+                            aria-pressed={opt.active}
+                            aria-label={opt.label}
+                            style={{
+                              flex: 1,
+                              padding: '0.5rem',
+                              borderRadius: 'var(--mantine-radius-md)',
+                              border: opt.active ? '2px solid var(--mantine-primary-color-filled)' : '1px solid var(--mantine-color-default-border)',
+                              backgroundColor: 'transparent',
+                              cursor: 'pointer',
+                              fontSize: '1.05rem',
+                            }}
+                          >
+                            <span aria-hidden="true">{opt.icon}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </Popover.Dropdown>
+                  </Popover>
+
+                  <Popover
+                    opened={settingsOpen}
+                    onChange={setSettingsOpen}
+                    position={t.uiDirection === 'rtl' ? 'bottom-start' : 'bottom-end'}
+                    withinPortal
+                    portalProps={{ target: mantinePortalTarget }}
+                    shadow="md"
+                    radius="lg"
+                    width={300}
+                    trapFocus
+                  >
+                    <Popover.Target>
+                      <ActionIcon
+                        variant={settingsOpen ? 'filled' : 'default'}
+                        size="lg"
+                        onClick={() => setSettingsOpen(!settingsOpen)}
+                        aria-label={t.readingSettings}
+                        aria-expanded={settingsOpen}
+                      >
+                        <span aria-hidden="true" style={{ fontWeight: 600 }}>Aa</span>
+                      </ActionIcon>
+                    </Popover.Target>
+                    <Popover.Dropdown data-testid="settings-panel" p="sm" style={{ maxHeight: '80vh', overflowY: 'auto' }}>
+                      <div dir={t.uiDirection}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--mantine-spacing-sm)' }}>
+                          <Text fw={700} size="lg">
+                            {t.readingSettings}
+                          </Text>
+                          <ActionIcon
+                            variant="subtle"
+                            size="sm"
+                            aria-label={t.resetToDefaults}
+                            title={t.resetToDefaults}
+                            onClick={() => {
+                              const defaultFamily = fontOptions.find(o => o.name.toLowerCase() === 'serif')?.family
+                                ?? fontOptions[0]?.family
+                                ?? 'Georgia, "Times New Roman", serif';
+                              setSelectedFontFamily(defaultFamily);
+                              if (onSettingsChange) onSettingsChange({
+                                theme: 'light',
+                                fontFamily: 'serif',
+                                fontSize: 16,
+                                justify: true,
+                                lineSpacing: 1.5,
+                                letterSpacing: 0,
+                                wordSpacing: 0,
+                                margin: 32,
+                                columns: 1,
+                              });
+                            }}
+                          >
+                            ↺
+                          </ActionIcon>
+                        </div>
+
+                        {/* Font size — chip row with a percentage readout
+                            (relative to the 16px baseline), no slider. Every
+                            control here applies immediately via onSettingsChange. */}
+                        <div style={{ marginBottom: '1.1rem' }}>
+                          <Text size="xs" c="dimmed" fw={500} mb={4}>
+                            {t.settingsFontSize}
+                          </Text>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            <ActionIcon
+                              variant="default"
+                              radius="md"
+                              onClick={() => { if (onSettingsChange) onSettingsChange({ fontSize: Math.max(12, fontSize - 2) }); }}
+                              disabled={fontSize <= 12}
+                              aria-label={t.settingsFontSize}
+                            >
+                              −
+                            </ActionIcon>
+                            <Text data-testid="font-size-percent" fw={600} style={{ flex: 1, textAlign: 'center' }}>
+                              {Math.round((fontSize / 16) * 100)}%
+                            </Text>
+                            <ActionIcon
+                              variant="default"
+                              radius="md"
+                              onClick={() => { if (onSettingsChange) onSettingsChange({ fontSize: Math.min(48, fontSize + 2) }); }}
+                              disabled={fontSize >= 48}
+                              aria-label={t.settingsFontSize}
+                            >
+                              +
+                            </ActionIcon>
+                          </div>
+                        </div>
+
+                        {/* Typeface */}
+                        <div style={{ marginBottom: '1.1rem' }}>
+                          <Select
+                            size="xs"
+                            label={t.settingsFontFamily}
+                            value={selectedFontFamily}
+                            onChange={(family) => {
+                              if (!family) return;
+                              setSelectedFontFamily(family);
+                              const opt = fontOptions.find(o => o.family === family);
+                              if (onSettingsChange) onSettingsChange({ fontFamily: opt?.name ?? family });
+                            }}
+                            data={fontOptions.map(opt => ({ value: opt.family, label: t.fontNames[opt.name] ?? opt.name }))}
+                            allowDeselect={false}
+                            comboboxProps={{ withinPortal: true, portalProps: { target: mantinePortalTarget } }}
+                            styles={{
+                              label: { fontSize: 'var(--mantine-font-size-xs)', color: 'var(--mantine-color-dimmed)', fontWeight: 500, marginBottom: 4 },
+                              input: { fontFamily: selectedFontFamily },
+                            }}
+                          />
+                        </div>
+
+                        {/* Extra properties — collapsed by default, since
+                            they're not part of the primary at-a-glance
+                            controls above (font size, typeface). Theme and
+                            layout are now their own title-bar items. */}
+                        <Button
+                          variant="subtle"
+                          size="xs"
+                          color="gray"
+                          fullWidth
+                          justify="space-between"
+                          rightSection={<span aria-hidden="true" style={{ transform: moreSettingsOpen ? 'rotate(180deg)' : undefined, transition: 'transform 150ms', display: 'inline-block' }}>⌄</span>}
+                          onClick={() => setMoreSettingsOpen((open) => !open)}
+                          aria-expanded={moreSettingsOpen}
+                        >
+                          {t.settingsMore}
+                        </Button>
+                        {moreSettingsOpen && (
+                          <div style={{ marginTop: '1.1rem' }}>
+                            {/* Line height */}
+                            <div style={{ marginBottom: '1.1rem' }}>
+                              <Text size="xs" c="dimmed" fw={500} mb={4}>
+                                {t.settingsLineSpacing}
+                              </Text>
+                              <Slider
+                                size="xs"
+                                min={1} max={3} step={0.25} value={lineSpacing}
+                                onChange={(value) => { if (onSettingsChange) onSettingsChange({ lineSpacing: value }); }}
+                                marks={[1, 2, 3].map(value => ({ value, label: value.toFixed(1) }))}
+                                label={(value) => `${value}×`}
+                                aria-label={t.settingsLineSpacing}
+                                mb="0.6rem"
+                              />
+                            </div>
+
+                            {/* Letter spacing */}
+                            <div style={{ marginBottom: '1.1rem' }}>
+                              <Text size="xs" c="dimmed" fw={500} mb={4}>
+                                {t.settingsLetterSpacing}
+                              </Text>
+                              <Slider
+                                size="xs"
+                                min={0} max={5} step={0.5} value={letterSpacing}
+                                onChange={(value) => { if (onSettingsChange) onSettingsChange({ letterSpacing: value }); }}
+                                marks={[0, 2.5, 5].map(value => ({ value, label: String(value) }))}
+                                label={(value) => `${value}px`}
+                                aria-label={t.settingsLetterSpacing}
+                                mb="0.6rem"
+                              />
+                            </div>
+
+                            {/* Word spacing */}
+                            <div style={{ marginBottom: '1.1rem' }}>
+                              <Text size="xs" c="dimmed" fw={500} mb={4}>
+                                {t.settingsWordSpacing}
+                              </Text>
+                              <Slider
+                                size="xs"
+                                min={0} max={10} step={1} value={wordSpacing}
+                                onChange={(value) => { if (onSettingsChange) onSettingsChange({ wordSpacing: value }); }}
+                                marks={[0, 5, 10].map(value => ({ value, label: String(value) }))}
+                                label={(value) => `${value}px`}
+                                aria-label={t.settingsWordSpacing}
+                                mb="0.6rem"
+                              />
+                            </div>
+
+                            {/* Margin */}
+                            <div style={{ marginBottom: '1.1rem' }}>
+                              <Text size="xs" c="dimmed" fw={500} mb={4}>
+                                {t.settingsMargin}
+                              </Text>
+                              <Slider
+                                size="xs"
+                                min={0} max={100} step={8} value={margin}
+                                onChange={(value) => { if (onSettingsChange) onSettingsChange({ margin: value }); }}
+                                marks={[0, 50, 100].map(value => ({ value, label: String(value) }))}
+                                label={(value) => `${value}px`}
+                                aria-label={t.settingsMargin}
+                                mb="0.6rem"
+                              />
+                            </div>
+
+                            <Switch
+                              size="sm"
+                              checked={justify}
+                              onChange={(e) => { if (onSettingsChange) onSettingsChange({ justify: e.currentTarget.checked }); }}
+                              label={t.settingsJustify}
+                              aria-label={t.settingsJustify}
+                              labelPosition="left"
+                              styles={{ body: { justifyContent: 'space-between' }, label: { fontSize: 'var(--mantine-font-size-xs)', fontWeight: 600 } }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </Popover.Dropdown>
+                  </Popover>
+
+                  {/* Fullscreen toggle */}
+                  <ActionIcon
+                    variant={isFullscreen ? 'filled' : 'default'}
+                    size="lg"
+                    onClick={toggleFullscreen}
+                    aria-label={isFullscreen ? t.exitFullscreen : t.enterFullscreen}
+                  >
+                    {isFullscreen ? '⊗' : '⛶'}
+                  </ActionIcon>
+
+                  {showCloseButton && (
+                    <ActionIcon
+                      variant="default"
+                      size="lg"
+                      onClick={() => onClose?.()}
+                      aria-label={t.closeReader}
+                    >
+                      ✕
+                    </ActionIcon>
+                  )}
+                </div>
+
+              </div>
+
+              {/* Page viewport — fixed height, no scroll */}
+              <div
+                ref={containerRef}
+                className="ebook-reader__viewport"
+                onMouseEnter={() => setHovered(true)}
+                onMouseLeave={() => setHovered(false)}
+                style={{
+                  flex: 1,
+                  overflow: 'hidden',
+                  position: 'relative',
+                }}
+              >
+                {/* Hidden div for measuring chapter page counts */}
+                <div
+                  ref={measureRef}
+                  aria-hidden="true"
                   style={{
-                    textAlign: state.direction === 'rtl' ? 'right' : 'left',
-                    fontWeight: idx === currentChapterIdx ? 700 : 400,
+                    position: 'absolute',
+                    top: 0,
+                    left: '-9999px',
+                    width: containerRef.current ? `${containerRef.current.clientWidth}px` : '100%',
+                    visibility: 'hidden',
+                    pointerEvents: 'none',
+                  }}
+                />
+
+                {/* Hover navigation overlays — in scroll mode there are no
+                    pages, so these turn into previous/next CHAPTER
+                    navigation instead (isFirstPage/isLastPage and
+                    goToPrevPage/goToNextPage already reduce to chapter-level
+                    boundaries and navigation when totalPages is forced to 1,
+                    which recalcPages does for every chapter in scroll mode). */}
+                {hovered && !isFirstPage && (
+                  <button
+                    onClick={goToPrevPage}
+                    aria-label={scroll ? t.previousChapter : t.previousPage}
+                    style={{
+                      position: 'absolute',
+                      [state.direction === 'rtl' ? 'right' : 'left']: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: '60px',
+                      border: 'none',
+                      background: 'linear-gradient(to right, rgba(0,0,0,0.04), transparent)',
+                      color: 'var(--reader-fg, #1a1a1a)',
+                      cursor: 'pointer',
+                      fontSize: '1.5rem',
+                      opacity: 0.6,
+                      zIndex: 10,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'opacity 0.2s',
+                    }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.6'; }}
+                  >
+                    {state.direction === 'rtl' ? '→' : '←'}
+                  </button>
+                )}
+                {hovered && !isLastPage && (
+                  <button
+                    onClick={goToNextPage}
+                    aria-label={scroll ? t.nextChapter : t.nextPage}
+                    style={{
+                      position: 'absolute',
+                      [state.direction === 'rtl' ? 'left' : 'right']: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: '60px',
+                      border: 'none',
+                      background: 'linear-gradient(to left, rgba(0,0,0,0.04), transparent)',
+                      color: 'var(--reader-fg, #1a1a1a)',
+                      cursor: 'pointer',
+                      fontSize: '1.5rem',
+                      opacity: 0.6,
+                      zIndex: 10,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'opacity 0.2s',
+                    }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.6'; }}
+                  >
+                    {state.direction === 'rtl' ? '←' : '→'}
+                  </button>
+                )}
+
+                {/* Content — either horizontally paged via CSS columns +
+                    transform, or (scroll mode) a normal vertically
+                    scrollable flow with no columns/pages at all. */}
+                <div
+                  ref={contentRef}
+                  className={scroll ? 'ebook-reader__scroll' : 'ebook-reader__columns'}
+                  dir={state.direction}
+                  style={scroll ? {
+                    height: '100%',
+                    overflowY: 'auto',
+                    padding: `2rem ${margin}px`,
+                    color: 'var(--reader-fg, #1a1a1a)',
+                    fontFamily: selectedFontFamily,
+                    fontSize: 'var(--reader-font-size, 16px)',
+                    lineHeight: lineSpacing,
+                    textAlign: justify ? 'justify' : undefined,
+                    letterSpacing: `${letterSpacing}px`,
+                    wordSpacing: `${wordSpacing}px`,
+                  } : {
+                    columnWidth: containerRef.current
+                      ? `${(containerRef.current.clientWidth - margin * 2 - (columns === 2 ? 64 : 0)) / columns}px`
+                      : '100%',
+                    columnGap: '64px',
+                    columnFill: 'auto',
+                    height: '100%',
+                    padding: `2rem ${margin}px`,
+                    transform: state.direction === 'rtl'
+                      ? `translateX(${currentPage * pagePitch}px)`
+                      : `translateX(${-(currentPage * pagePitch)}px)`,
+                    transition: 'transform 0.3s ease',
+                    color: 'var(--reader-fg, #1a1a1a)',
+                    fontFamily: selectedFontFamily,
+                    fontSize: 'var(--reader-font-size, 16px)',
+                    lineHeight: lineSpacing,
+                    textAlign: justify ? 'justify' : undefined,
+                    letterSpacing: `${letterSpacing}px`,
+                    wordSpacing: `${wordSpacing}px`,
                   }}
                 >
-                  {ch.title}
-                </Menu.Item>
-              ))}
-            </Menu.Dropdown>
-          </Menu>
-
-          {/* Chapter title (center) */}
-          <Text size="sm" fw={500} truncate="end" style={{ opacity: 0.8, flex: 1, textAlign: 'center' }}>
-            {chapterTitle}
-          </Text>
-
-          {/* Settings button (right) */}
-          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-            {/* Bookmarks button */}
-            {enableBookmarks && (
-              <Popover
-                opened={bookmarksPanelOpen}
-                onChange={setBookmarksPanelOpen}
-                position={t.uiDirection === 'rtl' ? 'bottom-start' : 'bottom-end'}
-                withinPortal
-                portalProps={{ target: mantinePortalTarget }}
-                shadow="md"
-                width={280}
-              >
-                <Popover.Target>
-                  <ActionIcon
-                    variant={bookmarksPanelOpen ? 'filled' : 'default'}
-                    size="lg"
-                    aria-label={t.bookmarks}
-                    aria-expanded={bookmarksPanelOpen}
-                    onClick={() => setBookmarksPanelOpen((open) => !open)}
-                  >
-                    🔖
-                  </ActionIcon>
-                </Popover.Target>
-                <Popover.Dropdown data-testid="bookmarks-panel" mah={400} style={{ overflowY: 'auto' }}>
-                  <BookmarkPanel
-                    onNavigate={(chapterIdx, page) => {
-                      setCurrentChapterIdx(chapterIdx);
-                      setCurrentPage(page);
-                      setBookmarksPanelOpen(false);
-                    }}
-                    onPageChange={onPageChange}
-                  />
-                </Popover.Dropdown>
-              </Popover>
-            )}
-
-            {/* Fullscreen toggle */}
-            <ActionIcon
-              variant={isFullscreen ? 'filled' : 'default'}
-              size="lg"
-              onClick={toggleFullscreen}
-              aria-label={isFullscreen ? t.exitFullscreen : t.enterFullscreen}
-            >
-              {isFullscreen ? '⊗' : '⛶'}
-            </ActionIcon>
-
-            <ActionIcon
-              variant={settingsOpen ? 'filled' : 'default'}
-              size="lg"
-              onClick={() => setSettingsOpen(!settingsOpen)}
-              aria-label={t.readingSettings}
-              aria-expanded={settingsOpen}
-            >
-              ⚙
-            </ActionIcon>
-          </div>
-
-          {/* Settings dialog */}
-          <Modal
-            opened={settingsOpen}
-            onClose={() => setSettingsOpen(false)}
-            title={t.readingSettings}
-            size="xs"
-            portalProps={{ target: mantinePortalTarget }}
-          >
-            <div dir={t.uiDirection}>
-              <div style={{ marginBottom: '1rem' }}>
-                <Text size="sm" fw={600} mb="xs">
-                  {t.settingsTheme}
-                </Text>
-                <Button.Group>
-                  {(['light', 'dark', 'sepia', 'high-contrast'] as ThemeName[]).map(thm => (
-                    <Button
-                      key={thm}
-                      onClick={() => {
-                        if (onSettingsChange) onSettingsChange({ theme: thm });
-                      }}
-                      variant={theme === thm ? 'filled' : 'default'}
-                      size="xs"
-                      fullWidth
-                      style={{
-                        background: theme === thm
-                          ? undefined
-                          : thm === 'light' ? '#fff' : thm === 'dark' ? '#1a1a2e' : thm === 'sepia' ? '#f4ecd8' : '#000',
-                        color: theme === thm
-                          ? undefined
-                          : thm === 'dark' || thm === 'high-contrast' ? '#fff' : '#1a1a1a',
-                      }}
-                    >
-                      {thm === 'light' ? t.themeLight : thm === 'dark' ? t.themeDark : thm === 'sepia' ? t.themeSepia : t.themeHighContrast}
-                    </Button>
-                  ))}
-                </Button.Group>
-              </div>
-
-              <div style={{ marginBottom: '1rem' }}>
-                <Select
-                  label={t.settingsFontFamily}
-                  value={selectedFontFamily}
-                  onChange={(family) => {
-                    if (!family) return;
-                    setSelectedFontFamily(family);
-                    const opt = fontOptions.find(o => o.family === family);
-                    if (onSettingsChange) onSettingsChange({ fontFamily: opt?.name ?? family });
-                  }}
-                  data={fontOptions.map(opt => ({ value: opt.family, label: t.fontNames[opt.name] ?? opt.name }))}
-                  allowDeselect={false}
-                  comboboxProps={{ withinPortal: true, portalProps: { target: mantinePortalTarget } }}
-                  styles={{ input: { fontFamily: selectedFontFamily } }}
-                />
-              </div>
-
-              <div>
-                <Text size="sm" fw={600} mb="xs">
-                  {t.settingsFontSize}: {fontSize}px
-                </Text>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <ActionIcon
-                    variant="default"
-                    onClick={() => {
-                      if (onSettingsChange) onSettingsChange({ fontSize: Math.max(12, fontSize - 2) });
-                    }}
-                    disabled={fontSize <= 12}
-                    aria-label={t.settingsFontSize}
-                  >
-                    A-
-                  </ActionIcon>
-                  <Slider
-                    min={12}
-                    max={48}
-                    step={2}
-                    value={fontSize}
-                    onChange={(value) => {
-                      if (onSettingsChange) onSettingsChange({ fontSize: value });
-                    }}
-                    label={null}
-                    style={{ flex: 1 }}
-                  />
-                  <ActionIcon
-                    variant="default"
-                    onClick={() => {
-                      if (onSettingsChange) onSettingsChange({ fontSize: Math.min(48, fontSize + 2) });
-                    }}
-                    disabled={fontSize >= 48}
-                    aria-label={t.settingsFontSize}
-                  >
-                    A+
-                  </ActionIcon>
+                  {currentChapter && (
+                    <div style={(scroll || columns === 1) ? { maxWidth: '720px', margin: '0 auto' } : undefined}>
+                      {currentChapter.content.map((node, ni) => (
+                        <ContentNodeRenderer key={`${currentChapterIdx}-${ni}`} node={node} onImageClick={(src, alt) => setLightboxImage({ src, alt })} onFootnoteClick={handleFootnoteClick} onLinkClick={handleLinkClick} />
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <div style={{ marginTop: '1rem' }}>
-                <Switch
-                  checked={justify}
-                  onChange={(e) => { if (onSettingsChange) onSettingsChange({ justify: e.currentTarget.checked }); }}
-                  label={t.settingsJustify}
-                  aria-label={t.settingsJustify}
-                  labelPosition="left"
-                  styles={{ body: { justifyContent: 'space-between' }, label: { fontSize: 'var(--mantine-font-size-sm)', fontWeight: 600 } }}
-                />
-              </div>
-
-              <div style={{ marginTop: '1rem' }}>
-                <Text size="sm" fw={600} mb="xs">
-                  {t.settingsLineSpacing}: {lineSpacing}×
-                </Text>
-                <Slider
-                  min={1} max={3} step={0.25} value={lineSpacing} label={null}
-                  onChange={(value) => { if (onSettingsChange) onSettingsChange({ lineSpacing: value }); }}
-                  aria-label={t.settingsLineSpacing}
-                />
-              </div>
-
-              <div style={{ marginTop: '1rem' }}>
-                <Text size="sm" fw={600} mb="xs">
-                  {t.settingsLetterSpacing}: {letterSpacing}px
-                </Text>
-                <Slider
-                  min={0} max={5} step={0.5} value={letterSpacing} label={null}
-                  onChange={(value) => { if (onSettingsChange) onSettingsChange({ letterSpacing: value }); }}
-                  aria-label={t.settingsLetterSpacing}
-                />
-              </div>
-
-              <div style={{ marginTop: '1rem' }}>
-                <Text size="sm" fw={600} mb="xs">
-                  {t.settingsWordSpacing}: {wordSpacing}px
-                </Text>
-                <Slider
-                  min={0} max={10} step={1} value={wordSpacing} label={null}
-                  onChange={(value) => { if (onSettingsChange) onSettingsChange({ wordSpacing: value }); }}
-                  aria-label={t.settingsWordSpacing}
-                />
-              </div>
-
-              <div style={{ marginTop: '1rem' }}>
-                <Text size="sm" fw={600} mb="xs">
-                  {t.settingsMargin}: {margin}px
-                </Text>
-                <Slider
-                  min={0} max={100} step={8} value={margin} label={null}
-                  onChange={(value) => { if (onSettingsChange) onSettingsChange({ margin: value }); }}
-                  aria-label={t.settingsMargin}
-                />
-              </div>
-
-              <div style={{ marginTop: '1rem' }}>
-                <Text size="sm" fw={600} mb="xs">
-                  {t.settingsColumns}
-                </Text>
-                <SegmentedControl
-                  fullWidth
-                  value={String(columns)}
-                  onChange={(value) => { if (onSettingsChange) onSettingsChange({ columns: Number(value) as 1 | 2 }); }}
-                  data={[
-                    { value: '1', label: '▐' },
-                    { value: '2', label: '▐▐' },
-                  ]}
-                  aria-label={t.settingsColumns}
-                />
-              </div>
-
-              <Button
-                onClick={() => {
-                  if (onSettingsChange) onSettingsChange({
-                    theme: 'light',
-                    fontFamily: 'serif',
-                    fontSize: 16,
-                    justify: true,
-                    lineSpacing: 1.5,
-                    letterSpacing: 0,
-                    wordSpacing: 0,
-                    margin: 32,
-                    columns: 1,
-                  });
+              {/* Footer — page info */}
+              <div
+                className="ebook-reader__footer"
+                dir={t.uiDirection}
+                style={{
+                  textAlign: 'center',
+                  padding: '0.4rem 1rem',
+                  fontSize: '0.8rem',
+                  opacity: 0.6,
+                  borderTop: '1px solid var(--reader-border, #e0e0e0)',
+                  backgroundColor: 'var(--reader-surface, #f5f5f5)',
+                  flexShrink: 0,
                 }}
-                variant="default"
-                fullWidth
-                mt="lg"
               >
-                {t.resetToDefaults}
-              </Button>
-            </div>
-          </Modal>
-        </div>
-
-        {/* Page viewport — fixed height, no scroll */}
-        <div
-          ref={containerRef}
-          className="ebook-reader__viewport"
-          onMouseEnter={() => setHovered(true)}
-          onMouseLeave={() => setHovered(false)}
-          style={{
-            flex: 1,
-            overflow: 'hidden',
-            position: 'relative',
-          }}
-        >
-          {/* Hidden div for measuring chapter page counts */}
-          <div
-            ref={measureRef}
-            aria-hidden="true"
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: '-9999px',
-              width: containerRef.current ? `${containerRef.current.clientWidth}px` : '100%',
-              visibility: 'hidden',
-              pointerEvents: 'none',
-            }}
-          />
-
-          {/* Hover navigation overlays */}
-          {hovered && !isFirstPage && (
-            <button
-              onClick={goToPrevPage}
-              aria-label={t.previousPage}
-              style={{
-                position: 'absolute',
-                [state.direction === 'rtl' ? 'right' : 'left']: 0,
-                top: 0,
-                bottom: 0,
-                width: '60px',
-                border: 'none',
-                background: 'linear-gradient(to right, rgba(0,0,0,0.04), transparent)',
-                color: 'var(--reader-fg, #1a1a1a)',
-                cursor: 'pointer',
-                fontSize: '1.5rem',
-                opacity: 0.6,
-                zIndex: 10,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transition: 'opacity 0.2s',
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.6'; }}
-            >
-              {state.direction === 'rtl' ? '→' : '←'}
-            </button>
-          )}
-          {hovered && !isLastPage && (
-            <button
-              onClick={goToNextPage}
-              aria-label={t.nextPage}
-              style={{
-                position: 'absolute',
-                [state.direction === 'rtl' ? 'left' : 'right']: 0,
-                top: 0,
-                bottom: 0,
-                width: '60px',
-                border: 'none',
-                background: 'linear-gradient(to left, rgba(0,0,0,0.04), transparent)',
-                color: 'var(--reader-fg, #1a1a1a)',
-                cursor: 'pointer',
-                fontSize: '1.5rem',
-                opacity: 0.6,
-                zIndex: 10,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transition: 'opacity 0.2s',
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.6'; }}
-            >
-              {state.direction === 'rtl' ? '←' : '→'}
-            </button>
-          )}
-
-          {/* Column-based content — horizontally paged via transform */}
-          <div
-            ref={contentRef}
-            className="ebook-reader__columns"
-            dir={state.direction}
-            style={{
-              columnWidth: containerRef.current
-                ? `${(containerRef.current.clientWidth - margin * 2 - (columns === 2 ? 64 : 0)) / columns}px`
-                : '100%',
-              columnGap: '64px',
-              columnFill: 'auto',
-              height: '100%',
-              padding: `2rem ${margin}px`,
-              transform: state.direction === 'rtl'
-                ? `translateX(${currentPage * (containerRef.current?.clientWidth ?? 0)}px)`
-                : `translateX(${-(currentPage * (containerRef.current?.clientWidth ?? 0))}px)`,
-              transition: 'transform 0.3s ease',
-              fontFamily: selectedFontFamily,
-              fontSize: 'var(--reader-font-size, 16px)',
-              lineHeight: lineSpacing,
-              textAlign: justify ? 'justify' : undefined,
-              letterSpacing: `${letterSpacing}px`,
-              wordSpacing: `${wordSpacing}px`,
-            }}
-          >
-            {currentChapter && (
-              <div>
-                {currentChapter.content.map((node, ni) => (
-                  <ContentNodeRenderer key={`${currentChapterIdx}-${ni}`} node={node} onImageClick={(src, alt) => setLightboxImage({ src, alt })} onFootnoteClick={handleFootnoteClick} onLinkClick={handleLinkClick} />
-                ))}
+                {interpolate(t.pageIndicator, { current: bookPageNumber, total: bookTotalPages, percent: overallProgress })}
+                {state.book && state.book.chapters.length > 1 && (
+                  <> · {interpolate(t.chapterIndicator, { current: currentChapterIdx + 1, total: state.book.chapters.length, title: chapterTitle })}</>
+                )}
               </div>
-            )}
-          </div>
-        </div>
 
-        {/* Footer — page info */}
-        <div
-          className="ebook-reader__footer"
-          dir={t.uiDirection}
-          style={{
-            textAlign: 'center',
-            padding: '0.4rem 1rem',
-            fontSize: '0.8rem',
-            opacity: 0.6,
-            borderTop: '1px solid var(--reader-border, #e0e0e0)',
-            backgroundColor: 'var(--reader-surface, #f5f5f5)',
-            flexShrink: 0,
-          }}
-        >
-          {interpolate(t.pageIndicator, { current: bookPageNumber, total: bookTotalPages, percent: overallProgress })}
-          {state.book && state.book.chapters.length > 1 && (
-            <> · {interpolate(t.chapterIndicator, { current: currentChapterIdx + 1, total: state.book.chapters.length, title: chapterTitle })}</>
-          )}
-        </div>
+              {/* Dictionary popover — positioned near selected text */}
+              {hasProviders && (dictionaryLoading || dictionaryResult) && (
+                <DictionaryPopover
+                  lookupResult={dictionaryResult}
+                  loading={dictionaryLoading}
+                  anchorPosition={anchorPosition ?? undefined}
+                  onClose={handleDictionaryClose}
+                  onSuggestionSelect={handleSuggestionSelect}
+                />
+              )}
 
-        {/* Dictionary popover — positioned near selected text */}
-        {hasProviders && (dictionaryLoading || dictionaryResult) && (
-          <DictionaryPopover
-            lookupResult={dictionaryResult}
-            loading={dictionaryLoading}
-            anchorPosition={anchorPosition ?? undefined}
-            onClose={handleDictionaryClose}
-            onSuggestionSelect={handleSuggestionSelect}
-          />
-        )}
+              {/* Footnote popover — positioned near clicked footnote reference */}
+              {activeFootnote && (
+                <FootnotePopover
+                  footnote={activeFootnote}
+                  anchorPosition={footnoteAnchor ?? undefined}
+                  visible={true}
+                  onClose={handleFootnoteClose}
+                  renderInlineNode={renderInlineNode}
+                />
+              )}
 
-        {/* Footnote popover — positioned near clicked footnote reference */}
-        {activeFootnote && (
-          <FootnotePopover
-            footnote={activeFootnote}
-            anchorPosition={footnoteAnchor ?? undefined}
-            visible={true}
-            onClose={handleFootnoteClose}
-            renderInlineNode={renderInlineNode}
-          />
-        )}
-
-        {/* Image lightbox overlay */}
-        {lightboxImage && (
-          <ImageLightbox
-            src={lightboxImage.src}
-            alt={lightboxImage.alt}
-            onClose={() => setLightboxImage(null)}
-            portalTarget={mantinePortalTarget}
-          />
-        )}
-        </TranslationContext.Provider>
-      </ReaderContext.Provider>
-      </MantineProvider>
+              {/* Image lightbox overlay */}
+              {lightboxImage && (
+                <ImageLightbox
+                  src={lightboxImage.src}
+                  alt={lightboxImage.alt}
+                  onClose={() => setLightboxImage(null)}
+                  portalTarget={mantinePortalTarget}
+                />
+              )}
+            </TranslationContext.Provider>
+          </ReaderContext.Provider>
+        </MantineProvider>
+      </DirectionProvider>
     </div>
   );
 };

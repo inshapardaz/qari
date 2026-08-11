@@ -15,9 +15,12 @@ export const ur: TranslationStrings = {
   exitFullscreen: 'فل سکرین سے باہر نکلیں',
   previousPage: 'پچھلا صفحہ',
   nextPage: 'اگلا صفحہ',
+  previousChapter: 'پچھلا باب',
+  nextChapter: 'اگلا باب',
   pageIndicator: 'صفحہ {current} از {total}',
   chapterIndicator: 'باب {current} از {total}',
   resetToDefaults: 'ڈیفالٹ پر واپس',
+  closeReader: 'ریڈر بند کریں',
 
   // Settings dialog
   settingsTheme: 'تھیم',
@@ -33,6 +36,14 @@ export const ur: TranslationStrings = {
   settingsWordSpacing: 'لفظ اسپیسنگ',
   settingsMargin: 'حاشیہ',
   settingsColumns: 'کالم',
+  settingsLayout: 'ترتیب',
+  settingsLayoutSingle: 'ایک کالم',
+  settingsLayoutDouble: 'دو کالم',
+  settingsLayoutScroll: 'اسکرول',
+  settingsMore: 'مزید ترتیبات',
+  settingsPreviewText: 'یہ ایک نمونہ متن ہے جو آپ کی ترتیبات کا پیش نظارہ دکھاتا ہے۔',
+  settingsApply: 'لاگو کریں',
+  settingsCancel: 'منسوخ',
 
   // Dictionary popover
   dictionaryLoading: 'لوڈ ہو رہا ہے...',
@@ -48,7 +59,8 @@ export const ur: TranslationStrings = {
 
   // Bookmark panel
   bookmarksPanelTitle: 'بک مارکس',
-  bookmarkNamePlaceholder: 'بک مارک کا نام',
+  bookmarkNamePlaceholder: 'بک مارک کا نام (اختیاری)',
+  bookmarkAutoName: 'باب {chapter}، صفحہ {page}',
   bookmarkAdd: 'بک مارک شامل کریں',
   bookmarksEmpty: 'ابھی کوئی بک مارک نہیں۔',
   bookmarkRename: 'نام تبدیل',

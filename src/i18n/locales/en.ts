@@ -15,9 +15,12 @@ export const en: TranslationStrings = {
   exitFullscreen: 'Exit fullscreen',
   previousPage: 'Previous page',
   nextPage: 'Next page',
+  previousChapter: 'Previous chapter',
+  nextChapter: 'Next chapter',
   pageIndicator: 'Page {current} of {total}',
   chapterIndicator: 'Chapter {current} of {total}',
   resetToDefaults: 'Reset to Defaults',
+  closeReader: 'Close reader',
 
   // Settings dialog
   settingsTheme: 'Theme',
@@ -33,6 +36,14 @@ export const en: TranslationStrings = {
   settingsWordSpacing: 'Word Spacing',
   settingsMargin: 'Margin',
   settingsColumns: 'Columns',
+  settingsLayout: 'Layout',
+  settingsLayoutSingle: 'Single column',
+  settingsLayoutDouble: 'Two columns',
+  settingsLayoutScroll: 'Scroll',
+  settingsMore: 'More settings',
+  settingsPreviewText: 'The quick brown fox jumps over the lazy dog. This preview shows how your reading settings will look.',
+  settingsApply: 'Apply',
+  settingsCancel: 'Cancel',
 
   // Dictionary popover
   dictionaryLoading: 'Loading...',
@@ -48,7 +59,8 @@ export const en: TranslationStrings = {
 
   // Bookmark panel
   bookmarksPanelTitle: 'Bookmarks',
-  bookmarkNamePlaceholder: 'Bookmark name',
+  bookmarkNamePlaceholder: 'Bookmark name (optional)',
+  bookmarkAutoName: 'Chapter {chapter}, Page {page}',
   bookmarkAdd: 'Add Bookmark',
   bookmarksEmpty: 'No bookmarks yet.',
   bookmarkRename: 'Rename',

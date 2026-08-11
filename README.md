@@ -174,7 +174,7 @@ PDF rendering uses a Web Worker (via `pdfjs-dist`, loaded lazily so it doesn't a
 
 ## Bookmark Storage
 
-Bookmarks are enabled by default. The reader provides a built-in bookmark panel (accessible via the 🔖 button in the header) that lets users create, rename, navigate to, and delete bookmarks.
+Bookmarks are enabled by default. The reader provides a built-in bookmark panel (accessible via the 🔖 button in the header) that lets users create, rename, navigate to, and delete bookmarks. Naming a bookmark is optional — leaving the name field blank auto-names it from the current position (e.g. "Chapter 3, Page 4"); typing a name overrides that.
 
 ### Default — localStorage
 
@@ -293,7 +293,9 @@ Four built-in themes are available:
 <Reader source={source} theme="high-contrast" /> // WCAG AAA compliant
 ```
 
-The reader also exposes an in-app theme selector that the user can interact with. When the user changes the theme via the UI, the `onSettingsChange` callback fires.
+The reader also exposes in-app controls as popovers anchored to their own title-bar buttons, each opening on whichever side of the header that button sits on. Theme (🎨) and layout (an icon that tracks whichever layout is currently active) each get their own button; the settings button (**Aa**) covers font size and typeface up front, with line height, letter/word spacing, margin, and justification behind a "More settings" toggle. Restore-to-defaults is a small icon button in the settings panel's top bar. Every control applies immediately: there's no Apply/Cancel step, and `onSettingsChange` fires as soon as a control is touched. The `light`/`dark`/`sepia` reading themes are tuned after the reading themes of leading e-reader apps (Apple Books, Kindle); `high-contrast` remains a distinct WCAG AAA accessibility theme (≥7:1 contrast) rather than an aesthetic one.
+
+The layout picker has three options: a single-column paginated view (turned via the page-edge hover arrows or arrow keys), also capped at a comfortable reading width and centered; a two-column paginated view, which spans the full available width; and a third **scroll** view (`scroll={true}`) that renders the current chapter as one continuously scrollable flow, likewise capped and centered. There are no pages in scroll mode, so the page counter doesn't apply and the page-edge hover arrows become chapter navigation instead — "Next"/"Previous" move to the next/previous chapter (resetting scroll position to the top) rather than turning a page.
 
 ### Typography Controls
 
@@ -307,7 +309,8 @@ The reader also exposes an in-app theme selector that the user can interact with
   letterSpacing={0}        // px, 0-5
   wordSpacing={0}          // px, 0-10
   margin={32}              // px, 0-100 (left/right content padding)
-  columns={1}              // 1 or 2 column layout
+  columns={1}              // 1 or 2 column layout (ignored when scroll is true)
+  scroll={false}           // true for continuous vertical scroll instead of paginated columns
 />
 ```
 
@@ -412,7 +415,7 @@ When the user adjusts settings via the in-app UI:
 <Reader
   source={source}
   onSettingsChange={(settings) => {
-    // settings: { theme?, fontFamily?, fontSize?, justify?, lineSpacing?, letterSpacing?, wordSpacing?, margin?, columns? }
+    // settings: { theme?, fontFamily?, fontSize?, justify?, lineSpacing?, letterSpacing?, wordSpacing?, margin?, columns?, scroll? }
     saveToUserPreferences(settings);
   }}
 />
@@ -562,12 +565,14 @@ When set to `"auto"`, the reader detects direction by analyzing character freque
 | `letterSpacing` | `number` | `0` | Letter spacing in pixels (0-5) |
 | `wordSpacing` | `number` | `0` | Word spacing in pixels (0-10) |
 | `margin` | `number` | `32` | Content margin in pixels (0-100) |
-| `columns` | `1 \| 2` | `1` | Number of text columns |
+| `columns` | `1 \| 2` | `1` | Number of text columns (ignored when `scroll` is true) |
+| `scroll` | `boolean` | `false` | Continuous vertical scroll within the chapter instead of paginated columns |
 | `pdfWorkerSrc` | `string` | jsDelivr CDN URL | Override the PDF.js worker script URL (only relevant for `{ type: 'pdf' }` sources) |
 | `zoom` | `number` | `100` | Zoom level (50-300, snaps to 10%) |
 | `translations` | `Partial<TranslationStrings>` | English defaults | UI string overrides for i18n |
 | `direction` | `'ltr' \| 'rtl' \| 'auto'` | `'auto'` | Text direction override |
 | `enableBookmarks` | `boolean` | `true` | Show/hide bookmark panel |
+| `showCloseButton` | `boolean` | `false` | Show a close button in the header |
 | `bookmarks` | `Bookmark[]` | `undefined` | Controlled bookmarks array |
 | `bookmarkStore` | `BookmarkStoreInterface` | localStorage | Custom bookmark persistence |
 | `bookmarkAdapter` | `CustomStoreAdapter` | `undefined` | Legacy store adapter |
@@ -583,6 +588,7 @@ When set to `"auto"`, the reader detects direction by analyzing character freque
 | `onBookmarkChange` | `(event) => void` | — | Bookmark CRUD callback |
 | `onSettingsChange` | `(settings) => void` | — | User settings change callback |
 | `onError` | `(error) => void` | — | Error callback |
+| `onClose` | `() => void` | — | Close button callback (see `showCloseButton`) |
 
 ## Dictionary Integration
 

@@ -15,9 +15,12 @@ export const fr: TranslationStrings = {
   exitFullscreen: 'Quitter le plein écran',
   previousPage: 'Page précédente',
   nextPage: 'Page suivante',
+  previousChapter: 'Chapitre précédent',
+  nextChapter: 'Chapitre suivant',
   pageIndicator: 'Page {current} sur {total}',
   chapterIndicator: 'Chapitre {current} sur {total}',
   resetToDefaults: 'Réinitialiser',
+  closeReader: 'Fermer le lecteur',
 
   // Settings dialog
   settingsTheme: 'Thème',
@@ -33,6 +36,14 @@ export const fr: TranslationStrings = {
   settingsWordSpacing: 'Espacement mots',
   settingsMargin: 'Marge',
   settingsColumns: 'Colonnes',
+  settingsLayout: 'Mise en page',
+  settingsLayoutSingle: 'Colonne unique',
+  settingsLayoutDouble: 'Deux colonnes',
+  settingsLayoutScroll: 'Défilement',
+  settingsMore: 'Plus de réglages',
+  settingsPreviewText: 'Le renard brun rapide saute par-dessus le chien paresseux. Cet aperçu montre à quoi ressembleront vos paramètres de lecture.',
+  settingsApply: 'Appliquer',
+  settingsCancel: 'Annuler',
 
   // Dictionary popover
   dictionaryLoading: 'Chargement...',
@@ -48,7 +59,8 @@ export const fr: TranslationStrings = {
 
   // Bookmark panel
   bookmarksPanelTitle: 'Signets',
-  bookmarkNamePlaceholder: 'Nom du signet',
+  bookmarkNamePlaceholder: 'Nom du signet (facultatif)',
+  bookmarkAutoName: 'Chapitre {chapter}, Page {page}',
   bookmarkAdd: 'Ajouter un signet',
   bookmarksEmpty: 'Aucun signet pour le moment.',
   bookmarkRename: 'Renommer',

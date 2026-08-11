@@ -1,8 +1,8 @@
 /**
- * Regression test: the chapter menu, bookmarks popover, settings dialog
- * (and its font Select), and the image lightbox must portal their floating
- * content inside the reader's own root element rather than as a
- * document.body-level sibling.
+ * Regression test: the chapter menu, bookmarks popover, theme panel, layout
+ * panel, settings dialog (and its font Select), and the image lightbox must
+ * portal their floating content inside the reader's own root element rather
+ * than as a document.body-level sibling.
  *
  * This matters specifically for fullscreen mode: `rootRef.current` is the
  * element passed to `requestFullscreen()`, and the Fullscreen API promotes
@@ -52,14 +52,34 @@ describe('Mantine floating UI portals inside the reader root (fullscreen top-lay
     expect(isInsideReaderRoot(panel)).toBe(true);
   });
 
+  it('portals the theme panel inside the reader root', async () => {
+    render(<Reader source={createMarkdownSource()} />);
+    await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Theme' }));
+    const panel = await screen.findByTestId('theme-panel');
+
+    expect(isInsideReaderRoot(panel)).toBe(true);
+  });
+
+  it('portals the layout panel inside the reader root', async () => {
+    render(<Reader source={createMarkdownSource()} />);
+    await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Layout' }));
+    const panel = await screen.findByTestId('layout-panel');
+
+    expect(isInsideReaderRoot(panel)).toBe(true);
+  });
+
   it('portals the settings dialog inside the reader root', async () => {
     render(<Reader source={createMarkdownSource()} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('button', { name: 'Reading settings' }));
-    const dialog = await screen.findByRole('dialog');
+    const panel = await screen.findByTestId('settings-panel');
 
-    expect(isInsideReaderRoot(dialog)).toBe(true);
+    expect(isInsideReaderRoot(panel)).toBe(true);
   });
 
   it('portals the font family Select dropdown (nested inside the settings dialog) inside the reader root', async () => {

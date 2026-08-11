@@ -13,9 +13,12 @@ export interface TranslationStrings {
   exitFullscreen: string;
   previousPage: string;
   nextPage: string;
+  previousChapter: string;
+  nextChapter: string;
   pageIndicator: string; // supports {current}, {total}, {percent}
   chapterIndicator: string; // supports {current}, {total}, {title}
   resetToDefaults: string;
+  closeReader: string;
 
   // Settings dialog
   settingsTheme: string;
@@ -31,6 +34,14 @@ export interface TranslationStrings {
   settingsWordSpacing: string; // supports {value}
   settingsMargin: string; // supports {value}
   settingsColumns: string;
+  settingsLayout: string;
+  settingsLayoutSingle: string;
+  settingsLayoutDouble: string;
+  settingsLayoutScroll: string;
+  settingsMore: string;
+  settingsPreviewText: string;
+  settingsApply: string;
+  settingsCancel: string;
 
   // Dictionary popover
   dictionaryLoading: string;
@@ -47,6 +58,8 @@ export interface TranslationStrings {
   // Bookmark panel
   bookmarksPanelTitle: string;
   bookmarkNamePlaceholder: string;
+  /** Auto-generated bookmark name when no custom name is given. Interpolates {chapter} and {page} (both 1-indexed). */
+  bookmarkAutoName: string;
   bookmarkAdd: string;
   bookmarksEmpty: string;
   bookmarkRename: string;

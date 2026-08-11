@@ -29,6 +29,46 @@ interface ReaderSource {
 }
 
 // ---------------------------------------------------------------------------
+// Collapsible panel — a plain <details>/<summary> disclosure, styled to
+// match the rest of the demo's fieldset-based controls.
+// ---------------------------------------------------------------------------
+
+function CollapsiblePanel({
+  title,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <details
+      open={defaultOpen}
+      style={{
+        border: '1px solid #ccc',
+        borderRadius: '6px',
+        marginBottom: '1rem',
+      }}
+    >
+      <summary
+        style={{
+          fontWeight: 600,
+          padding: '0.75rem 1rem',
+          cursor: 'pointer',
+          userSelect: 'none',
+        }}
+      >
+        {title}
+      </summary>
+      <div style={{ padding: '0 1rem 1rem' }}>
+        {children}
+      </div>
+    </details>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // View settings persistence
 // ---------------------------------------------------------------------------
 
@@ -44,6 +84,7 @@ interface ViewSettings {
   wordSpacing: number;
   margin: number;
   columns: 1 | 2;
+  scroll: boolean;
 }
 
 const DEFAULT_SETTINGS: ViewSettings = {
@@ -56,6 +97,7 @@ const DEFAULT_SETTINGS: ViewSettings = {
   wordSpacing: 0,
   margin: 32,
   columns: 1,
+  scroll: false,
 };
 
 function loadSettings(): ViewSettings {
@@ -80,6 +122,7 @@ function loadSettings(): ViewSettings {
       margin: typeof parsed.margin === 'number' && parsed.margin >= 0 && parsed.margin <= 100
         ? parsed.margin : DEFAULT_SETTINGS.margin,
       columns: [1, 2].includes(parsed.columns) ? parsed.columns : DEFAULT_SETTINGS.columns,
+      scroll: typeof parsed.scroll === 'boolean' ? parsed.scroll : DEFAULT_SETTINGS.scroll,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -135,16 +178,32 @@ function App() {
   const [language, setLanguage] = useState<DemoLanguage>('en');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Component props playground — demonstrates props not already covered by
+  // the reader's own in-app settings dialog.
+  const [showCloseButton, setShowCloseButton] = useState(false);
+  const [enableBookmarks, setEnableBookmarks] = useState(false);
+  const [enableBuiltInDictionary, setEnableBuiltInDictionary] = useState(true);
+  const [direction, setDirection] = useState<'auto' | 'ltr' | 'rtl'>('auto');
+  const [zoom, setZoom] = useState(100);
+  const [closeMessage, setCloseMessage] = useState<string | null>(null);
+
   // Persist settings whenever they change
   useEffect(() => {
     saveSettings(settings);
   }, [settings]);
 
+  // Clear the onClose demo message after a few seconds
+  useEffect(() => {
+    if (!closeMessage) return;
+    const timer = setTimeout(() => setCloseMessage(null), 4000);
+    return () => clearTimeout(timer);
+  }, [closeMessage]);
+
   const updateSetting = useCallback(<K extends keyof ViewSettings>(key: K, value: ViewSettings[K]) => {
     setSettings(prev => ({ ...prev, [key]: value }));
   }, []);
 
-  const { theme, fontFamily, fontSize, justify, lineSpacing, letterSpacing, wordSpacing, margin, columns } = settings;
+  const { theme, fontFamily, fontSize, justify, lineSpacing, letterSpacing, wordSpacing, margin, columns, scroll } = settings;
 
   const [progress, setProgress] = useState<{
     currentPage: number;
@@ -210,14 +269,7 @@ function App() {
       </header>
 
       {/* Source selection */}
-      <fieldset style={{
-        border: '1px solid #ccc',
-        borderRadius: '6px',
-        padding: '1rem',
-        marginBottom: '1rem',
-      }}>
-        <legend style={{ fontWeight: 600, padding: '0 0.5rem' }}>Book Source</legend>
-
+      <CollapsiblePanel title="Book Source" defaultOpen>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
           {/* URL input */}
           <div style={{ flex: '1 1 300px' }}>
@@ -311,7 +363,88 @@ function App() {
         <p style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#888' }}>
           Currently loaded: <strong>{sourceLabel}</strong>
         </p>
-      </fieldset>
+      </CollapsiblePanel>
+
+      {/* Component props playground */}
+      <CollapsiblePanel title="Component Props">
+        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem' }}>
+            <input
+              type="checkbox"
+              checked={showCloseButton}
+              onChange={(e) => setShowCloseButton(e.target.checked)}
+            />
+            showCloseButton
+          </label>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem' }}>
+            <input
+              type="checkbox"
+              checked={enableBookmarks}
+              onChange={(e) => setEnableBookmarks(e.target.checked)}
+            />
+            enableBookmarks
+          </label>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem' }}>
+            <input
+              type="checkbox"
+              checked={enableBuiltInDictionary}
+              onChange={(e) => setEnableBuiltInDictionary(e.target.checked)}
+            />
+            enableBuiltInDictionary
+          </label>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: '#555' }}>
+              direction
+            </label>
+            <select
+              value={direction}
+              onChange={(e) => setDirection(e.target.value as 'auto' | 'ltr' | 'rtl')}
+              style={{
+                padding: '0.5rem',
+                border: '1px solid #ccc',
+                borderRadius: '4px',
+                fontSize: '0.9rem',
+              }}
+            >
+              <option value="auto">auto</option>
+              <option value="ltr">ltr</option>
+              <option value="rtl">rtl</option>
+            </select>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: '#555' }}>
+              zoom: {zoom}%
+            </label>
+            <input
+              type="range"
+              min={50}
+              max={300}
+              step={10}
+              value={zoom}
+              onChange={(e) => setZoom(Number(e.target.value))}
+              style={{ width: '160px' }}
+            />
+          </div>
+        </div>
+
+        {closeMessage && (
+          <p style={{
+            marginTop: '0.75rem',
+            padding: '0.5rem 0.75rem',
+            background: '#ecfdf5',
+            border: '1px solid #a7f3d0',
+            borderRadius: '4px',
+            fontSize: '0.85rem',
+            color: '#065f46',
+          }}>
+            {closeMessage}
+          </p>
+        )}
+      </CollapsiblePanel>
 
       {/* Reader */}
       <div style={{
@@ -329,15 +462,20 @@ function App() {
           lineSpacing={lineSpacing}
           letterSpacing={letterSpacing}
           wordSpacing={wordSpacing}
-          enableBookmarks={false}
-          enableBuiltInDictionary={true}
+          enableBookmarks={enableBookmarks}
+          enableBuiltInDictionary={enableBuiltInDictionary}
+          showCloseButton={showCloseButton}
+          direction={direction}
+          zoom={zoom}
           margin={margin}
           columns={columns}
+          scroll={scroll}
           translations={LOCALES[language]}
           onPageChange={(e) => console.log('Page change:', e)}
           onBookmarkCreate={(e) => console.log('Bookmark created:', e)}
           onError={(e) => console.error('Reader error:', e)}
           onReady={() => console.log('Reader ready')}
+          onClose={() => setCloseMessage(`onClose fired at ${new Date().toLocaleTimeString()} — your app would hide/unmount the reader here.`)}
           onSettingsChange={(s) => {
             if (s.theme) updateSetting('theme', s.theme);
             if (s.fontFamily) updateSetting('fontFamily', s.fontFamily);
@@ -348,6 +486,7 @@ function App() {
             if (s.wordSpacing !== undefined) updateSetting('wordSpacing', s.wordSpacing);
             if (s.margin !== undefined) updateSetting('margin', s.margin);
             if (s.columns !== undefined) updateSetting('columns', s.columns);
+            if (s.scroll !== undefined) updateSetting('scroll', s.scroll);
           }}
           onProgressChange={setProgress}
         />

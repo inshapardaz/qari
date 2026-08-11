@@ -83,25 +83,24 @@ describe('Hover nav arrows reappear after a covering overlay closes', () => {
     });
   });
 
-  it('shows the next-page arrow again once the settings dialog is closed by clicking outside it', async () => {
+  it('shows the next-page arrow again once the settings panel is closed by clicking outside it', async () => {
     render(<Reader source={createTwoChapterSource()} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
 
     mockViewportRectAndHoverPointer();
 
     fireEvent.click(screen.getByRole('button', { name: 'Reading settings' }));
-    await screen.findByRole('dialog');
+    await screen.findByTestId('settings-panel');
 
-    // Click the modal's overlay (outside its content) rather than any
-    // control inside it, matching the reported reproduction steps.
-    const overlay = document.querySelector('.mantine-Modal-overlay');
-    expect(overlay).not.toBeNull();
-    fireEvent.mouseDown(overlay!);
-    fireEvent.mouseUp(overlay!);
-    fireEvent.click(overlay!);
+    // The settings panel is a Popover, which has no overlay element to
+    // click — it closes on an outside click instead, matching the reported
+    // reproduction steps.
+    fireEvent.mouseDown(document.body);
+    fireEvent.mouseUp(document.body);
+    fireEvent.click(document.body);
 
     await waitFor(() => {
-      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(screen.queryByTestId('settings-panel')).toBeNull();
     });
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Next page' })).toBeInTheDocument();

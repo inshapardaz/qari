@@ -131,10 +131,40 @@ describe('BookmarkPanel', () => {
     });
   });
 
-  it('shows validation error for empty name', () => {
-    renderWithContext(<BookmarkPanel />);
+  it('auto-generates a name from the current chapter and page when the name field is left empty', async () => {
+    const ctx = createMockContext();
+    renderWithContext(<BookmarkPanel />, ctx);
     fireEvent.click(screen.getByTestId('bookmark-create-btn'));
-    expect(screen.getByTestId('bookmark-error')).toHaveTextContent('Bookmark name must not be empty.');
+
+    await waitFor(() => {
+      expect(ctx.bookmarkStore!.create).toHaveBeenCalledWith('book-123', 'ch-1', 0, 'Chapter 1, Page 1');
+    });
+    expect(screen.queryByTestId('bookmark-error')).not.toBeInTheDocument();
+  });
+
+  it('auto-generated name and position reflect the actual current chapter/page, not always the first one', async () => {
+    const ctx = createMockContext({
+      state: {
+        ...createMockContext().state,
+        book: {
+          metadata: { title: 'Test Book', identifier: 'book-123' },
+          chapters: [
+            { id: 'ch-1', title: 'Chapter 1', order: 0, content: [] },
+            { id: 'ch-2', title: 'Chapter 2', order: 1, content: [] },
+            { id: 'ch-3', title: 'Chapter 3', order: 2, content: [] },
+          ],
+        } as any,
+        currentChapter: 2,
+        currentPage: 3,
+      },
+    });
+    renderWithContext(<BookmarkPanel />, ctx);
+    fireEvent.click(screen.getByTestId('bookmark-create-btn'));
+
+    await waitFor(() => {
+      // position = currentPage(3) * default charsPerPage(1500) = 4500
+      expect(ctx.bookmarkStore!.create).toHaveBeenCalledWith('book-123', 'ch-3', 4500, 'Chapter 3, Page 4');
+    });
   });
 
   it('shows validation error for name exceeding 100 characters', () => {
