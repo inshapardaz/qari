@@ -56,6 +56,7 @@ export const fr: TranslationStrings = {
   spellingSuggestions: 'Suggestions orthographiques',
   dictionaryLoadingAriaLabel: 'Recherche dans le dictionnaire',
   dictionaryExamples: 'Exemples',
+  dictionaryLookupMenuItem: 'Signification',
 
   // Bookmark panel
   bookmarksPanelTitle: 'Signets',
@@ -69,6 +70,15 @@ export const fr: TranslationStrings = {
   bookmarkCancel: 'Annuler',
   bookmarkNewNameAriaLabel: 'Nouveau nom du signet',
   bookmarkCreateAriaLabel: 'Créer un signet',
+
+  // Note panel
+  notesPanelTitle: 'Notes',
+  notesEmpty: 'Aucune note pour le moment. Sélectionnez du texte puis faites un clic droit pour en ajouter une.',
+  noteAddMenuItem: 'Ajouter une note',
+  noteRemoveMenuItem: 'Supprimer la note',
+  noteCommentPlaceholder: 'Ajouter un commentaire (facultatif)',
+  noteSave: 'Enregistrer',
+  noteCancel: 'Annuler',
 
   // Chapter index
   chaptersTitle: 'Chapitres',

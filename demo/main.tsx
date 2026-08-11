@@ -182,6 +182,7 @@ function App() {
   // the reader's own in-app settings dialog.
   const [showCloseButton, setShowCloseButton] = useState(false);
   const [enableBookmarks, setEnableBookmarks] = useState(false);
+  const [enableNotes, setEnableNotes] = useState(true);
   const [enableBuiltInDictionary, setEnableBuiltInDictionary] = useState(true);
   const [direction, setDirection] = useState<'auto' | 'ltr' | 'rtl'>('auto');
   const [zoom, setZoom] = useState(100);
@@ -389,6 +390,15 @@ function App() {
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem' }}>
             <input
               type="checkbox"
+              checked={enableNotes}
+              onChange={(e) => setEnableNotes(e.target.checked)}
+            />
+            enableNotes
+          </label>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem' }}>
+            <input
+              type="checkbox"
               checked={enableBuiltInDictionary}
               onChange={(e) => setEnableBuiltInDictionary(e.target.checked)}
             />
@@ -463,6 +473,7 @@ function App() {
           letterSpacing={letterSpacing}
           wordSpacing={wordSpacing}
           enableBookmarks={enableBookmarks}
+          enableNotes={enableNotes}
           enableBuiltInDictionary={enableBuiltInDictionary}
           showCloseButton={showCloseButton}
           direction={direction}

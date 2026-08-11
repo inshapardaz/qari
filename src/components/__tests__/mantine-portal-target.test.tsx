@@ -52,6 +52,16 @@ describe('Mantine floating UI portals inside the reader root (fullscreen top-lay
     expect(isInsideReaderRoot(panel)).toBe(true);
   });
 
+  it('portals the notes panel inside the reader root', async () => {
+    render(<Reader source={createMarkdownSource()} />);
+    await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
+    const panel = await screen.findByTestId('notes-panel');
+
+    expect(isInsideReaderRoot(panel)).toBe(true);
+  });
+
   it('portals the theme panel inside the reader root', async () => {
     render(<Reader source={createMarkdownSource()} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());

@@ -56,6 +56,7 @@ export const en: TranslationStrings = {
   spellingSuggestions: 'Spelling suggestions',
   dictionaryLoadingAriaLabel: 'Dictionary lookup loading',
   dictionaryExamples: 'Examples',
+  dictionaryLookupMenuItem: 'Meaning',
 
   // Bookmark panel
   bookmarksPanelTitle: 'Bookmarks',
@@ -69,6 +70,15 @@ export const en: TranslationStrings = {
   bookmarkCancel: 'Cancel',
   bookmarkNewNameAriaLabel: 'New bookmark name',
   bookmarkCreateAriaLabel: 'Create bookmark',
+
+  // Note panel
+  notesPanelTitle: 'Notes',
+  notesEmpty: 'No notes yet. Select text and right-click to add one.',
+  noteAddMenuItem: 'Add note',
+  noteRemoveMenuItem: 'Remove note',
+  noteCommentPlaceholder: 'Add a comment (optional)',
+  noteSave: 'Save',
+  noteCancel: 'Cancel',
 
   // Chapter index
   chaptersTitle: 'Chapters',

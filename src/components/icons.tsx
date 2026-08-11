@@ -30,6 +30,17 @@ export function BookmarkIcon({ size = '1.1em' }: IconProps) {
   );
 }
 
+export function NoteIcon({ size = '1.1em' }: IconProps) {
+  return (
+    <svg {...defaultProps} width={size} height={size}>
+      <path d="M7 3h8l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
+      <path d="M15 3v4h4" />
+      <line x1="8.5" y1="12" x2="15.5" y2="12" />
+      <line x1="8.5" y1="15.5" x2="13.5" y2="15.5" />
+    </svg>
+  );
+}
+
 export function ThemeIcon({ size = '1.1em' }: IconProps) {
   return (
     <svg {...defaultProps} width={size} height={size}>

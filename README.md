@@ -252,6 +252,69 @@ interface Bookmark {
 }
 ```
 
+## Notes
+
+Notes are enabled by default (📝 button in the header). Select text in the reading view and right-click to bring up an "Add note" option — the highlighted excerpt becomes a note immediately, shown with a persistent highlight in the text. Right-clicking directly on an existing highlight (with or without a fresh selection) adds a "Remove note" option to the same menu. If a dictionary is configured (`enableBuiltInDictionary` or `dictionaryProviders`), "Meaning" appears in that same menu too, rather than the two features fighting over the same right-click. Open the notes panel to add/edit a comment on any note, navigate to it, or delete it. Notes storage mirrors bookmark storage: localStorage by default, or a custom adapter.
+
+### Default — localStorage
+
+```tsx
+<Reader source={source} />
+```
+
+### Disable Notes
+
+```tsx
+<Reader source={source} enableNotes={false} />
+```
+
+### React to Note Changes
+
+```tsx
+<Reader
+  source={source}
+  onNoteChange={(event) => {
+    // event.type: 'created' | 'deleted' | 'updated'
+    console.log(event.type, event.note);
+  }}
+/>
+```
+
+### Custom Store (server-side)
+
+Implement `CustomNoteStoreAdapter` to persist notes on your own backend (same shape as `bookmarkAdapter` — a comment edit is just another `save()` with the updated note, so there's no separate update method to implement):
+
+```tsx
+import type { CustomNoteStoreAdapter } from 'qari/interfaces/note-store';
+
+const myNoteStore: CustomNoteStoreAdapter = {
+  async save(note) { await api.post('/notes', note); }, // also used to persist an edited comment
+  async load(bookId) { return api.get(`/notes?bookId=${bookId}`); },
+  async list() { return api.get('/notes'); },
+  async remove(noteId) { await api.delete(`/notes/${noteId}`); },
+};
+
+<Reader source={source} noteAdapter={myNoteStore} />
+```
+
+### Note Data Model
+
+```ts
+interface Note {
+  id: string;           // UUID
+  bookId: string;        // Identifies the book
+  chapterId: string;     // Chapter within the book
+  startOffset: number;   // Character offset within the chapter's rendered text
+  endOffset: number;     // Character offset where the highlight ends (exclusive)
+  text: string;          // The highlighted excerpt, captured at creation time
+  comment?: string;      // Optional user-provided annotation, 0-1000 chars
+  createdAt: string;     // ISO 8601 UTC
+  updatedAt?: string;    // ISO 8601 UTC (set when the comment is edited)
+}
+```
+
+`startOffset`/`endOffset` are measured against the chapter's *rendered* text (not the parsed content AST), so the same offsets keep locating the same characters regardless of font size, margin, column count, or scroll vs. paginated mode.
+
 ## Reading Progress
 
 Track the user's reading position via the `onProgressChange` callback:

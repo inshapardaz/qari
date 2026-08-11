@@ -11,6 +11,7 @@ import React, {
   useContext,
   useState,
   useEffect,
+  useLayoutEffect,
   useRef,
   useCallback,
   useMemo,
@@ -36,6 +37,7 @@ import { DEFAULT_MANTINE_THEME } from '../theme/mantine-theme';
 
 import type { Book, ContentNode, InlineNode, FootnoteRefSpan } from '../models/book';
 import type { Bookmark } from '../models/bookmark';
+import type { Note } from '../models/note';
 import type { ReaderState, ThemeName, FontFamily } from '../models/reader-state';
 import type {
   PageChangeEvent,
@@ -46,20 +48,24 @@ import type {
 import type { DictionaryProvider } from '../interfaces/dictionary';
 import type { CustomStoreAdapter } from '../interfaces/store-adapter';
 import type { BookmarkStoreInterface, BookmarkChangeEvent } from '../interfaces/bookmark-store';
+import type { CustomNoteStoreAdapter, NoteChangeEvent } from '../interfaces/note-store';
 
 import { ThemeEngine, THEMES } from '../services/theme-engine';
 import { DefaultDirectionDetector } from '../services/direction-detector';
 import { DictionaryService } from '../services/dictionary-service';
 import { BookmarkStore } from '../services/bookmark-store';
 import { LocalStorageStore } from '../services/local-storage-store';
+import { NoteStore } from '../services/note-store';
 import { ChapterNavigator } from '../services/chapter-navigator';
 import { URDU_WEB_FONT_OPTIONS, injectUrduWebFontsCss } from '../services/urdu-web-fonts';
+import { getRangeOffsets, applyHighlights, clearHighlights } from '../utils/text-highlight';
 
 import { BookmarkPanel } from './BookmarkPanel';
+import { NotePanel } from './NotePanel';
 import { DictionaryPopover } from './DictionaryPopover';
 import { FootnotePopover } from './FootnotePopover';
 import { ImageLightbox } from './ImageLightbox';
-import { BookmarkIcon, ThemeIcon, SinglePageIcon, DoublePageIcon, ScrollIcon, ExitFullscreenIcon, ChevronLeftIcon, ChevronRightIcon } from './icons';
+import { BookmarkIcon, NoteIcon, ThemeIcon, SinglePageIcon, DoublePageIcon, ScrollIcon, ExitFullscreenIcon, ChevronLeftIcon, ChevronRightIcon } from './icons';
 
 import { TranslationContext, DEFAULT_TRANSLATIONS, useTranslations, interpolate } from '../i18n';
 import type { TranslationStrings } from '../i18n';
@@ -151,6 +157,8 @@ export interface ReaderProps {
   enableBuiltInDictionary?: boolean;
   /** Enable or disable the bookmarks feature. Defaults to true. */
   enableBookmarks?: boolean;
+  /** Enable or disable the notes feature (select text, right-click to add a note). Defaults to true. */
+  enableNotes?: boolean;
   /**
    * Custom font options for the font selector.
    * Each entry provides a display name and CSS font-family value.
@@ -170,11 +178,15 @@ export interface ReaderProps {
   bookmarkAdapter?: CustomStoreAdapter;
   bookmarks?: Bookmark[];
   bookmarkStore?: BookmarkStoreInterface;
+  /** Custom persistence for notes (e.g. a server-backed store). Defaults to localStorage. */
+  noteAdapter?: CustomNoteStoreAdapter;
   /** Show a close button in the header. Defaults to false. */
   showCloseButton?: boolean;
   onBookmarkChange?: (event: BookmarkChangeEvent) => void;
   onPageChange?: (event: PageChangeEvent) => void;
   onBookmarkCreate?: (event: BookmarkEvent) => void;
+  /** Called when a note is created, deleted, or its comment is updated. */
+  onNoteChange?: (event: NoteChangeEvent) => void;
   onError?: (event: ReaderError) => void;
   onReady?: (event: BookLoadedEvent) => void;
   onSettingsChange?: (settings: ReaderSettings) => void;
@@ -202,10 +214,14 @@ export interface ReaderContextValue {
   directionDetector: DefaultDirectionDetector;
   dictionaryService: DictionaryService;
   bookmarkStore: BookmarkStore | null;
+  noteStore: NoteStore | null;
   chapterNavigator: ChapterNavigator | null;
   addBookmark: (bookmark: Bookmark) => void;
   removeBookmark: (bookmarkId: string) => void;
   updateBookmark: (bookmark: Bookmark) => void;
+  addNote: (note: Note) => void;
+  removeNote: (noteId: string) => void;
+  updateNote: (note: Note) => void;
 }
 
 export const ReaderContext = createContext<ReaderContextValue | null>(null);
@@ -257,6 +273,7 @@ function createInitialState(): ReaderState {
       fontSize: 16,
     },
     bookmarks: [],
+    notes: [],
     error: null,
     loading: true,
   };
@@ -650,15 +667,18 @@ export const Reader: React.FC<ReaderProps> = ({
   hunspellDictionaries,
   enableBuiltInDictionary = false,
   enableBookmarks = true,
+  enableNotes = true,
   fontOptions = DEFAULT_FONT_OPTIONS,
   mantineTheme,
   bookmarkAdapter,
   bookmarks: bookmarksProp,
   bookmarkStore: bookmarkStoreProp,
+  noteAdapter,
   showCloseButton = false,
   onBookmarkChange,
   onPageChange,
   onBookmarkCreate,
+  onNoteChange,
   onError,
   onReady,
   onSettingsChange,
@@ -674,8 +694,23 @@ export const Reader: React.FC<ReaderProps> = ({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [moreSettingsOpen, setMoreSettingsOpen] = useState(false);
   const [bookmarksPanelOpen, setBookmarksPanelOpen] = useState(false);
+  const [notesPanelOpen, setNotesPanelOpen] = useState(false);
   const [themePanelOpen, setThemePanelOpen] = useState(false);
   const [layoutPanelOpen, setLayoutPanelOpen] = useState(false);
+  // Pending note context menu — position, plus whichever of these apply to
+  // the right-click that opened it: a fresh text selection (offers "Add
+  // note" and, if configured, "Meaning") and/or an existing note highlight
+  // under the cursor (offers "Remove note"). Both can be present at once
+  // (e.g. selecting across part of an existing highlight). The selection's
+  // Range is captured up front so "Meaning" can restore it before handing
+  // off to dictionary lookup — clicking a menu item can collapse the live
+  // selection before that hook re-reads it.
+  const [pendingNote, setPendingNote] = useState<{
+    x: number;
+    y: number;
+    selection: { start: number; end: number; text: string; range: Range } | null;
+    noteId: string | null;
+  } | null>(null);
   const [selectedFontFamily, setSelectedFontFamily] = useState<string>(() => {
     // Try to match the fontFamily prop against available font options
     if (fontFamily) {
@@ -703,8 +738,23 @@ export const Reader: React.FC<ReaderProps> = ({
   const directionDetectorRef = useRef(new DefaultDirectionDetector());
   const dictionaryServiceRef = useRef(new DictionaryService());
   const bookmarkStoreRef = useRef<BookmarkStore | null>(null);
+  const noteStoreRef = useRef<NoteStore | null>(null);
   const chapterNavigatorRef = useRef<ChapterNavigator | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+
+  // ---------------------------------------------------------------------------
+  // PDF pages don't reflow like text — each one is a single fixed-size image
+  // occupying its own chapter (see pdf-parser.ts). The page-display strategy
+  // (columns / scroll) still applies to them, but rather than CSS-column
+  // pagination or a per-chapter scroll flow, it changes which *chapters* are
+  // shown and how: scroll mode stacks every page vertically in one
+  // continuous flow, and two-column mode shows a spread of two consecutive
+  // pages side by side instead of one page at a time.
+  // ---------------------------------------------------------------------------
+  const isPdfBook = source.type === 'pdf';
+  const pdfScrollStack = scroll && isPdfBook;
+  const pdfSpread = !scroll && columns === 2 && isPdfBook;
+  const spreadStart = pdfSpread ? currentChapterIdx - (currentChapterIdx % 2) : currentChapterIdx;
 
   // ---------------------------------------------------------------------------
   // Mantine theming — merge the built-in default with the consumer's
@@ -783,6 +833,13 @@ export const Reader: React.FC<ReaderProps> = ({
   useEffect(() => {
     bookmarkStoreRef.current = new BookmarkStore(bookmarkAdapter);
   }, [bookmarkAdapter]);
+
+  // ---------------------------------------------------------------------------
+  // Initialize NoteStore (responds to adapter prop changes)
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    noteStoreRef.current = new NoteStore(noteAdapter);
+  }, [noteAdapter]);
 
   // ---------------------------------------------------------------------------
   // Bookmark store interface instance (new pluggable store system)
@@ -937,9 +994,14 @@ export const Reader: React.FC<ReaderProps> = ({
   // ---------------------------------------------------------------------------
   // Selection handler hook — bridges user text interactions with dictionary lookups
   // ---------------------------------------------------------------------------
-  const { anchorPosition, lookupState, triggerLookup, dismiss } = useSelectionHandler({
+  const { anchorPosition, lookupState, triggerLookup, dismiss, triggerFromCurrentSelection } = useSelectionHandler({
     contentRef,
     hasProviders,
+    // When notes are enabled, Reader owns the right-click gesture itself
+    // (see handleContentContextMenu below) so it can offer a unified menu
+    // with both "Add note" and the dictionary lookup, instead of the two
+    // features fighting over the same contextmenu event.
+    disableContextMenu: enableNotes,
   });
 
   // ---------------------------------------------------------------------------
@@ -1089,6 +1151,157 @@ export const Reader: React.FC<ReaderProps> = ({
   }, []);
 
   // ---------------------------------------------------------------------------
+  // Note state management callbacks (exposed via context). Declared here
+  // (rather than alongside the bookmark ones, further down) because the
+  // note-creation handler just below needs `addNote` in its closure.
+  // ---------------------------------------------------------------------------
+  const addNote = useCallback((note: Note) => {
+    setState(prev => ({
+      ...prev,
+      notes: [...prev.notes, note],
+    }));
+    if (onNoteChange) {
+      onNoteChange({ type: 'created', note });
+    }
+  }, [onNoteChange]);
+
+  const removeNote = useCallback((noteId: string) => {
+    setState(prev => {
+      const note = prev.notes.find(n => n.id === noteId);
+      if (note && onNoteChange) {
+        onNoteChange({ type: 'deleted', note });
+      }
+      return {
+        ...prev,
+        notes: prev.notes.filter(n => n.id !== noteId),
+      };
+    });
+  }, [onNoteChange]);
+
+  const updateNoteInState = useCallback((note: Note) => {
+    setState(prev => ({
+      ...prev,
+      notes: prev.notes.map(n => n.id === note.id ? note : n),
+    }));
+    if (onNoteChange) {
+      onNoteChange({ type: 'updated', note });
+    }
+  }, [onNoteChange]);
+
+  // ---------------------------------------------------------------------------
+  // Notes — right-click a text selection inside the content to add a note,
+  // or right-click an existing note highlight to remove it (both can apply
+  // at once, e.g. selecting across part of a highlight). Position is
+  // captured as a plain character offset into the chapter's rendered text
+  // (see `utils/text-highlight.ts`), not an AST offset, so it stays valid
+  // across font/margin/layout changes that don't alter the text itself.
+  //
+  // Right-click-over-a-selection is also how dictionary lookup triggers
+  // (see `useSelectionHandler`). When notes are enabled, Reader owns the
+  // gesture and shows one unified menu with all applicable actions — see
+  // the `disableContextMenu: enableNotes` passed to that hook above, and
+  // the Menu rendered near the content div for the actual menu items.
+  // ---------------------------------------------------------------------------
+  const handleContentContextMenu = useCallback((e: React.MouseEvent) => {
+    if (!enableNotes) return;
+
+    const targetEl = e.target as HTMLElement | null;
+    const highlightEl = targetEl?.closest?.('.qari-note-highlight') as HTMLElement | null;
+    const noteId = highlightEl?.dataset.noteId ?? null;
+
+    let selectionInfo: { start: number; end: number; text: string; range: Range } | null = null;
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed && selection.rangeCount > 0 && selection.toString().trim()) {
+      const range = selection.getRangeAt(0);
+      if (contentRef.current && contentRef.current.contains(range.commonAncestorContainer)) {
+        const { start, end } = getRangeOffsets(contentRef.current, range);
+        if (start !== end) {
+          selectionInfo = { start, end, text: selection.toString(), range: range.cloneRange() };
+        }
+      }
+    }
+
+    // Nothing for the unified menu to offer — let the normal context menu appear.
+    if (!selectionInfo && !noteId) return;
+
+    e.preventDefault();
+    // The reader root has its own `transform` (see its style comment) so it
+    // acts as the containing block for this menu's `position: fixed`
+    // target — coordinates need to be relative to the root's box, not the
+    // raw (viewport-relative) clientX/Y, or the menu renders offset from
+    // the actual click whenever the reader isn't flush with the viewport's
+    // top-left corner. Same fix as handleFootnoteClick/handleLinkClick use.
+    const readerRect = rootRef.current?.getBoundingClientRect();
+    const x = e.clientX - (readerRect?.left ?? 0);
+    const y = e.clientY - (readerRect?.top ?? 0);
+    setPendingNote({ x, y, selection: selectionInfo, noteId });
+  }, [enableNotes]);
+
+  const handleCreateNoteFromSelection = useCallback(async () => {
+    const pending = pendingNote?.selection;
+    setPendingNote(null);
+    if (!pending || !noteStoreRef.current || !state.book) return;
+
+    const chapterId = state.book.chapters[currentChapterIdx]?.id;
+    // Not every source has a metadata identifier (e.g. plain markdown) —
+    // fall back to '' like BookmarkPanel's currentBookId does, rather than
+    // silently refusing to create a note at all.
+    const bookId = state.book.metadata.identifier || '';
+    if (!chapterId) return;
+
+    // Clear the browser's own selection highlight now that it's being
+    // handed off to a persistent note highlight instead.
+    window.getSelection()?.removeAllRanges();
+
+    try {
+      const note = await noteStoreRef.current.create(
+        bookId,
+        chapterId,
+        pending.start,
+        pending.end,
+        pending.text
+      );
+      addNote(note);
+    } catch {
+      // Note creation failure is non-fatal — the reader stays usable either way.
+    }
+  }, [pendingNote, state.book, currentChapterIdx, addNote]);
+
+  const handleRemoveNoteFromMenu = useCallback(async () => {
+    const noteId = pendingNote?.noteId;
+    setPendingNote(null);
+    if (!noteId || !noteStoreRef.current) return;
+
+    try {
+      await noteStoreRef.current.delete(noteId);
+      removeNote(noteId);
+    } catch {
+      // Note deletion failure is non-fatal — the reader stays usable either way.
+    }
+  }, [pendingNote, removeNote]);
+
+  // ---------------------------------------------------------------------------
+  // Apply persistent highlights for the current chapter's notes. Re-derived
+  // from scratch (clear then reapply) on every relevant change rather than
+  // incrementally patched — see `clearHighlights`/`applyHighlights` for why
+  // that's both simpler and safe here.
+  // ---------------------------------------------------------------------------
+  useLayoutEffect(() => {
+    if (!enableNotes || !contentRef.current || !state.book) return;
+    const chapterId = state.book.chapters[currentChapterIdx]?.id;
+    if (!chapterId) return;
+
+    const bookId = state.book.metadata.identifier || '';
+    const chapterNotes = state.notes.filter(n => n.bookId === bookId && n.chapterId === chapterId);
+
+    clearHighlights(contentRef.current);
+    applyHighlights(
+      contentRef.current,
+      chapterNotes.map(n => ({ id: n.id, start: n.startOffset, end: n.endOffset }))
+    );
+  }, [enableNotes, state.book, state.notes, currentChapterIdx]);
+
+  // ---------------------------------------------------------------------------
   // Load book from source
   // ---------------------------------------------------------------------------
   const loadBook = useCallback(async (src: ReaderSource) => {
@@ -1105,7 +1318,13 @@ export const Reader: React.FC<ReaderProps> = ({
           if (src.data instanceof File) {
             data = await readFileAsArrayBuffer(src.data);
           } else {
-            data = src.data;
+            // Clone rather than hand over the consumer's own buffer directly
+            // — if `source` gets recreated (e.g. a new object literal each
+            // render, common when embedding this in a host app) `loadBook`
+            // can run again with the same underlying ArrayBuffer, and any
+            // parser step that transfers it (postMessage to a worker, which
+            // detaches the original) would otherwise fail the second time.
+            data = src.data.slice(0);
           }
           book = await epubParser.parse(data);
           break;
@@ -1131,7 +1350,15 @@ export const Reader: React.FC<ReaderProps> = ({
           if (src.data instanceof File) {
             data = await readFileAsArrayBuffer(src.data);
           } else {
-            data = src.data;
+            // Clone rather than hand over the consumer's own buffer directly.
+            // PDF.js transfers this buffer to its worker via postMessage,
+            // which detaches (neuters) the original — reusing that same
+            // ArrayBuffer instance across renders (e.g. a host app passing
+            // a fresh `source` object literal wrapping the same underlying
+            // buffer) then fails on the second load with "ArrayBuffer at
+            // index 0 is already detached". Cloning makes every load get
+            // its own fresh buffer regardless of how many times this runs.
+            data = src.data.slice(0);
           }
           const parser = new PDFParserImpl();
           pdfParserRef.current = parser;
@@ -1177,27 +1404,49 @@ export const Reader: React.FC<ReaderProps> = ({
         resolvedConfidence = detectionResult.confidence;
       }
 
-      // Load bookmarks
+      // Load bookmarks and notes concurrently (rather than one after the
+      // other) — they're independent, and a prior version that awaited
+      // them sequentially added enough extra latency to this already-async
+      // chain to break a timing-sensitive test elsewhere that reopens the
+      // reader without an explicit wait.
       let bookmarks: Bookmark[] = [];
-      if (bookmarksProp !== undefined) {
-        // Controlled mode: use prop value directly, skip store load
-        bookmarks = bookmarksProp;
-      } else if (book.metadata.identifier) {
-        // Uncontrolled mode: load from the configured store interface
-        try {
-          bookmarks = await bookmarkStoreInterfaceRef.current.load(book.metadata.identifier);
-        } catch {
-          // Bookmark loading failure is non-fatal
-          // Also try legacy bookmark store as fallback
-          if (bookmarkStoreRef.current) {
-            try {
-              bookmarks = await bookmarkStoreRef.current.load(book.metadata.identifier);
-            } catch {
-              // Non-fatal
+      const bookmarksLoaded = (async () => {
+        if (bookmarksProp !== undefined) {
+          // Controlled mode: use prop value directly, skip store load
+          bookmarks = bookmarksProp;
+        } else if (book.metadata.identifier) {
+          // Uncontrolled mode: load from the configured store interface
+          try {
+            bookmarks = await bookmarkStoreInterfaceRef.current.load(book.metadata.identifier);
+          } catch {
+            // Bookmark loading failure is non-fatal
+            // Also try legacy bookmark store as fallback
+            if (bookmarkStoreRef.current) {
+              try {
+                bookmarks = await bookmarkStoreRef.current.load(book.metadata.identifier);
+              } catch {
+                // Non-fatal
+              }
             }
           }
         }
-      }
+      })();
+
+      // Not every source has a metadata identifier (e.g. plain markdown) —
+      // fall back to '' like note creation does, rather than skipping the
+      // load and never seeing notes saved under that same ''.
+      let notes: Note[] = [];
+      const notesLoaded = (async () => {
+        if (noteStoreRef.current) {
+          try {
+            notes = await noteStoreRef.current.load(book.metadata.identifier || '');
+          } catch {
+            // Note loading failure is non-fatal
+          }
+        }
+      })();
+
+      await Promise.all([bookmarksLoaded, notesLoaded]);
 
       const totalPages = navigator.getTotalPagesInChapter(0);
 
@@ -1219,6 +1468,7 @@ export const Reader: React.FC<ReaderProps> = ({
         // `bookmarks` captured at load-start would clobber that update with
         // a stale one.
         bookmarks: bookmarksProp !== undefined ? prev.bookmarks : bookmarks,
+        notes,
       }));
 
       // Initialize page count tracking per chapter (will be filled as chapters are visited)
@@ -1382,26 +1632,82 @@ export const Reader: React.FC<ReaderProps> = ({
 
   // ---------------------------------------------------------------------------
   // Render a pending PDF page on demand if the reader navigates to it before
-  // the background rendering pass gets there.
+  // the background rendering pass gets there. In two-page spread mode, both
+  // pages of the current spread need this, not just currentChapterIdx.
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    const node = state.book?.chapters[currentChapterIdx]?.content[0];
-    if (node && node.type === 'pdf-page' && node.pending) {
-      pdfParserRef.current?.requestPage(node.pageNumber);
-    }
-  }, [state.book, currentChapterIdx]);
+    const requestIfPending = (idx: number) => {
+      const node = state.book?.chapters[idx]?.content[0];
+      if (node && node.type === 'pdf-page' && node.pending) {
+        pdfParserRef.current?.requestPage(node.pageNumber);
+      }
+    };
+    requestIfPending(currentChapterIdx);
+    if (pdfSpread) requestIfPending(spreadStart + 1);
+  }, [state.book, currentChapterIdx, pdfSpread, spreadStart]);
 
   // ---------------------------------------------------------------------------
   // In scroll mode, jump the scroll position back to the top whenever the
   // chapter changes (e.g. via the previous/next chapter hover arrows, or the
   // chapter menu) — the scrollable content div persists across chapters, so
   // its scrollTop wouldn't otherwise reset on its own.
+  //
+  // Not for the PDF stacked-scroll case: there, every page lives in the same
+  // continuous flow and `currentChapterIdx` changes *because* the user
+  // scrolled (see the IntersectionObserver effect below) — resetting
+  // scrollTop in response would immediately fight the user's own scroll.
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    if (scroll && contentRef.current) {
+    if (scroll && !pdfScrollStack && contentRef.current) {
       contentRef.current.scrollTop = 0;
     }
-  }, [currentChapterIdx, scroll]);
+  }, [currentChapterIdx, scroll, pdfScrollStack]);
+
+  // ---------------------------------------------------------------------------
+  // PDF stacked-scroll mode: track which page is most in view and keep
+  // currentChapterIdx (used for the footer indicator, chapter-menu highlight,
+  // and progress callbacks) in sync as the user scrolls through the stack.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (!pdfScrollStack || !contentRef.current || typeof IntersectionObserver === 'undefined') return;
+    const container = contentRef.current;
+    const pageEls = Array.from(container.querySelectorAll<HTMLElement>('[data-pdf-page-index]'));
+    if (pageEls.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        let best: { idx: number; ratio: number } | null = null;
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const idx = Number(entry.target.getAttribute('data-pdf-page-index'));
+          if (best === null || entry.intersectionRatio > best.ratio) {
+            best = { idx, ratio: entry.intersectionRatio };
+          }
+        }
+        if (best !== null) {
+          setCurrentChapterIdx((prev) => (prev === best!.idx ? prev : best!.idx));
+        }
+      },
+      { root: container, threshold: [0.25, 0.5, 0.75, 1] }
+    );
+
+    pageEls.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [pdfScrollStack, state.book?.chapters.length]);
+
+  // ---------------------------------------------------------------------------
+  // Scrolls a specific PDF page (by chapter index) into view within the
+  // stacked-scroll container. Used by chapter/bookmark/note navigation and
+  // the next/prev page arrows when pdfScrollStack is active, since all pages
+  // are already mounted and a plain state update wouldn't move the scroll
+  // position on its own.
+  // ---------------------------------------------------------------------------
+  const scrollToPdfPage = useCallback((idx: number) => {
+    requestAnimationFrame(() => {
+      const el = contentRef.current?.querySelector<HTMLElement>(`[data-pdf-page-index="${idx}"]`);
+      el?.scrollIntoView({ block: 'start' });
+    });
+  }, []);
 
   // ---------------------------------------------------------------------------
   // Page navigation
@@ -1540,6 +1846,8 @@ export const Reader: React.FC<ReaderProps> = ({
     if (
       chapterMenuOpen ||
       bookmarksPanelOpen ||
+      notesPanelOpen ||
+      pendingNote ||
       themePanelOpen ||
       layoutPanelOpen ||
       settingsOpen ||
@@ -1562,7 +1870,7 @@ export const Reader: React.FC<ReaderProps> = ({
     ) {
       setHovered(true);
     }
-  }, [chapterMenuOpen, bookmarksPanelOpen, themePanelOpen, layoutPanelOpen, settingsOpen, lightboxImage, activeFootnote, dictionaryLoading, dictionaryResult]);
+  }, [chapterMenuOpen, bookmarksPanelOpen, notesPanelOpen, pendingNote, themePanelOpen, layoutPanelOpen, settingsOpen, lightboxImage, activeFootnote, dictionaryLoading, dictionaryResult]);
 
   // ---------------------------------------------------------------------------
   // Context value (memoized)
@@ -1627,11 +1935,15 @@ export const Reader: React.FC<ReaderProps> = ({
     directionDetector: directionDetectorRef.current,
     dictionaryService: dictionaryServiceRef.current,
     bookmarkStore: bookmarkStoreRef.current,
+    noteStore: noteStoreRef.current,
     chapterNavigator: chapterNavigatorRef.current,
     addBookmark,
     removeBookmark,
     updateBookmark: updateBookmarkInState,
-  }), [state, addBookmark, removeBookmark, updateBookmarkInState]);
+    addNote,
+    removeNote,
+    updateNote: updateNoteInState,
+  }), [state, addBookmark, removeBookmark, updateBookmarkInState, addNote, removeNote, updateNoteInState]);
 
   // ---------------------------------------------------------------------------
   // Render
@@ -1862,6 +2174,44 @@ export const Reader: React.FC<ReaderProps> = ({
                             setCurrentChapterIdx(chapterIdx);
                             setCurrentPage(page);
                             setBookmarksPanelOpen(false);
+                          }}
+                          onPageChange={onPageChange}
+                        />
+                      </Popover.Dropdown>
+                    </Popover>
+                  )}
+
+                  {/* Notes button — notes themselves are created by
+                      selecting text and right-clicking (see the content
+                      div's onContextMenu below); this panel just lists,
+                      edits, and navigates to existing ones. */}
+                  {enableNotes && (
+                    <Popover
+                      opened={notesPanelOpen}
+                      onChange={setNotesPanelOpen}
+                      position={t.uiDirection === 'rtl' ? 'bottom-start' : 'bottom-end'}
+                      withinPortal
+                      portalProps={{ target: mantinePortalTarget }}
+                      shadow="md"
+                      width={300}
+                    >
+                      <Popover.Target>
+                        <ActionIcon
+                          variant={notesPanelOpen ? 'filled' : 'default'}
+                          size="lg"
+                          aria-label={t.notesPanelTitle}
+                          aria-expanded={notesPanelOpen}
+                          onClick={() => setNotesPanelOpen((open) => !open)}
+                        >
+                          <NoteIcon />
+                        </ActionIcon>
+                      </Popover.Target>
+                      <Popover.Dropdown data-testid="notes-panel" mah={400} style={{ overflowY: 'auto' }}>
+                        <NotePanel
+                          onNavigate={(chapterIdx, page) => {
+                            setCurrentChapterIdx(chapterIdx);
+                            setCurrentPage(page);
+                            setNotesPanelOpen(false);
                           }}
                           onPageChange={onPageChange}
                         />
@@ -2312,6 +2662,7 @@ export const Reader: React.FC<ReaderProps> = ({
                   ref={contentRef}
                   className={scroll ? 'ebook-reader__scroll' : 'ebook-reader__columns'}
                   dir={state.direction}
+                  onContextMenu={handleContentContextMenu}
                   style={scroll ? {
                     height: '100%',
                     overflowY: 'auto',
@@ -2373,6 +2724,71 @@ export const Reader: React.FC<ReaderProps> = ({
                   <> · {interpolate(t.chapterIndicator, { current: currentChapterIdx + 1, total: state.book.chapters.length, title: chapterTitle })}</>
                 )}
               </div>
+
+              {/* Unified selection context menu — appears at the cursor on
+                  right-click over a text selection and/or an existing note
+                  highlight inside the content (see handleContentContextMenu);
+                  a virtual 1x1 target positioned at the click point anchors
+                  the Mantine Menu since there's no real element to attach it
+                  to. "Add note" comes first when there's a selection to add,
+                  "Remove note" shows up when right-clicking an existing
+                  highlight, and the dictionary lookup ("Meaning") only shows
+                  up when providers are configured and there's a selection —
+                  all applicable actions share this one menu instead of
+                  fighting over the same right-click. */}
+              {enableNotes && (
+                <Menu
+                  opened={!!pendingNote}
+                  onChange={(opened) => { if (!opened) setPendingNote(null); }}
+                  withinPortal
+                  portalProps={{ target: mantinePortalTarget }}
+                  position="bottom-start"
+                  shadow="md"
+                >
+                  <Menu.Target>
+                    <div
+                      data-testid="note-context-menu-anchor"
+                      style={{
+                        position: 'fixed',
+                        left: pendingNote?.x ?? 0,
+                        top: pendingNote?.y ?? 0,
+                        width: 1,
+                        height: 1,
+                        pointerEvents: 'none',
+                      }}
+                    />
+                  </Menu.Target>
+                  <Menu.Dropdown data-testid="note-context-menu">
+                    {pendingNote?.selection && (
+                      <Menu.Item onClick={handleCreateNoteFromSelection}>
+                        {t.noteAddMenuItem}
+                      </Menu.Item>
+                    )}
+                    {pendingNote?.noteId && (
+                      <Menu.Item color="red" onClick={handleRemoveNoteFromMenu}>
+                        {t.noteRemoveMenuItem}
+                      </Menu.Item>
+                    )}
+                    {hasProviders && pendingNote?.selection && (
+                      <Menu.Item
+                        onClick={() => {
+                          // Restore the selection captured at right-click
+                          // time — clicking a menu item can collapse the
+                          // live selection before the lookup hook gets a
+                          // chance to re-read it.
+                          const sel = window.getSelection();
+                          sel?.removeAllRanges();
+                          sel?.addRange(pendingNote.selection!.range);
+                          triggerFromCurrentSelection();
+                          setPendingNote(null);
+                        }}
+                      >
+                        {t.dictionaryLookupMenuItem}
+                      </Menu.Item>
+                    )}
+                  </Menu.Dropdown>
+                </Menu>
+              )}
 
               {/* Dictionary popover — positioned near selected text */}
               {hasProviders && (dictionaryLoading || dictionaryResult) && (

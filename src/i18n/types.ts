@@ -54,6 +54,8 @@ export interface TranslationStrings {
   spellingSuggestions: string;
   dictionaryLoadingAriaLabel: string;
   dictionaryExamples: string;
+  /** Context menu item that triggers a dictionary lookup for the selected text. */
+  dictionaryLookupMenuItem: string;
 
   // Bookmark panel
   bookmarksPanelTitle: string;
@@ -68,6 +70,17 @@ export interface TranslationStrings {
   bookmarkCancel: string;
   bookmarkNewNameAriaLabel: string;
   bookmarkCreateAriaLabel: string;
+
+  // Note panel
+  notesPanelTitle: string;
+  notesEmpty: string;
+  /** Context menu item shown on right-click after selecting text. */
+  noteAddMenuItem: string;
+  /** Context menu item shown on right-click over an existing note highlight. */
+  noteRemoveMenuItem: string;
+  noteCommentPlaceholder: string;
+  noteSave: string;
+  noteCancel: string;
 
   // Chapter index
   chaptersTitle: string;

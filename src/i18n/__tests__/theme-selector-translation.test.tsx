@@ -36,6 +36,7 @@ function createMockContext(): ReaderContextValue {
       directionConfidence: 'high',
       preferences: { theme: 'light', fontFamily: 'serif', fontSize: 16 },
       bookmarks: [],
+      notes: [],
       error: null,
       loading: false,
     },
@@ -43,10 +44,14 @@ function createMockContext(): ReaderContextValue {
     directionDetector: {} as any,
     dictionaryService: {} as any,
     bookmarkStore: null,
+    noteStore: null,
     chapterNavigator: null,
     addBookmark: vi.fn(),
     removeBookmark: vi.fn(),
     updateBookmark: vi.fn(),
+    addNote: vi.fn(),
+    removeNote: vi.fn(),
+    updateNote: vi.fn(),
   };
 }
 

@@ -92,6 +92,7 @@ function createMockContext(
       directionConfidence: 'high' as const,
       preferences: { theme: 'light' as const, fontFamily: 'serif' as const, fontSize: 16 },
       bookmarks: [],
+      notes: [],
       error: null,
       loading: false,
       ...overrides,
@@ -100,10 +101,14 @@ function createMockContext(
     directionDetector: {} as any,
     dictionaryService: {} as any,
     bookmarkStore: createMockBookmarkStore() as any,
+    noteStore: null,
     chapterNavigator: null,
     addBookmark: () => {},
     removeBookmark: () => {},
     updateBookmark: () => {},
+    addNote: () => {},
+    removeNote: () => {},
+    updateNote: () => {},
     ...contextOverrides,
   };
 }

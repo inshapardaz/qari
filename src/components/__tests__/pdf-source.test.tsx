@@ -98,6 +98,33 @@ describe('Reader with a PDF source', () => {
     });
   });
 
+  it('clones the ArrayBuffer before handing it to pdf.js, rather than passing the source object\'s own buffer', async () => {
+    // PDF.js transfers whatever buffer it's given to its worker via
+    // postMessage, which detaches (neuters) the original — if the same
+    // ArrayBuffer instance were ever parsed twice (e.g. a host app passing
+    // a fresh `source` object literal each render that wraps one stable
+    // buffer it holds in its own state), the second attempt would fail
+    // with "ArrayBuffer at index 0 is already detached". Reader.tsx must
+    // clone the buffer before handing it off so this can never happen,
+    // regardless of how many times loadBook runs for logically-the-same source.
+    const pdfjsLib = await import('pdfjs-dist');
+    const getDocumentMock = pdfjsLib.getDocument as ReturnType<typeof vi.fn>;
+    getDocumentMock.mockReturnValue({
+      promise: Promise.resolve(createFakePdfDocument(1)),
+    });
+
+    const sharedBuffer = new ArrayBuffer(8);
+    const source: ReaderSource = { type: 'pdf', data: sharedBuffer };
+    render(<Reader source={source} />);
+
+    await screen.findByTestId('pdf-page');
+
+    expect(getDocumentMock).toHaveBeenCalledTimes(1);
+    const passedData = getDocumentMock.mock.calls[0][0].data;
+    expect(passedData).not.toBe(sharedBuffer);
+    expect(passedData.byteLength).toBe(sharedBuffer.byteLength);
+  });
+
   it('accepts a File as the pdf data source', async () => {
     const pdfjsLib = await import('pdfjs-dist');
     (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({

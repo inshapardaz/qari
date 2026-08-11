@@ -56,6 +56,7 @@ export const ur: TranslationStrings = {
   spellingSuggestions: 'ہجے کی تجاویز',
   dictionaryLoadingAriaLabel: 'لغت تلاش ہو رہی ہے',
   dictionaryExamples: 'مثالیں',
+  dictionaryLookupMenuItem: 'معنی',
 
   // Bookmark panel
   bookmarksPanelTitle: 'بک مارکس',
@@ -69,6 +70,15 @@ export const ur: TranslationStrings = {
   bookmarkCancel: 'منسوخ',
   bookmarkNewNameAriaLabel: 'نیا بک مارک نام',
   bookmarkCreateAriaLabel: 'بک مارک بنائیں',
+
+  // Note panel
+  notesPanelTitle: 'نوٹس',
+  notesEmpty: 'ابھی کوئی نوٹ نہیں۔ متن منتخب کریں اور شامل کرنے کے لیے دائیں کلک کریں۔',
+  noteAddMenuItem: 'نوٹ شامل کریں',
+  noteRemoveMenuItem: 'نوٹ حذف کریں',
+  noteCommentPlaceholder: 'تبصرہ شامل کریں (اختیاری)',
+  noteSave: 'محفوظ',
+  noteCancel: 'منسوخ',
 
   // Chapter index
   chaptersTitle: 'ابواب',

@@ -23,6 +23,7 @@ export type {
 } from './book';
 
 export type { Bookmark } from './bookmark';
+export type { Note } from './note';
 
 export type {
   ReaderState,

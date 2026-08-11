@@ -60,6 +60,7 @@ function createState(book: Book): ReaderState {
     directionConfidence: 'high',
     preferences: { theme: 'light', fontFamily: 'serif', fontSize: 16 },
     bookmarks: [],
+    notes: [],
     error: null,
     loading: false,
   };
@@ -76,10 +77,14 @@ function renderChapterIndexWithTranslations(translations: TranslationStrings) {
     directionDetector: new DefaultDirectionDetector(),
     dictionaryService: new DictionaryService(),
     bookmarkStore: null,
+    noteStore: null,
     chapterNavigator: navigator,
     addBookmark: () => {},
     removeBookmark: () => {},
     updateBookmark: () => {},
+    addNote: () => {},
+    removeNote: () => {},
+    updateNote: () => {},
   };
 
   return render(

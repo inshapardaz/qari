@@ -16,7 +16,11 @@ function createMarkdownSource(content = '# Test Book\n\n## Chapter 1\n\nHello wo
 }
 
 async function openSettings() {
-  fireEvent.click(screen.getByRole('button', { name: 'Reading settings' }));
+  // findByRole (not getByRole) so this tolerates the reader still being
+  // mid-reload (e.g. right after a source/prop change triggers a fresh
+  // async load) instead of requiring the button to already be present.
+  const settingsButton = await screen.findByRole('button', { name: 'Reading settings' });
+  fireEvent.click(settingsButton);
   await screen.findByTestId('settings-panel');
 }
 

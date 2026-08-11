@@ -148,6 +148,15 @@ export interface UseSelectionHandlerOptions {
   hasProviders: boolean;
   /** Long-press threshold in milliseconds (default: 500) */
   longPressThreshold?: number;
+  /**
+   * When true, the hook does not attach its own native `contextmenu`
+   * listener — the caller has its own right-click handling (e.g. a unified
+   * context menu offering both a dictionary lookup and other actions) and
+   * invokes `triggerFromCurrentSelection` itself once the user picks the
+   * lookup option. Long-press (touch) behavior is unaffected. Defaults to
+   * false.
+   */
+  disableContextMenu?: boolean;
 }
 
 export interface UseSelectionHandlerReturn {
@@ -159,6 +168,13 @@ export interface UseSelectionHandlerReturn {
   triggerLookup: (word: string, position: number) => void;
   /** Dismiss the popover and reset state to idle */
   dismiss: () => void;
+  /**
+   * Computes the anchor position and triggers a lookup for the current
+   * browser selection — exactly what the hook's own contextmenu handler
+   * does internally. Exposed for callers using `disableContextMenu: true`.
+   * Returns false if there's no usable selection to look up.
+   */
+  triggerFromCurrentSelection: () => boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -176,7 +192,7 @@ export interface UseSelectionHandlerReturn {
 export function useSelectionHandler(
   options: UseSelectionHandlerOptions
 ): UseSelectionHandlerReturn {
-  const { contentRef, hasProviders, longPressThreshold = 500 } = options;
+  const { contentRef, hasProviders, longPressThreshold = 500, disableContextMenu = false } = options;
 
   const [anchorPosition, setAnchorPosition] = useState<AnchorPosition | null>(null);
   const [lookupState, setLookupState] = useState<SelectionLookupState>({
@@ -288,7 +304,7 @@ export function useSelectionHandler(
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const element = contentElement;
-    if (!element || !hasProviders) {
+    if (!element || !hasProviders || disableContextMenu) {
       return;
     }
 
@@ -317,7 +333,7 @@ export function useSelectionHandler(
     return () => {
       element.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, [contentElement, hasProviders, handleSelectionTrigger]);
+  }, [contentElement, hasProviders, disableContextMenu, handleSelectionTrigger]);
 
   // ---------------------------------------------------------------------------
   // Long-press (touch) handler
@@ -390,5 +406,6 @@ export function useSelectionHandler(
     lookupState,
     triggerLookup,
     dismiss,
+    triggerFromCurrentSelection: handleSelectionTrigger,
   };
 }

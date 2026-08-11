@@ -91,6 +91,7 @@ function createLTRState(book: Book): ReaderState {
     directionConfidence: 'high',
     preferences: { theme: 'light', fontFamily: 'serif', fontSize: 16 },
     bookmarks: [],
+    notes: [],
     error: null,
     loading: false,
   };
@@ -126,10 +127,14 @@ function renderWithContext(
     directionDetector: new DefaultDirectionDetector(),
     dictionaryService: new DictionaryService(),
     bookmarkStore: null,
+    noteStore: null,
     chapterNavigator: navigator,
     addBookmark: () => {},
     removeBookmark: () => {},
     updateBookmark: () => {},
+    addNote: () => {},
+    removeNote: () => {},
+    updateNote: () => {},
     ...contextOverrides,
   };
 
@@ -294,10 +299,14 @@ describe('PageNavigation', () => {
           directionDetector: new DefaultDirectionDetector(),
           dictionaryService: new DictionaryService(),
           bookmarkStore: null,
+          noteStore: null,
           chapterNavigator: null,
           addBookmark: () => {},
           removeBookmark: () => {},
           updateBookmark: () => {},
+          addNote: () => {},
+          removeNote: () => {},
+          updateNote: () => {},
         }}
       >
         <PageNavigation />

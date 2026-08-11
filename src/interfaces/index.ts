@@ -18,3 +18,8 @@ export type {
   BookmarkChangeEvent,
   HookStoreCallbacks,
 } from './bookmark-store';
+export type {
+  CustomNoteStoreAdapter,
+  NoteStoreInterface,
+  NoteChangeEvent,
+} from './note-store';

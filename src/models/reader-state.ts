@@ -4,6 +4,7 @@
 
 import type { Book } from './book';
 import type { Bookmark } from './bookmark';
+import type { Note } from './note';
 import type { ReaderError } from './events';
 
 export interface ReadingPreferences {
@@ -26,6 +27,7 @@ export interface ReaderState {
   directionConfidence: 'high' | 'low';
   preferences: ReadingPreferences;
   bookmarks: Bookmark[];
+  notes: Note[];
   error: ReaderError | null;
   loading: boolean;
 }
