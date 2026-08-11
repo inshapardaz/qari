@@ -1,7 +1,7 @@
 /**
- * The settings panel shows only font size and typeface by default (theme
- * and layout are their own separate title-bar items); line height,
- * letter/word spacing, and justify live behind a "More settings" toggle.
+ * The settings panel shows only font size, typeface, and justify by default
+ * (theme and layout are their own separate title-bar items); line height
+ * and letter/word spacing live behind a "More settings" toggle.
  * Restore-to-defaults is a small icon button in the panel's top bar rather
  * than a full-width button at the bottom.
  */
@@ -22,17 +22,17 @@ async function openSettings() {
 }
 
 describe('Settings panel: collapsible extra properties, reset icon button', () => {
-  it('hides line height, spacing, and justify controls until "More settings" is expanded', async () => {
+  it('hides line height and spacing controls until "More settings" is expanded, but shows justify up front', async () => {
     render(<Reader source={createMarkdownSource()} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
 
     await openSettings();
 
+    expect(screen.getByLabelText('Justify Text')).toBeInTheDocument();
     expect(screen.queryByLabelText('Line Spacing')).toBeNull();
     expect(screen.queryByLabelText('Letter Spacing')).toBeNull();
     expect(screen.queryByLabelText('Word Spacing')).toBeNull();
     expect(screen.queryByLabelText('Margin')).toBeNull();
-    expect(screen.queryByLabelText('Justify Text')).toBeNull();
 
     const moreToggle = screen.getByRole('button', { name: 'More settings' });
     expect(moreToggle).toHaveAttribute('aria-expanded', 'false');
@@ -42,7 +42,6 @@ describe('Settings panel: collapsible extra properties, reset icon button', () =
     expect(screen.getByLabelText('Letter Spacing')).toBeInTheDocument();
     expect(screen.getByLabelText('Word Spacing')).toBeInTheDocument();
     expect(screen.getByLabelText('Margin')).toBeInTheDocument();
-    expect(screen.getByLabelText('Justify Text')).toBeInTheDocument();
     expect(moreToggle).toHaveAttribute('aria-expanded', 'true');
   });
 

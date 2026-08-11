@@ -59,6 +59,7 @@ import { BookmarkPanel } from './BookmarkPanel';
 import { DictionaryPopover } from './DictionaryPopover';
 import { FootnotePopover } from './FootnotePopover';
 import { ImageLightbox } from './ImageLightbox';
+import { BookmarkIcon, ThemeIcon, SinglePageIcon, DoublePageIcon, ScrollIcon, ExitFullscreenIcon, ChevronLeftIcon, ChevronRightIcon } from './icons';
 
 import { TranslationContext, DEFAULT_TRANSLATIONS, useTranslations, interpolate } from '../i18n';
 import type { TranslationStrings } from '../i18n';
@@ -1852,7 +1853,7 @@ export const Reader: React.FC<ReaderProps> = ({
                           aria-expanded={bookmarksPanelOpen}
                           onClick={() => setBookmarksPanelOpen((open) => !open)}
                         >
-                          🔖
+                          <BookmarkIcon />
                         </ActionIcon>
                       </Popover.Target>
                       <Popover.Dropdown data-testid="bookmarks-panel" mah={400} style={{ overflowY: 'auto' }}>
@@ -1887,7 +1888,7 @@ export const Reader: React.FC<ReaderProps> = ({
                         aria-label={t.settingsTheme}
                         aria-expanded={themePanelOpen}
                       >
-                        🎨
+                        <ThemeIcon />
                       </ActionIcon>
                     </Popover.Target>
                     <Popover.Dropdown data-testid="theme-panel" p="sm">
@@ -1948,16 +1949,16 @@ export const Reader: React.FC<ReaderProps> = ({
                         aria-label={t.settingsLayout}
                         aria-expanded={layoutPanelOpen}
                       >
-                        {scroll ? '📜' : columns === 2 ? '📖' : '📄'}
+                        {scroll ? <ScrollIcon /> : columns === 2 ? <DoublePageIcon /> : <SinglePageIcon />}
                       </ActionIcon>
                     </Popover.Target>
                     <Popover.Dropdown data-testid="layout-panel" p="sm">
                       <div dir={t.uiDirection} style={{ display: 'flex', gap: '0.5rem' }}>
                         {([
-                          { key: 'single', active: !scroll && columns === 1, icon: '📄', label: t.settingsLayoutSingle, onClick: () => { if (onSettingsChange) onSettingsChange({ scroll: false, columns: 1 }); } },
-                          { key: 'double', active: !scroll && columns === 2, icon: '📖', label: t.settingsLayoutDouble, onClick: () => { if (onSettingsChange) onSettingsChange({ scroll: false, columns: 2 }); } },
-                          { key: 'scroll', active: scroll, icon: '📜', label: t.settingsLayoutScroll, onClick: () => { if (onSettingsChange) onSettingsChange({ scroll: true }); } },
-                        ] as const).map(opt => (
+                          { key: 'single', active: !scroll && columns === 1, icon: <SinglePageIcon size="1.2em" />, label: t.settingsLayoutSingle, onClick: () => { if (onSettingsChange) onSettingsChange({ scroll: false, columns: 1 }); } },
+                          { key: 'double', active: !scroll && columns === 2, icon: <DoublePageIcon size="1.2em" />, label: t.settingsLayoutDouble, onClick: () => { if (onSettingsChange) onSettingsChange({ scroll: false, columns: 2 }); } },
+                          { key: 'scroll', active: scroll, icon: <ScrollIcon size="1.2em" />, label: t.settingsLayoutScroll, onClick: () => { if (onSettingsChange) onSettingsChange({ scroll: true }); } },
+                        ]).map(opt => (
                           <button
                             key={opt.key}
                             type="button"
@@ -1971,10 +1972,12 @@ export const Reader: React.FC<ReaderProps> = ({
                               border: opt.active ? '2px solid var(--mantine-primary-color-filled)' : '1px solid var(--mantine-color-default-border)',
                               backgroundColor: 'transparent',
                               cursor: 'pointer',
-                              fontSize: '1.05rem',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
                             }}
                           >
-                            <span aria-hidden="true">{opt.icon}</span>
+                            {opt.icon}
                           </button>
                         ))}
                       </div>
@@ -2003,7 +2006,7 @@ export const Reader: React.FC<ReaderProps> = ({
                         <span aria-hidden="true" style={{ fontWeight: 600 }}>Aa</span>
                       </ActionIcon>
                     </Popover.Target>
-                    <Popover.Dropdown data-testid="settings-panel" p="sm" style={{ maxHeight: '80vh', overflowY: 'auto' }}>
+                    <Popover.Dropdown data-testid="settings-panel" p="sm">
                       <div dir={t.uiDirection}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--mantine-spacing-sm)' }}>
                           <Text fw={700} size="lg">
@@ -2090,10 +2093,24 @@ export const Reader: React.FC<ReaderProps> = ({
                           />
                         </div>
 
+                        {/* Justify text */}
+                        <div style={{ marginBottom: '1.1rem' }}>
+                          <Switch
+                            size="sm"
+                            checked={justify}
+                            onChange={(e) => { if (onSettingsChange) onSettingsChange({ justify: e.currentTarget.checked }); }}
+                            label={t.settingsJustify}
+                            aria-label={t.settingsJustify}
+                            labelPosition="left"
+                            styles={{ body: { justifyContent: 'space-between' }, label: { fontSize: 'var(--mantine-font-size-xs)', fontWeight: 600 } }}
+                          />
+                        </div>
+
                         {/* Extra properties — collapsed by default, since
                             they're not part of the primary at-a-glance
-                            controls above (font size, typeface). Theme and
-                            layout are now their own title-bar items. */}
+                            controls above (font size, typeface, justify).
+                            Theme and layout are now their own title-bar
+                            items. */}
                         <Button
                           variant="subtle"
                           size="xs"
@@ -2171,16 +2188,6 @@ export const Reader: React.FC<ReaderProps> = ({
                                 mb="0.6rem"
                               />
                             </div>
-
-                            <Switch
-                              size="sm"
-                              checked={justify}
-                              onChange={(e) => { if (onSettingsChange) onSettingsChange({ justify: e.currentTarget.checked }); }}
-                              label={t.settingsJustify}
-                              aria-label={t.settingsJustify}
-                              labelPosition="left"
-                              styles={{ body: { justifyContent: 'space-between' }, label: { fontSize: 'var(--mantine-font-size-xs)', fontWeight: 600 } }}
-                            />
                           </div>
                         )}
                       </div>
@@ -2194,7 +2201,7 @@ export const Reader: React.FC<ReaderProps> = ({
                     onClick={toggleFullscreen}
                     aria-label={isFullscreen ? t.exitFullscreen : t.enterFullscreen}
                   >
-                    {isFullscreen ? '⊗' : '⛶'}
+                    {isFullscreen ? <ExitFullscreenIcon /> : '⛶'}
                   </ActionIcon>
 
                   {showCloseButton && (
@@ -2257,7 +2264,6 @@ export const Reader: React.FC<ReaderProps> = ({
                       background: 'linear-gradient(to right, rgba(0,0,0,0.04), transparent)',
                       color: 'var(--reader-fg, #1a1a1a)',
                       cursor: 'pointer',
-                      fontSize: '1.5rem',
                       opacity: 0.6,
                       zIndex: 10,
                       display: 'flex',
@@ -2268,7 +2274,7 @@ export const Reader: React.FC<ReaderProps> = ({
                     onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
                     onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.6'; }}
                   >
-                    {state.direction === 'rtl' ? '→' : '←'}
+                    {state.direction === 'rtl' ? <ChevronRightIcon size="1.75rem" /> : <ChevronLeftIcon size="1.75rem" />}
                   </button>
                 )}
                 {hovered && !isLastPage && (
@@ -2285,7 +2291,6 @@ export const Reader: React.FC<ReaderProps> = ({
                       background: 'linear-gradient(to left, rgba(0,0,0,0.04), transparent)',
                       color: 'var(--reader-fg, #1a1a1a)',
                       cursor: 'pointer',
-                      fontSize: '1.5rem',
                       opacity: 0.6,
                       zIndex: 10,
                       display: 'flex',
@@ -2296,7 +2301,7 @@ export const Reader: React.FC<ReaderProps> = ({
                     onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
                     onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.6'; }}
                   >
-                    {state.direction === 'rtl' ? '←' : '→'}
+                    {state.direction === 'rtl' ? <ChevronLeftIcon size="1.75rem" /> : <ChevronRightIcon size="1.75rem" />}
                   </button>
                 )}
 
