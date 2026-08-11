@@ -468,6 +468,10 @@ The reader's own `mantineTheme` prop, if provided, is layered on top of whatever
 
 The reader also scopes its Mantine CSS variables to its own root element (rather than `:root`), so its theme never leaks into the rest of your page, and multiple `<Reader>` instances with different `mantineTheme` props on the same page stay independent.
 
+### Chrome colorScheme follows the reader theme, not your app's
+
+Theme *tokens* (colors, radius, fonts) inherit from an ancestor `MantineProvider` as described above, but light/dark **colorScheme** is deliberately not inherited. The reader forces its chrome's colorScheme from its own `theme` prop (`light`/`sepia` → Mantine `light`; `dark`/`high-contrast` → Mantine `dark`), scoped to its own root element — so switching your app's own dark-mode toggle won't flip the reader's buttons and menus out of sync with the reading theme the user picked inside the reader, and the reader won't overwrite your app's own colorScheme in the other direction either.
+
 Pinch-to-zoom is supported on touch devices and snaps to the nearest 10% increment.
 
 ### Listening for Settings Changes

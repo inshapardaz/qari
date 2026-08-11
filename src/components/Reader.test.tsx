@@ -6,6 +6,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
+import { MantineProvider } from '@mantine/core';
 import { Reader, clampZoom, ReaderContext, useReaderContext } from './Reader';
 import type { ReaderSource } from './Reader';
 import type { Book } from '../models/book';
@@ -713,5 +714,28 @@ describe('Reader Footnote Integration', () => {
 
     // Focus should be restored to the footnote reference
     expect(document.activeElement).toBe(footnoteRef);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Mantine colorScheme isolation from a host app
+// ---------------------------------------------------------------------------
+
+describe('Reader embedded inside a host app with its own MantineProvider', () => {
+  it("forces the UI chrome's colorScheme from the reader's own theme prop rather than the host's", async () => {
+    render(
+      <MantineProvider forceColorScheme="light">
+        <Reader source={createMinimalMarkdownSource()} theme="dark" />
+      </MantineProvider>
+    );
+
+    const root = await screen.findByTestId('reader-content');
+    await waitFor(() => {
+      expect(root).toHaveAttribute('data-mantine-color-scheme', 'dark');
+    });
+
+    // The reader must not clobber the host app's own document-level
+    // colorScheme attribute in the process.
+    expect(document.documentElement.getAttribute('data-mantine-color-scheme')).toBe('light');
   });
 });

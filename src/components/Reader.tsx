@@ -169,9 +169,14 @@ export interface ReaderProps {
    * Overrides for the Mantine theme used by the reader's UI chrome (header
    * buttons, chapter menu, bookmarks popover, settings dialog). Deep-merged
    * with the built-in default theme. If this Reader is rendered inside an
-   * app that already has its own `<MantineProvider>`, that app's theme is
-   * inherited automatically (Mantine nested-provider merging) and this prop
-   * only needs to specify what you want to override on top of it.
+   * app that already has its own `<MantineProvider>`, that app's theme
+   * tokens (colors, radius, etc.) are inherited automatically (Mantine
+   * nested-provider merging) and this prop only needs to specify what you
+   * want to override on top of it. The UI chrome's light/dark colorScheme is
+   * a separate concern and does NOT follow the host app — it's always
+   * derived from the reader's own `theme` prop instead, so the chrome stays
+   * in sync with the reading theme the user picked in the reader itself
+   * rather than switching if the host app's own dark-mode toggle changes.
    * See the "Theming" section in the README.
    */
   mantineTheme?: MantineThemeOverride;
@@ -769,6 +774,24 @@ export const Reader: React.FC<ReaderProps> = ({
     () => mergeThemeOverrides(DEFAULT_MANTINE_THEME, mantineTheme ?? {}),
     [mantineTheme]
   );
+  // Mantine resolves light/dark by default off a `data-mantine-color-scheme`
+  // attribute it writes to the *document root* — shared by every
+  // MantineProvider on the page, including a host app's own. Without
+  // `forceColorScheme`, our nested provider would silently pick up whatever
+  // colorScheme the host app's provider last set there, so the reader's UI
+  // chrome (buttons, menus, popovers) would follow the host app's theme
+  // instead of the reader theme the user actually picked (light/sepia read
+  // as Mantine "light"; dark/high-contrast read as Mantine "dark").
+  const mantineColorScheme: 'light' | 'dark' = theme === 'dark' || theme === 'high-contrast' ? 'dark' : 'light';
+  // Mantine's default `getRootElement` is `document.documentElement` — with
+  // `forceColorScheme` alone, the reader would still write its own
+  // colorScheme onto that same shared `<html>` element, clobbering whatever
+  // the host app's own MantineProvider (or dark-mode toggle) had set there.
+  // Scoping it to the reader's own root instead keeps the reader's forced
+  // colorScheme — and the CSS variables Mantine derives from it — self
+  // contained, matching the `data-qari-mantine-scope` scoping already used
+  // for `cssVariablesSelector` above.
+  const mantineGetRootElement = useCallback(() => rootRef.current ?? document.documentElement, []);
   // Mantine's Menu/Popover/Modal/Select portal into document.body by default.
   // When the reader itself is the fullscreened element (via the Fullscreen
   // API), anything portaled outside of it renders behind it — the browser's
@@ -1962,6 +1985,8 @@ export const Reader: React.FC<ReaderProps> = ({
           <MantineProvider
             theme={resolvedMantineTheme}
             cssVariablesSelector={mantineCssVariablesSelector}
+            forceColorScheme={mantineColorScheme}
+            getRootElement={mantineGetRootElement}
             env={typeof process !== 'undefined' && process.env?.NODE_ENV === 'test' ? 'test' : 'default'}
           >
             <div
@@ -2079,6 +2104,8 @@ export const Reader: React.FC<ReaderProps> = ({
         <MantineProvider
           theme={resolvedMantineTheme}
           cssVariablesSelector={mantineCssVariablesSelector}
+          forceColorScheme={mantineColorScheme}
+          getRootElement={mantineGetRootElement}
           env={typeof process !== 'undefined' && process.env?.NODE_ENV === 'test' ? 'test' : 'default'}
         >
           <ReaderContext.Provider value={contextValue}>
