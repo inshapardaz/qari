@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { Reader } from '../Reader';
 import type { ReaderSource } from '../Reader';
@@ -24,6 +24,15 @@ async function openLayoutPanel() {
 }
 
 describe('Scroll view', () => {
+  beforeEach(() => {
+    // Markdown sources here have no metadata identifier, so reading-progress
+    // tracking (on by default) persists under the same shared bookId ('')
+    // across every test in this file — without clearing it, a chapter
+    // navigation in one test resumes as the starting position of the next.
+    localStorage.clear();
+  });
+
+
   it('renders the content in a scrollable flow (no CSS columns) when scroll is true', async () => {
     const { container } = render(<Reader source={createTwoChapterSource()} scroll />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());

@@ -242,7 +242,7 @@ The older `bookmarkAdapter` prop (without `update`) still works as a fallback:
 
 ```ts
 interface Bookmark {
-  id: string;           // UUID
+  id: string;           // Sqids-encoded id
   bookId: string;       // Identifies the book
   chapterId: string;    // Chapter within the book
   position: number;     // Character offset within chapter
@@ -301,7 +301,7 @@ const myNoteStore: CustomNoteStoreAdapter = {
 
 ```ts
 interface Note {
-  id: string;           // UUID
+  id: string;           // Sqids-encoded id
   bookId: string;        // Identifies the book
   chapterId: string;     // Chapter within the book
   startOffset: number;   // Character offset within the chapter's rendered text
@@ -317,6 +317,10 @@ interface Note {
 
 ## Reading Progress
 
+There are two independent things called "progress" here: a live callback for driving your own UI (e.g. a progress bar), and persistent tracking that resumes the book where the user left off. You can use either, both, or neither.
+
+### Live Progress Callback
+
 Track the user's reading position via the `onProgressChange` callback:
 
 ```tsx
@@ -330,7 +334,7 @@ Track the user's reading position via the `onProgressChange` callback:
 />
 ```
 
-### ReadingProgress Object
+#### ReadingProgress Object
 
 ```ts
 interface ReadingProgress {
@@ -342,6 +346,64 @@ interface ReadingProgress {
   percentage: number;       // Overall book progress (0-100)
 }
 ```
+
+### Persistent Progress Tracking (resume where you left off)
+
+Enabled by default. As the user navigates, the reader silently persists the current chapter and position, and the next time the same book (matched by its metadata identifier) is opened, it resumes there instead of starting from chapter 1. Storage mirrors bookmarks/notes: localStorage by default, or a custom adapter for syncing across devices.
+
+#### Default — localStorage
+
+```tsx
+<Reader source={source} />
+```
+
+#### Disable Progress Tracking
+
+```tsx
+<Reader source={source} enableProgressTracking={false} />
+```
+
+#### React to Progress Being Saved
+
+```tsx
+<Reader
+  source={source}
+  onProgressSave={(event) => {
+    // event.type is always 'saved'; event.progress is the persisted record
+    console.log('Progress saved:', event.progress);
+  }}
+/>
+```
+
+#### Custom Store (server-side)
+
+Implement `CustomProgressStoreAdapter` to sync reading progress to your own backend:
+
+```tsx
+import type { CustomProgressStoreAdapter } from 'qari/interfaces/progress-store';
+
+const myProgressStore: CustomProgressStoreAdapter = {
+  async save(progress) { await api.put(`/progress/${progress.bookId}`, progress); },
+  async load(bookId) { return api.get(`/progress/${bookId}`).catch(() => null); },
+  async remove(bookId) { await api.delete(`/progress/${bookId}`); },
+};
+
+<Reader source={source} progressAdapter={myProgressStore} />
+```
+
+#### ReadingProgressRecord Data Model
+
+```ts
+interface ReadingProgressRecord {
+  bookId: string;        // Identifies the book
+  chapterId: string;     // Chapter within the book
+  position: number;      // Character offset within the chapter (like Bookmark.position)
+  percentage: number;    // 0-100 overall book progress at the time this was saved
+  updatedAt: string;     // ISO 8601 UTC
+}
+```
+
+If the saved `chapterId` no longer matches any chapter in the book (e.g. the source content changed since the record was saved), the reader falls back to opening at the start of the book rather than erroring.
 
 ## Theming and Typography
 
@@ -605,6 +667,7 @@ When set to `"auto"`, the reader detects direction by analyzing character freque
 | `onReady` | `{ book, chapterCount, direction }` | Book successfully loaded and parsed |
 | `onPageChange` | `{ chapter, page, progress }` | User navigates to a new page |
 | `onProgressChange` | `ReadingProgress` | Page or chapter changes (detailed progress) |
+| `onProgressSave` | `{ type: 'saved', progress }` | The reading position is persisted (see `enableProgressTracking`) |
 | `onBookmarkCreate` | `{ type, bookmark }` | A bookmark is created |
 | `onBookmarkChange` | `{ type, bookmark }` | Any bookmark CRUD operation |
 | `onSettingsChange` | `ReaderSettings` | User changes theme/font/layout via UI |
@@ -643,6 +706,8 @@ When set to `"auto"`, the reader detects direction by analyzing character freque
 | `bookmarks` | `Bookmark[]` | `undefined` | Controlled bookmarks array |
 | `bookmarkStore` | `BookmarkStoreInterface` | localStorage | Custom bookmark persistence |
 | `bookmarkAdapter` | `CustomStoreAdapter` | `undefined` | Legacy store adapter |
+| `enableProgressTracking` | `boolean` | `true` | Persist and resume reading position across sessions |
+| `progressAdapter` | `CustomProgressStoreAdapter` | localStorage | Custom reading-progress persistence |
 | `fontOptions` | `FontOption[]` | Serif, Sans, Mono + urdu-web-fonts | Custom font selector options |
 | `mantineTheme` | `MantineThemeOverride` | `undefined` | Overrides for the UI chrome's Mantine theme (deep-merged with defaults) |
 | `enableBuiltInDictionary` | `boolean` | `false` | Enable online dictionary lookup |
@@ -651,6 +716,7 @@ When set to `"auto"`, the reader detects direction by analyzing character freque
 | `onReady` | `(event) => void` | — | Book loaded callback |
 | `onPageChange` | `(event) => void` | — | Page navigation callback |
 | `onProgressChange` | `(progress) => void` | — | Reading progress callback |
+| `onProgressSave` | `(event) => void` | — | Reading position persisted callback |
 | `onBookmarkCreate` | `(event) => void` | — | Bookmark created callback |
 | `onBookmarkChange` | `(event) => void` | — | Bookmark CRUD callback |
 | `onSettingsChange` | `(settings) => void` | — | User settings change callback |

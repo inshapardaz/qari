@@ -5,6 +5,7 @@
  * `bookmark-store.ts`'s shape.
  */
 
+import Sqids from 'sqids';
 import { Note } from '../models/note';
 import { CustomNoteStoreAdapter } from '../interfaces/note-store';
 import { LocalStorageNoteStore } from './local-storage-note-store';
@@ -18,15 +19,23 @@ export interface NoteStoreNotification {
   message: string;
 }
 
-function generateUUID(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
+const sqids = new Sqids();
+
+/**
+ * Generates a short, unique-enough id by Sqids-encoding two random 32-bit
+ * integers (~64 bits of entropy — far more than needed to avoid collisions
+ * within a single book's note list). Uses crypto.getRandomValues() for its
+ * higher-quality randomness where available, falling back to Math.random()
+ * otherwise.
+ */
+function generateId(): string {
+  const randomInt = (): number => {
+    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+      return crypto.getRandomValues(new Uint32Array(1))[0];
+    }
+    return Math.floor(Math.random() * 0xffffffff);
+  };
+  return sqids.encode([randomInt(), randomInt()]);
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -95,7 +104,7 @@ export class NoteStore {
     }
 
     const note: Note = {
-      id: generateUUID(),
+      id: generateId(),
       bookId,
       chapterId,
       startOffset,

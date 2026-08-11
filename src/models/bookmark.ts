@@ -3,7 +3,7 @@
  */
 
 export interface Bookmark {
-  id: string; // UUID
+  id: string; // Sqids-encoded id (see generateId in bookmark-store.ts)
   bookId: string; // Identifies the book
   chapterId: string; // Chapter within the book
   position: number; // Character offset within chapter

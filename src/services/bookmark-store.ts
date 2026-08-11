@@ -4,6 +4,7 @@
  * and optional custom adapter delegation with timeout fallback.
  */
 
+import Sqids from 'sqids';
 import { Bookmark } from '../models/bookmark';
 import { CustomStoreAdapter } from '../interfaces/store-adapter';
 
@@ -17,20 +18,23 @@ export interface BookmarkStoreNotification {
   message: string;
 }
 
+const sqids = new Sqids();
+
 /**
- * Generates a UUID v4 string.
- * Uses crypto.randomUUID() if available, otherwise falls back to a simple implementation.
+ * Generates a short, unique-enough id by Sqids-encoding two random 32-bit
+ * integers (~64 bits of entropy — far more than needed to avoid collisions
+ * within a single book's bookmark list). Uses crypto.getRandomValues() for
+ * its higher-quality randomness where available, falling back to
+ * Math.random() otherwise.
  */
-function generateUUID(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  // Fallback UUID v4 implementation
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
+function generateId(): string {
+  const randomInt = (): number => {
+    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+      return crypto.getRandomValues(new Uint32Array(1))[0];
+    }
+    return Math.floor(Math.random() * 0xffffffff);
+  };
+  return sqids.encode([randomInt(), randomInt()]);
 }
 
 /**
@@ -108,7 +112,7 @@ export class BookmarkStore {
     }
 
     const bookmark: Bookmark = {
-      id: generateUUID(),
+      id: generateId(),
       bookId,
       chapterId,
       position,

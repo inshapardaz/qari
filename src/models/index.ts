@@ -24,6 +24,7 @@ export type {
 
 export type { Bookmark } from './bookmark';
 export type { Note } from './note';
+export type { ReadingProgressRecord } from './progress';
 
 export type {
   ReaderState,

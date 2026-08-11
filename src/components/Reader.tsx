@@ -38,6 +38,7 @@ import { DEFAULT_MANTINE_THEME } from '../theme/mantine-theme';
 import type { Book, ContentNode, InlineNode, FootnoteRefSpan } from '../models/book';
 import type { Bookmark } from '../models/bookmark';
 import type { Note } from '../models/note';
+import type { ReadingProgressRecord } from '../models/progress';
 import type { ReaderState, ThemeName, FontFamily } from '../models/reader-state';
 import type {
   PageChangeEvent,
@@ -49,6 +50,7 @@ import type { DictionaryProvider } from '../interfaces/dictionary';
 import type { CustomStoreAdapter } from '../interfaces/store-adapter';
 import type { BookmarkStoreInterface, BookmarkChangeEvent } from '../interfaces/bookmark-store';
 import type { CustomNoteStoreAdapter, NoteChangeEvent } from '../interfaces/note-store';
+import type { CustomProgressStoreAdapter, ProgressChangeEvent } from '../interfaces/progress-store';
 
 import { ThemeEngine, THEMES } from '../services/theme-engine';
 import { DefaultDirectionDetector } from '../services/direction-detector';
@@ -56,7 +58,8 @@ import { DictionaryService } from '../services/dictionary-service';
 import { BookmarkStore } from '../services/bookmark-store';
 import { LocalStorageStore } from '../services/local-storage-store';
 import { NoteStore } from '../services/note-store';
-import { ChapterNavigator } from '../services/chapter-navigator';
+import { ProgressStore } from '../services/progress-store';
+import { ChapterNavigator, getChapterCharCount } from '../services/chapter-navigator';
 import { URDU_WEB_FONT_OPTIONS, injectUrduWebFontsCss } from '../services/urdu-web-fonts';
 import { getRangeOffsets, applyHighlights, clearHighlights } from '../utils/text-highlight';
 
@@ -185,6 +188,15 @@ export interface ReaderProps {
   bookmarkStore?: BookmarkStoreInterface;
   /** Custom persistence for notes (e.g. a server-backed store). Defaults to localStorage. */
   noteAdapter?: CustomNoteStoreAdapter;
+  /**
+   * Enable or disable automatic reading-progress tracking. Defaults to true.
+   * When enabled, the reader silently persists the current chapter/position
+   * as the user navigates, and resumes there the next time the same book
+   * (matched by `source`'s metadata identifier) is opened.
+   */
+  enableProgressTracking?: boolean;
+  /** Custom persistence for reading progress (e.g. a server-backed store, to sync across devices). Defaults to localStorage. */
+  progressAdapter?: CustomProgressStoreAdapter;
   /** Show a close button in the header. Defaults to false. */
   showCloseButton?: boolean;
   onBookmarkChange?: (event: BookmarkChangeEvent) => void;
@@ -192,6 +204,8 @@ export interface ReaderProps {
   onBookmarkCreate?: (event: BookmarkEvent) => void;
   /** Called when a note is created, deleted, or its comment is updated. */
   onNoteChange?: (event: NoteChangeEvent) => void;
+  /** Called whenever the current reading position is persisted (see `enableProgressTracking`). */
+  onProgressSave?: (event: ProgressChangeEvent) => void;
   onError?: (event: ReaderError) => void;
   onReady?: (event: BookLoadedEvent) => void;
   onSettingsChange?: (settings: ReaderSettings) => void;
@@ -257,6 +271,14 @@ export function clampZoom(value: number): number {
   const clamped = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, value));
   return Math.round(clamped / ZOOM_STEP) * ZOOM_STEP;
 }
+
+// Mirrors BookmarkPanel's own DEFAULT_CHARS_PER_PAGE (and ChapterNavigator's
+// default charsPerPage) — resuming a saved position converts its character
+// offset back to a page with the same `Math.floor(position / charsPerPage)`
+// bookmarks use, so the two round-trip consistently even though neither
+// reads this position via real DOM/column pagination (see the comment above
+// `handleBookmarkClick` in BookmarkPanel.tsx).
+const DEFAULT_CHARS_PER_PAGE = 1500;
 
 // ---------------------------------------------------------------------------
 // Initial state
@@ -673,17 +695,20 @@ export const Reader: React.FC<ReaderProps> = ({
   enableBuiltInDictionary = false,
   enableBookmarks = true,
   enableNotes = true,
+  enableProgressTracking = true,
   fontOptions = DEFAULT_FONT_OPTIONS,
   mantineTheme,
   bookmarkAdapter,
   bookmarks: bookmarksProp,
   bookmarkStore: bookmarkStoreProp,
   noteAdapter,
+  progressAdapter,
   showCloseButton = false,
   onBookmarkChange,
   onPageChange,
   onBookmarkCreate,
   onNoteChange,
+  onProgressSave,
   onError,
   onReady,
   onSettingsChange,
@@ -744,6 +769,7 @@ export const Reader: React.FC<ReaderProps> = ({
   const dictionaryServiceRef = useRef(new DictionaryService());
   const bookmarkStoreRef = useRef<BookmarkStore | null>(null);
   const noteStoreRef = useRef<NoteStore | null>(null);
+  const progressStoreRef = useRef<ProgressStore | null>(null);
   const chapterNavigatorRef = useRef<ChapterNavigator | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -863,6 +889,13 @@ export const Reader: React.FC<ReaderProps> = ({
   useEffect(() => {
     noteStoreRef.current = new NoteStore(noteAdapter);
   }, [noteAdapter]);
+
+  // ---------------------------------------------------------------------------
+  // Initialize ProgressStore (responds to adapter prop changes)
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    progressStoreRef.current = new ProgressStore(progressAdapter);
+  }, [progressAdapter]);
 
   // ---------------------------------------------------------------------------
   // Bookmark store interface instance (new pluggable store system)
@@ -1469,17 +1502,54 @@ export const Reader: React.FC<ReaderProps> = ({
         }
       })();
 
-      await Promise.all([bookmarksLoaded, notesLoaded]);
+      // Resolve a saved reading position (if any) to resume at, the same
+      // way bookmark navigation resolves a chapterId + character offset —
+      // see handleBookmarkClick in BookmarkPanel.tsx. Falls back to the
+      // start of the book (chapter 0, page 0) if tracking is disabled, no
+      // record exists, or its chapterId no longer matches any chapter in
+      // this book (e.g. the source content changed since it was saved).
+      let savedProgress: ReadingProgressRecord | null = null;
+      const progressLoaded = (async () => {
+        if (enableProgressTracking && progressStoreRef.current) {
+          try {
+            savedProgress = await progressStoreRef.current.load(book.metadata.identifier || '');
+          } catch {
+            // Progress loading failure is non-fatal
+          }
+        }
+      })();
 
-      const totalPages = navigator.getTotalPagesInChapter(0);
+      await Promise.all([bookmarksLoaded, notesLoaded, progressLoaded]);
+
+      let resolvedChapterIdx = 0;
+      let resolvedPage = 0;
+      if (savedProgress) {
+        const progress: ReadingProgressRecord = savedProgress;
+        const chapterIdx = book.chapters.findIndex((ch) => ch.id === progress.chapterId);
+        if (chapterIdx !== -1) {
+          const chapterCharCount = getChapterCharCount(book.chapters[chapterIdx]);
+          const position = progress.position;
+          resolvedChapterIdx = chapterIdx;
+          if (position > chapterCharCount) {
+            resolvedPage = Math.max(0, navigator.getTotalPagesInChapter(chapterIdx) - 1);
+          } else {
+            resolvedPage = Math.floor(position / DEFAULT_CHARS_PER_PAGE);
+          }
+        }
+      }
+      // Sync the navigator's own position so the readingProgress percentage
+      // below reflects the resumed position, not a fresh book's 0%.
+      navigator.goToPage(resolvedChapterIdx, resolvedPage);
+
+      const totalPages = navigator.getTotalPagesInChapter(resolvedChapterIdx);
 
       setState(prev => ({
         ...prev,
         book,
         loading: false,
         error: null,
-        currentChapter: 0,
-        currentPage: 0,
+        currentChapter: resolvedChapterIdx,
+        currentPage: resolvedPage,
         totalPages,
         readingProgress: navigator.getReadingProgress(),
         direction: resolvedDirection,
@@ -1495,8 +1565,8 @@ export const Reader: React.FC<ReaderProps> = ({
       }));
 
       // Initialize page count tracking per chapter (will be filled as chapters are visited)
-      setCurrentChapterIdx(0);
-      setCurrentPage(0);
+      setCurrentChapterIdx(resolvedChapterIdx);
+      setCurrentPage(resolvedPage);
       setPagesPerChapter(new Array(book.chapters.length).fill(1));
 
       // Emit onReady callback
@@ -1534,7 +1604,7 @@ export const Reader: React.FC<ReaderProps> = ({
         onError(readerError);
       }
     }
-  }, [direction, onReady, onError, bookmarksProp, pdfWorkerSrc]);
+  }, [direction, onReady, onError, bookmarksProp, pdfWorkerSrc, enableProgressTracking]);
 
   useEffect(() => {
     loadBook(source);
@@ -1831,6 +1901,33 @@ export const Reader: React.FC<ReaderProps> = ({
     });
   }, [currentPage, currentChapterIdx, pagesPerChapter, state.book]);
 
+  // Persist the current reading position (see enableProgressTracking), so
+  // the book resumes here next time it's opened (see the resume logic in
+  // loadBook). Independent of onProgressChange above — that callback's
+  // payload has no bookId/chapterId, so this recomputes what it needs
+  // directly rather than depending on it firing.
+  useEffect(() => {
+    if (!enableProgressTracking || !progressStoreRef.current || !state.book) return;
+    const chapter = state.book.chapters[currentChapterIdx];
+    if (!chapter) return;
+    const bookId = state.book.metadata.identifier || '';
+    // Inverts the same charsPerPage-based position -> page calculation used
+    // to resume (and that BookmarkPanel uses for its own bookmarks), so
+    // resuming lands back on this same page.
+    const position = currentPage * DEFAULT_CHARS_PER_PAGE;
+    const pagesBefore = pagesPerChapter.slice(0, currentChapterIdx).reduce((sum, p) => sum + (p || 1), 0);
+    const bookPage = pagesBefore + currentPage + 1;
+    const bookTotal = pagesPerChapter.reduce((sum, p) => sum + (p || 1), 0);
+    const percentage = bookTotal > 0 ? Math.round((bookPage / bookTotal) * 100) : 0;
+
+    progressStoreRef.current.save(bookId, chapter.id, position, percentage)
+      .then((progress) => {
+        if (onProgressSave) onProgressSave({ type: 'saved', progress });
+      })
+      .catch(() => { /* Progress save failure is non-fatal */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, currentChapterIdx, pagesPerChapter, state.book, enableProgressTracking]);
+
   // Keyboard page navigation. Closing the chapter menu / bookmarks popover /
   // settings dialog on Escape or outside-click is handled natively by
   // Mantine's Menu, Popover, and Modal components — no manual wiring needed.
@@ -2076,11 +2173,14 @@ export const Reader: React.FC<ReaderProps> = ({
         fontSize: '14px',
         backgroundColor: 'var(--reader-bg, #ffffff)',
         // Deliberately NOT `var(--reader-fg)` here — this is the color
-        // every descendant inherits by default (header, chapter/bookmarks/
-        // theme/layout/settings menus and popovers), and those are UI
-        // chrome, not book content. The reading theme's foreground color
-        // is applied explicitly to the actual content div below instead,
-        // so it only affects what's rendered inside the book.
+        // inherited by descendants that don't set their own (chapter/
+        // bookmarks/theme/layout/settings menus and popovers), and those
+        // are UI chrome, not book content. The header and footer bars are
+        // the exception: their background/border already follow the
+        // reading theme (`--reader-surface`/`--reader-border`), so their
+        // text does too, via an explicit `color: var(--reader-fg)` on each
+        // (see below) rather than relying on this root default. The content
+        // div gets the same explicit override for the same reason.
         color: 'var(--mantine-color-text, #1a1a1a)',
         height: '100%',
         transition: 'background-color 0.1s, color 0.1s',
@@ -2121,6 +2221,7 @@ export const Reader: React.FC<ReaderProps> = ({
                   padding: '0.5rem 1rem',
                   borderBottom: '1px solid var(--reader-border, #e0e0e0)',
                   backgroundColor: 'var(--reader-surface, #f5f5f5)',
+                  color: 'var(--reader-fg, #1a1a1a)',
                   flexShrink: 0,
                   position: 'relative',
                 }}
@@ -2743,6 +2844,7 @@ export const Reader: React.FC<ReaderProps> = ({
                   opacity: 0.6,
                   borderTop: '1px solid var(--reader-border, #e0e0e0)',
                   backgroundColor: 'var(--reader-surface, #f5f5f5)',
+                  color: 'var(--reader-fg, #1a1a1a)',
                   flexShrink: 0,
                 }}
               >

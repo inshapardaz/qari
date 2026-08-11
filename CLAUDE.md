@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`qari` (`@inshapardaz/qari`) is a framework-agnostic ebook reader component. The core is a single large React component (`src/components/Reader.tsx`), with thin wrapper layers exposing it to Vue 3 and as a vanilla Web Component. It reads EPUB, PDF, Markdown, and remote-URL sources, with theming, RTL/Urdu Nastaliq support, dictionary lookup, bookmarks, and notes.
+`qari` (`@inshapardaz/qari`) is a framework-agnostic ebook reader component. The core is a single large React component (`src/components/Reader.tsx`), with thin wrapper layers exposing it to Vue 3 and as a vanilla Web Component. It reads EPUB, PDF, Markdown, and remote-URL sources, with theming, RTL/Urdu Nastaliq support, dictionary lookup, bookmarks, notes, and reading-progress tracking.
 
 Full prop/API reference, feature docs, and usage examples for all three framework surfaces live in `README.md` — read it for anything user-facing (props, callbacks, storage adapters, i18n keys, dictionary provider setup, etc.) rather than re-deriving it from source. This file only covers what the README doesn't: commands and internal architecture.
 
@@ -47,7 +47,7 @@ Text content isn't sliced into pages by node count. Instead, the current chapter
 `src/interfaces/` defines the contracts the Reader depends on; `src/services/` provides the default implementations:
 
 - `Parser`/`PrettyPrinter` — see above.
-- `BookmarkStoreInterface` / `CustomStoreAdapter`, and the equivalent `note-store.ts` pair for notes — bookmarks and notes each have an independent storage abstraction (`BookmarkStore`/`NoteStore` orchestration classes over `LocalStorageStore`/`LocalStorageNoteStore` by default, or a consumer-supplied adapter/store for server-side persistence). These two systems are intentionally not shared code even though they're structurally similar — see their file-level comments if extending one; changes to one should not be assumed to apply to the other.
+- `BookmarkStoreInterface` / `CustomStoreAdapter`, the equivalent `note-store.ts` pair for notes, and `progress-store.ts` for reading-progress — three independent storage abstractions (`BookmarkStore`/`NoteStore`/`ProgressStore` orchestration classes over `LocalStorageStore`/`LocalStorageNoteStore`/`LocalStorageProgressStore` by default, or a consumer-supplied adapter/store for server-side persistence). These are intentionally not shared code even though they're structurally similar — see their file-level comments if extending one; changes to one should not be assumed to apply to the others. `ProgressStore` differs in one respect: it's a single upserted record per book (no `list()`, no per-book index) rather than a collection, since there's nothing to enumerate.
 - `ThemeEngine` (`theme-engine.ts`) — applies the four built-in reading themes (light/dark/sepia/high-contrast) as CSS custom properties (`--reader-bg`, `--reader-fg`) on the reader root. This is independent of Mantine's own light/dark colorScheme (the UI chrome's theme, not the book content's) — the Reader forces Mantine's `colorScheme` from the reading `theme` prop and scopes it (`forceColorScheme` + `getRootElement`) to its own root so it neither inherits nor clobbers a host app's own Mantine setup.
 - `DirectionDetector` (`direction-detector.ts`) — analyzes character frequencies to auto-detect LTR/RTL when `direction="auto"`.
 - `DictionaryService` + provider interface (`dictionary.ts`) — orchestrates Hunspell (local) → user-supplied → built-in online providers in that priority order; see README's Dictionary Integration section for the provider contract.
@@ -56,6 +56,8 @@ Text content isn't sliced into pages by node count. Instead, the current chapter
 ### Notes and bookmarks are position-anchored, not node-anchored
 
 Both `Bookmark.position` and `Note.startOffset`/`endOffset` are character offsets into the chapter's **rendered DOM text**, not the parsed content AST. This is deliberate: it keeps the same offset pointing at the same characters regardless of font size, margin, column count, or scroll-vs-paginated mode, none of which change the actual text content. Note highlighting (`src/utils/text-highlight.ts`) walks the rendered DOM with `TreeWalker` to re-derive text-node ranges from these offsets and wrap them in `<mark>` — it clears and reapplies all highlights from scratch on every relevant change rather than incrementally patching, to avoid mutation-order edge cases.
+
+`ReadingProgressRecord.position` follows the same convention, but via a cheaper heuristic rather than real DOM measurement: it's `page * DEFAULT_CHARS_PER_PAGE` (a fixed 1500 chars/page constant, matching `BookmarkPanel`'s own `DEFAULT_CHARS_PER_PAGE` and `ChapterNavigator`'s default `charsPerPage` — deliberately kept in sync by convention across all three, not by import), inverted back to a page via `Math.floor(position / 1500)` on resume. This lets `loadBook` resolve where to open a book synchronously at load time, before any real column-pagination measurement (`recalcPages`, see below) has had a chance to run.
 
 ### The unified selection context menu
 

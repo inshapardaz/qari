@@ -5,7 +5,7 @@
  */
 
 export interface Note {
-  id: string; // UUID
+  id: string; // Sqids-encoded id (see generateId in note-store.ts)
   bookId: string; // Identifies the book
   chapterId: string; // Chapter within the book
   startOffset: number; // Character offset within the chapter's rendered text where the highlight starts

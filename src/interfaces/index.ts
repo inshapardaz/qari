@@ -23,3 +23,7 @@ export type {
   NoteStoreInterface,
   NoteChangeEvent,
 } from './note-store';
+export type {
+  CustomProgressStoreAdapter,
+  ProgressChangeEvent,
+} from './progress-store';

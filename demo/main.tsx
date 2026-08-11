@@ -183,6 +183,7 @@ function App() {
   const [showCloseButton, setShowCloseButton] = useState(false);
   const [enableBookmarks, setEnableBookmarks] = useState(false);
   const [enableNotes, setEnableNotes] = useState(true);
+  const [enableProgressTracking, setEnableProgressTracking] = useState(true);
   const [enableBuiltInDictionary, setEnableBuiltInDictionary] = useState(true);
   const [direction, setDirection] = useState<'auto' | 'ltr' | 'rtl'>('auto');
   const [zoom, setZoom] = useState(100);
@@ -214,6 +215,11 @@ function App() {
     chapterTitle: string;
     percentage: number;
   } | null>(null);
+  // Tracks the last time the reader persisted the reading position, so a
+  // reload of this demo page (or reopening the same book) resumes here —
+  // this is purely a display of the onProgressSave callback; the reader
+  // itself already persisted it to its default localStorage-backed store.
+  const [lastProgressSave, setLastProgressSave] = useState<string | null>(null);
 
   const handleLoadUrl = () => {
     const trimmed = urlInput.trim();
@@ -399,6 +405,15 @@ function App() {
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem' }}>
             <input
               type="checkbox"
+              checked={enableProgressTracking}
+              onChange={(e) => setEnableProgressTracking(e.target.checked)}
+            />
+            enableProgressTracking
+          </label>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem' }}>
+            <input
+              type="checkbox"
               checked={enableBuiltInDictionary}
               onChange={(e) => setEnableBuiltInDictionary(e.target.checked)}
             />
@@ -474,6 +489,7 @@ function App() {
           wordSpacing={wordSpacing}
           enableBookmarks={enableBookmarks}
           enableNotes={enableNotes}
+          enableProgressTracking={enableProgressTracking}
           enableBuiltInDictionary={enableBuiltInDictionary}
           showCloseButton={showCloseButton}
           direction={direction}
@@ -500,6 +516,7 @@ function App() {
             if (s.scroll !== undefined) updateSetting('scroll', s.scroll);
           }}
           onProgressChange={setProgress}
+          onProgressSave={() => setLastProgressSave(new Date().toLocaleTimeString())}
         />
       </div>
 
@@ -519,6 +536,11 @@ function App() {
           <span><strong>Page:</strong> {progress.currentPage}/{progress.totalPages}</span>
           <span><strong>Chapter:</strong> {progress.currentChapter + 1}/{progress.totalChapters} — {progress.chapterTitle}</span>
           <span><strong>Progress:</strong> {progress.percentage}%</span>
+          {enableProgressTracking && lastProgressSave && (
+            <span title="Reload this page (or switch books and back) to see the reader resume from here">
+              <strong>Saved:</strong> {lastProgressSave}
+            </span>
+          )}
         </div>
       )}
     </div>

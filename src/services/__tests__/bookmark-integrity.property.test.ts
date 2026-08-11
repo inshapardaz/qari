@@ -33,7 +33,7 @@ describe('Property 11: Bookmark Data Integrity', () => {
 
           const bookmark = await store.create(bookId, chapterId, position, name);
 
-          // Non-empty id (UUID)
+          // Non-empty id (Sqids-encoded)
           expect(bookmark.id).toBeTruthy();
           expect(bookmark.id.length).toBeGreaterThan(0);
 

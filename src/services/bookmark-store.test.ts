@@ -35,7 +35,7 @@ describe('BookmarkStore', () => {
       expect(stored[0].name).toBe('Test');
     });
 
-    it('should generate unique UUIDs for each bookmark', async () => {
+    it('should generate unique ids for each bookmark', async () => {
       const store = new BookmarkStore();
       const b1 = await store.create('book-1', 'ch-1', 0, 'First');
       const b2 = await store.create('book-1', 'ch-1', 10, 'Second');
