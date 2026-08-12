@@ -753,6 +753,13 @@ export const Reader: React.FC<ReaderProps> = ({
     return fontOptions[0]?.family ?? 'Georgia, serif';
   });
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // iOS Safari and Firefox-for-iOS (both WebKit-based) don't implement the
+  // Fullscreen API for arbitrary elements on iPhone — `requestFullscreen`
+  // is either absent or its returned promise always rejects. When that's
+  // detected, we fall back to a CSS-only "fake fullscreen" (position:
+  // fixed over the viewport) toggled purely by this state, instead of the
+  // native API.
+  const [isFakeFullscreen, setIsFakeFullscreen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<{ src: string; alt: string } | null>(null);
   const [activeFootnote, setActiveFootnote] = useState<FootnoteRefSpan | null>(null);
@@ -857,9 +864,18 @@ export const Reader: React.FC<ReaderProps> = ({
   // ---------------------------------------------------------------------------
   const toggleFullscreen = useCallback(() => {
     if (!rootRef.current) return;
+    const supportsFullscreenApi =
+      document.fullscreenEnabled && typeof rootRef.current.requestFullscreen === 'function';
+    if (!supportsFullscreenApi) {
+      setIsFakeFullscreen((prev) => !prev);
+      return;
+    }
     if (!document.fullscreenElement) {
       rootRef.current.requestFullscreen().catch(() => {
-        // Fullscreen not supported or denied — ignore
+        // Real API present but the request was refused anyway (seen on
+        // some iPadOS Safari versions) — fall back to fake fullscreen
+        // rather than silently doing nothing.
+        setIsFakeFullscreen(true);
       });
     } else {
       document.exitFullscreen();
@@ -2198,6 +2214,19 @@ export const Reader: React.FC<ReaderProps> = ({
         // whenever the reader is embedded in a constrained area rather
         // than filling the viewport (e.g. the demo's `height: 70vh` box).
         transform: 'translate(0, 0)',
+        // Fake-fullscreen fallback (see isFakeFullscreen above): pin the
+        // reader over the full viewport with `position: fixed`. `100dvh`
+        // rather than `100vh` so it accounts for the address bar on iOS
+        // instead of extending behind it.
+        ...(isFakeFullscreen
+          ? {
+              position: 'fixed' as const,
+              inset: 0,
+              width: '100vw',
+              height: '100dvh',
+              zIndex: 2147483647,
+            }
+          : {}),
       }}
     >
       <DirectionProvider initialDirection={t.uiDirection} detectDirection={false} key={t.uiDirection}>
@@ -2674,12 +2703,12 @@ export const Reader: React.FC<ReaderProps> = ({
 
                   {/* Fullscreen toggle */}
                   <ActionIcon
-                    variant={isFullscreen ? 'filled' : 'default'}
+                    variant={isFullscreen || isFakeFullscreen ? 'filled' : 'default'}
                     size="lg"
                     onClick={toggleFullscreen}
-                    aria-label={isFullscreen ? t.exitFullscreen : t.enterFullscreen}
+                    aria-label={isFullscreen || isFakeFullscreen ? t.exitFullscreen : t.enterFullscreen}
                   >
-                    {isFullscreen ? <ExitFullscreenIcon /> : '⛶'}
+                    {isFullscreen || isFakeFullscreen ? <ExitFullscreenIcon /> : '⛶'}
                   </ActionIcon>
 
                   {showCloseButton && (
