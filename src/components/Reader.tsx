@@ -723,6 +723,22 @@ export const Reader: React.FC<ReaderProps> = ({
   const [chapterMenuOpen, setChapterMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [moreSettingsOpen, setMoreSettingsOpen] = useState(false);
+  // Whether the typeface <Select>'s own dropdown is open. Its options render
+  // in a separate portal (comboboxProps.portalProps below) that's a DOM
+  // *sibling* of the settings Popover's dropdown, not a descendant — even
+  // though both target the same mantinePortalTarget node, each portal call
+  // appends independently, so one doesn't nest inside the other. Mantine's
+  // Popover dismisses on outside `mousedown`/`touchstart` by walking up from
+  // the event target to check whether it's contained in its own dropdown
+  // node; since the option isn't, tapping an option looks like an "outside"
+  // tap to the settings Popover. On desktop this is harmless (option
+  // selection fires on `click`, which is unaffected), but on touch devices
+  // the `touchstart` alone is enough to close the settings Popover — and
+  // with it, unmount the option — before the selection's `click` can ever
+  // fire, so nothing gets selected and the panel just closes. Suppressing
+  // closeOnClickOutside on the settings Popover while this dropdown is open
+  // avoids that race.
+  const [fontDropdownOpen, setFontDropdownOpen] = useState(false);
   const [bookmarksPanelOpen, setBookmarksPanelOpen] = useState(false);
   const [notesPanelOpen, setNotesPanelOpen] = useState(false);
   const [themePanelOpen, setThemePanelOpen] = useState(false);
@@ -2543,6 +2559,10 @@ export const Reader: React.FC<ReaderProps> = ({
                     radius="lg"
                     width={300}
                     trapFocus
+                    // See fontDropdownOpen above — keeps a tap on the nested
+                    // typeface dropdown's options from being misread as an
+                    // outside tap that closes this whole panel.
+                    closeOnClickOutside={!fontDropdownOpen}
                   >
                     <Popover.Target>
                       <ActionIcon
@@ -2634,6 +2654,8 @@ export const Reader: React.FC<ReaderProps> = ({
                             }}
                             data={fontOptions.map(opt => ({ value: opt.family, label: t.fontNames[opt.name] ?? opt.name }))}
                             allowDeselect={false}
+                            onDropdownOpen={() => setFontDropdownOpen(true)}
+                            onDropdownClose={() => setFontDropdownOpen(false)}
                             comboboxProps={{ withinPortal: true, portalProps: { target: mantinePortalTarget } }}
                             styles={{
                               label: { fontSize: 'var(--mantine-font-size-xs)', color: 'var(--mantine-color-dimmed)', fontWeight: 500, marginBottom: 4 },
