@@ -188,6 +188,11 @@ function App() {
   const [direction, setDirection] = useState<'auto' | 'ltr' | 'rtl'>('auto');
   const [zoom, setZoom] = useState(100);
   const [closeMessage, setCloseMessage] = useState<string | null>(null);
+  // bookInfo overrides — left blank by default so the reader falls back to
+  // whatever title/author was parsed from the loaded source (see the
+  // bookInfo prop's doc comment on ReaderProps).
+  const [bookInfoTitle, setBookInfoTitle] = useState('');
+  const [bookInfoAuthor, setBookInfoAuthor] = useState('');
 
   // Persist settings whenever they change
   useEffect(() => {
@@ -263,6 +268,13 @@ function App() {
     setSource({ type: 'markdown', content: SAMPLE_MARKDOWN });
     setSourceLabel('Sample Markdown');
   };
+
+  const bookInfo = (bookInfoTitle.trim() || bookInfoAuthor.trim())
+    ? {
+        ...(bookInfoTitle.trim() && { title: bookInfoTitle.trim() }),
+        ...(bookInfoAuthor.trim() && { author: bookInfoAuthor.trim() }),
+      }
+    : undefined;
 
   return (
     <div>
@@ -462,7 +474,49 @@ function App() {
               style={{ width: '160px' }}
             />
           </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: '#555' }}>
+              bookInfo.title
+            </label>
+            <input
+              type="text"
+              placeholder="(use parsed title)"
+              value={bookInfoTitle}
+              onChange={(e) => setBookInfoTitle(e.target.value)}
+              style={{
+                padding: '0.5rem',
+                border: '1px solid #ccc',
+                borderRadius: '4px',
+                fontSize: '0.9rem',
+                width: '180px',
+              }}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: '#555' }}>
+              bookInfo.author
+            </label>
+            <input
+              type="text"
+              placeholder="(use parsed author)"
+              value={bookInfoAuthor}
+              onChange={(e) => setBookInfoAuthor(e.target.value)}
+              style={{
+                padding: '0.5rem',
+                border: '1px solid #ccc',
+                borderRadius: '4px',
+                fontSize: '0.9rem',
+                width: '180px',
+              }}
+            />
+          </div>
         </div>
+
+        <p style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#888' }}>
+          bookInfo overrides show up in the reader's chapter menu (☰) — see the book title/author there.
+        </p>
 
         {closeMessage && (
           <p style={{
@@ -488,6 +542,7 @@ function App() {
       }}>
         <Reader
           source={source as any}
+          bookInfo={bookInfo}
           theme={theme}
           fontFamily={fontFamily}
           fontSize={fontSize}

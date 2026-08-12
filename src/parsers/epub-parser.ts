@@ -76,6 +76,15 @@ export class EPUBParserImpl implements EPUBParser {
       metadata.pageDirection = pageDirection;
     }
 
+    const coverHref = this.extractCoverHref(opfDoc, manifest);
+    if (coverHref) {
+      const coverPath = this.resolveRelativePath(opfDir, coverHref);
+      const coverBlobUrl = await this.extractImageAsBlob(zip, coverPath);
+      if (coverBlobUrl) {
+        metadata.coverImage = coverBlobUrl;
+      }
+    }
+
     const chapters = await this.buildChapters(spineItemRefs, manifest, opfDir, zip);
 
     // Resolve image sources: extract from ZIP and convert to blob URLs
@@ -345,6 +354,44 @@ export class EPUBParserImpl implements EPUBParser {
       ...(publisher && { publisher }),
       ...(publicationDate && { publicationDate }),
     };
+  }
+
+  /**
+   * Resolves the cover image's manifest href, if declared. EPUB2 declares it
+   * indirectly via `<meta name="cover" content="{manifest-id}"/>` in
+   * `<metadata>`; EPUB3 declares it directly via `properties="cover-image"`
+   * on the manifest `<item>` itself. Checks both, EPUB2 form first since
+   * it's the more common convention in the wild even in EPUB3 files.
+   */
+  private extractCoverHref(
+    opfDoc: Document,
+    manifest: Map<string, { href: string; mediaType: string }>
+  ): string | undefined {
+    const metadataEl = opfDoc.getElementsByTagName('metadata')[0];
+    if (metadataEl) {
+      const metas = metadataEl.getElementsByTagName('meta');
+      for (let i = 0; i < metas.length; i++) {
+        if (metas[i].getAttribute('name') === 'cover') {
+          const coverId = metas[i].getAttribute('content');
+          const item = coverId ? manifest.get(coverId) : undefined;
+          if (item) return item.href;
+        }
+      }
+    }
+
+    const manifestEl = opfDoc.getElementsByTagName('manifest')[0];
+    if (manifestEl) {
+      const items = manifestEl.getElementsByTagName('item');
+      for (let i = 0; i < items.length; i++) {
+        const properties = items[i].getAttribute('properties');
+        const href = items[i].getAttribute('href');
+        if (href && properties && properties.split(/\s+/).includes('cover-image')) {
+          return href;
+        }
+      }
+    }
+
+    return undefined;
   }
 
   private getDcElement(metadataEl: Element, localName: string): string | undefined {

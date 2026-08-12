@@ -112,6 +112,83 @@ describe('EPUBParserImpl', () => {
     });
   });
 
+  describe('cover image extraction', () => {
+    const containerXml = `<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>`;
+
+    const chapterXhtml = `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Chapter 1</title></head>
+<body><p>Hello world</p></body>
+</html>`;
+
+    it('resolves the cover via EPUB2-style <meta name="cover"> + manifest id', async () => {
+      const opfContent = `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>Cover Book</dc:title>
+    <meta name="cover" content="cover-img"/>
+  </metadata>
+  <manifest>
+    <item id="chapter1" href="chapter1.xhtml" media-type="application/xhtml+xml"/>
+    <item id="cover-img" href="images/cover.jpg" media-type="image/jpeg"/>
+  </manifest>
+  <spine>
+    <itemref idref="chapter1"/>
+  </spine>
+</package>`;
+
+      const zip = new JSZip();
+      zip.file('META-INF/container.xml', containerXml);
+      zip.file('OEBPS/content.opf', opfContent);
+      zip.file('OEBPS/chapter1.xhtml', chapterXhtml);
+      zip.file('OEBPS/images/cover.jpg', new Uint8Array([1, 2, 3, 4]));
+      const buf = await zip.generateAsync({ type: 'arraybuffer' });
+
+      const book = await parser.parse(buf);
+
+      expect(book.metadata.coverImage).toMatch(/^blob:/);
+    });
+
+    it('resolves the cover via EPUB3-style properties="cover-image"', async () => {
+      const opfContent = `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>Cover Book</dc:title>
+  </metadata>
+  <manifest>
+    <item id="chapter1" href="chapter1.xhtml" media-type="application/xhtml+xml"/>
+    <item id="cover-img" href="images/cover.jpg" media-type="image/jpeg" properties="cover-image"/>
+  </manifest>
+  <spine>
+    <itemref idref="chapter1"/>
+  </spine>
+</package>`;
+
+      const zip = new JSZip();
+      zip.file('META-INF/container.xml', containerXml);
+      zip.file('OEBPS/content.opf', opfContent);
+      zip.file('OEBPS/chapter1.xhtml', chapterXhtml);
+      zip.file('OEBPS/images/cover.jpg', new Uint8Array([1, 2, 3, 4]));
+      const buf = await zip.generateAsync({ type: 'arraybuffer' });
+
+      const book = await parser.parse(buf);
+
+      expect(book.metadata.coverImage).toMatch(/^blob:/);
+    });
+
+    it('leaves coverImage undefined when the EPUB declares no cover', async () => {
+      const epub = await createEpubBuffer();
+      const book = await parser.parse(epub);
+
+      expect(book.metadata.coverImage).toBeUndefined();
+    });
+  });
+
   describe('chapter ordering (spine sequence)', () => {
     it('should order chapters by spine sequence', async () => {
       const epub = await createEpubBuffer({

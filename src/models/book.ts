@@ -18,6 +18,8 @@ export interface BookMetadata {
   publicationDate?: string; // ISO 8601
   identifier?: string; // ISBN or unique ID
   pageDirection?: 'ltr' | 'rtl'; // from EPUB spine page-progression-direction
+  /** Cover image, as a blob URL. EPUB only — resolved from the OPF cover metadata/manifest. */
+  coverImage?: string;
 }
 
 export interface Chapter {

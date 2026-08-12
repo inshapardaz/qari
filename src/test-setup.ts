@@ -49,6 +49,17 @@ if (typeof Element !== 'undefined' && typeof Element.prototype.scrollIntoView !=
   Element.prototype.scrollIntoView = () => {};
 }
 
+// URL.createObjectURL/revokeObjectURL polyfill for jsdom (not implemented by
+// default). Required by the EPUB parser, which converts extracted images
+// (including cover art) to blob URLs.
+if (typeof URL.createObjectURL !== 'function') {
+  let counter = 0;
+  URL.createObjectURL = () => `blob:mock-${++counter}`;
+}
+if (typeof URL.revokeObjectURL !== 'function') {
+  URL.revokeObjectURL = () => {};
+}
+
 // localStorage polyfill for jsdom (not available by default in newer Node.js versions)
 if (typeof globalThis.localStorage === 'undefined') {
   const store: Record<string, string> = {};

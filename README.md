@@ -692,6 +692,7 @@ When set to `"auto"`, the reader detects direction by analyzing character freque
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `source` | `ReaderSource` | (required) | Book content — EPUB buffer, URL, or Markdown string |
+| `bookInfo` | `Partial<BookMetadata>` | `undefined` | Book info (title, author, publisher, cover, etc.) overrides, merged over — and taking priority over — whatever was parsed from `source` |
 | `theme` | `'light' \| 'dark' \| 'sepia' \| 'high-contrast'` | `'light'` | Color theme |
 | `fontFamily` | `string` | `'serif'` | Font family name |
 | `fontSize` | `number` | `16` | Font size in pixels |

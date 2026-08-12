@@ -35,7 +35,7 @@ import {
 import type { MantineThemeOverride } from '@mantine/core';
 import { DEFAULT_MANTINE_THEME } from '../theme/mantine-theme';
 
-import type { Book, ContentNode, InlineNode, FootnoteRefSpan } from '../models/book';
+import type { Book, BookMetadata, ContentNode, InlineNode, FootnoteRefSpan } from '../models/book';
 import type { Bookmark } from '../models/bookmark';
 import type { Note } from '../models/note';
 import type { ReadingProgressRecord } from '../models/progress';
@@ -132,6 +132,17 @@ export const DEFAULT_FONT_OPTIONS: FontOption[] = [
 
 export interface ReaderProps {
   source: ReaderSource;
+  /**
+   * Overrides for the book info (title, author, publisher, cover, etc.)
+   * shown in the reader's chapter menu and reported via `onReady`. Merged
+   * over whatever was parsed from the source (e.g. EPUB OPF metadata) at
+   * load time — any field given here takes priority over the parsed value,
+   * so a host app that already has its own (more reliable) catalog data can
+   * supply it directly instead of trusting the source file's own metadata.
+   * Markdown/URL/PDF sources have little or no metadata of their own, so
+   * this is also how they get a real title/author/cover shown at all.
+   */
+  bookInfo?: Partial<BookMetadata>;
   translations?: Partial<TranslationStrings>;
   theme?: ThemeName;
   fontFamily?: FontFamily;
@@ -676,6 +687,7 @@ const ContentNodeRenderer: React.FC<{ node: ContentNode; onImageClick?: (src: st
 
 export const Reader: React.FC<ReaderProps> = ({
   source,
+  bookInfo,
   translations,
   theme = 'light',
   fontFamily = 'serif',
@@ -1467,6 +1479,15 @@ export const Reader: React.FC<ReaderProps> = ({
         }
       }
 
+      // Apply bookInfo overrides (see its doc comment on ReaderProps) before
+      // anything downstream reads book.metadata, so identifier-keyed
+      // bookmark/note/progress storage and pageDirection detection below
+      // also pick up an overridden identifier/pageDirection, not just the
+      // display fields.
+      if (bookInfo) {
+        book = { ...book, metadata: { ...book.metadata, ...bookInfo } };
+      }
+
       // Initialize ChapterNavigator with the loaded book
       const navigator = new ChapterNavigator(book);
       chapterNavigatorRef.current = navigator;
@@ -1636,7 +1657,7 @@ export const Reader: React.FC<ReaderProps> = ({
         onError(readerError);
       }
     }
-  }, [direction, onReady, onError, bookmarksProp, pdfWorkerSrc, enableProgressTracking]);
+  }, [direction, onReady, onError, bookmarksProp, pdfWorkerSrc, enableProgressTracking, bookInfo]);
 
   useEffect(() => {
     loadBook(source);
@@ -2332,7 +2353,45 @@ export const Reader: React.FC<ReaderProps> = ({
                       ☰
                     </ActionIcon>
                   </Menu.Target>
-                  <Menu.Dropdown data-testid="chapter-menu-panel" mah={300} style={{ overflowY: 'auto' }}>
+                  <Menu.Dropdown data-testid="chapter-menu-panel" mah={340} style={{ overflowY: 'auto' }}>
+                    {state.book?.metadata && (
+                      <div
+                        data-testid="book-info"
+                        dir={t.uiDirection}
+                        style={{
+                          display: 'flex',
+                          gap: '0.6rem',
+                          alignItems: 'center',
+                          padding: '0.4rem 0.7rem 0.7rem',
+                          marginBottom: '0.25rem',
+                          borderBottom: '1px solid var(--mantine-color-default-border)',
+                        }}
+                      >
+                        {state.book.metadata.coverImage && (
+                          <img
+                            src={state.book.metadata.coverImage}
+                            alt=""
+                            style={{
+                              width: '2.5rem',
+                              height: '3.5rem',
+                              objectFit: 'cover',
+                              borderRadius: 4,
+                              flexShrink: 0,
+                            }}
+                          />
+                        )}
+                        <div style={{ minWidth: 0 }}>
+                          <Text size="sm" fw={700} truncate="end">
+                            {state.book.metadata.title}
+                          </Text>
+                          {state.book.metadata.author && (
+                            <Text size="xs" c="dimmed" truncate="end">
+                              {state.book.metadata.author}
+                            </Text>
+                          )}
+                        </div>
+                      </div>
+                    )}
                     {state.book?.chapters.map((ch, idx) => (
                       <Menu.Item
                         key={ch.id}
