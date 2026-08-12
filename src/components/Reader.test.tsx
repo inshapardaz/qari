@@ -739,3 +739,70 @@ describe('Reader embedded inside a host app with its own MantineProvider', () =>
     expect(document.documentElement.getAttribute('data-mantine-color-scheme')).toBe('light');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Swipe (touch) page navigation
+// ---------------------------------------------------------------------------
+
+describe('Reader swipe navigation', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  function fireSwipe(root: HTMLElement, { from, to }: { from: number; to: number }) {
+    const viewport = root.querySelector('.ebook-reader__viewport') as HTMLElement;
+    fireEvent.touchStart(viewport, { touches: [{ clientX: from, clientY: 100 }] });
+    fireEvent.touchEnd(viewport, { changedTouches: [{ clientX: to, clientY: 100 }] });
+  }
+
+  it('turns to the next chapter on a leftward swipe (LTR)', async () => {
+    const source = createMinimalMarkdownSource(
+      '# Test Book\n\n## Chapter 1\n\nFirst chapter text\n\n## Chapter 2\n\nSecond chapter text'
+    );
+    const onPageChange = vi.fn();
+
+    render(<Reader source={source} onPageChange={onPageChange} />);
+    const root = await screen.findByTestId('reader-content');
+
+    fireSwipe(root, { from: 300, to: 200 });
+
+    await waitFor(() => {
+      expect(onPageChange).toHaveBeenCalledWith(expect.objectContaining({ chapter: 1 }));
+    });
+  });
+
+  it('turns to the previous chapter on a rightward swipe (LTR)', async () => {
+    const source = createMinimalMarkdownSource(
+      '# Test Book\n\n## Chapter 1\n\nFirst chapter text\n\n## Chapter 2\n\nSecond chapter text'
+    );
+    const onPageChange = vi.fn();
+
+    render(<Reader source={source} onPageChange={onPageChange} />);
+    const root = await screen.findByTestId('reader-content');
+
+    // Swipe forward into chapter 2 first, then back.
+    fireSwipe(root, { from: 300, to: 200 });
+    await waitFor(() => {
+      expect(onPageChange).toHaveBeenLastCalledWith(expect.objectContaining({ chapter: 1 }));
+    });
+
+    fireSwipe(root, { from: 200, to: 300 });
+    await waitFor(() => {
+      expect(onPageChange).toHaveBeenLastCalledWith(expect.objectContaining({ chapter: 0 }));
+    });
+  });
+
+  it('ignores short drags that stay under the swipe threshold', async () => {
+    const source = createMinimalMarkdownSource(
+      '# Test Book\n\n## Chapter 1\n\nFirst chapter text\n\n## Chapter 2\n\nSecond chapter text'
+    );
+    const onPageChange = vi.fn();
+
+    render(<Reader source={source} onPageChange={onPageChange} />);
+    const root = await screen.findByTestId('reader-content');
+
+    fireSwipe(root, { from: 300, to: 280 });
+
+    expect(onPageChange).not.toHaveBeenCalled();
+  });
+});

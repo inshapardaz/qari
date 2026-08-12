@@ -1882,6 +1882,48 @@ export const Reader: React.FC<ReaderProps> = ({
   }, [totalPages, currentPage]);
 
   // ---------------------------------------------------------------------------
+  // Swipe (touch) page navigation. Mirrors the ArrowLeft/ArrowRight keyboard
+  // handler below, but via a single-finger horizontal drag on the page
+  // viewport. Only mostly-horizontal single-touch gestures past a distance
+  // threshold qualify, so this doesn't fight vertical scrolling (scroll
+  // mode) or a text-selection drag.
+  // ---------------------------------------------------------------------------
+  const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  const handleContentTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length !== 1) {
+      swipeStartRef.current = null;
+      return;
+    }
+    const touch = e.touches[0];
+    swipeStartRef.current = { x: touch.clientX, y: touch.clientY };
+  }, []);
+
+  const handleContentTouchEnd = useCallback((e: React.TouchEvent) => {
+    const start = swipeStartRef.current;
+    swipeStartRef.current = null;
+    if (!start || e.changedTouches.length !== 1) return;
+
+    // A drag that left behind a real text selection was the user selecting
+    // text, not paging — don't also turn the page out from under them.
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed && selection.toString().trim()) return;
+
+    const touch = e.changedTouches[0];
+    const dx = touch.clientX - start.x;
+    const dy = touch.clientY - start.y;
+    const SWIPE_THRESHOLD = 50;
+    if (Math.abs(dx) < SWIPE_THRESHOLD || Math.abs(dx) <= Math.abs(dy)) return;
+
+    const swipedLeft = dx < 0;
+    if (state.direction === 'rtl') {
+      if (swipedLeft) goToPrevPage(); else goToNextPage();
+    } else {
+      if (swipedLeft) goToNextPage(); else goToPrevPage();
+    }
+  }, [state.direction, goToNextPage, goToPrevPage]);
+
+  // ---------------------------------------------------------------------------
   // Keep the exposed ReaderState's currentChapter/currentPage/totalPages in
   // sync with the real navigation state. These only ever got set once, at
   // book-load time (see createInitialState / loadBook), and were never
@@ -2731,6 +2773,8 @@ export const Reader: React.FC<ReaderProps> = ({
                 className="ebook-reader__viewport"
                 onMouseEnter={() => setHovered(true)}
                 onMouseLeave={() => setHovered(false)}
+                onTouchStart={handleContentTouchStart}
+                onTouchEnd={handleContentTouchEnd}
                 style={{
                   flex: 1,
                   overflow: 'hidden',
