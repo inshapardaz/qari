@@ -2346,9 +2346,12 @@ export const Reader: React.FC<ReaderProps> = ({
                 >
                   <Menu.Target>
                     <ActionIcon
-                      variant={chapterMenuOpen ? 'filled' : 'default'}
+                      variant={chapterMenuOpen ? 'filled' : 'transparent'}
                       size="lg"
                       aria-label={t.tableOfContents}
+                      style={chapterMenuOpen
+                        ? { backgroundColor: 'var(--reader-fg, #1a1a1a)', color: 'var(--reader-bg, #ffffff)' }
+                        : { color: 'var(--reader-fg, #1a1a1a)' }}
                     >
                       ☰
                     </ActionIcon>
@@ -2433,11 +2436,14 @@ export const Reader: React.FC<ReaderProps> = ({
                     >
                       <Popover.Target>
                         <ActionIcon
-                          variant={bookmarksPanelOpen ? 'filled' : 'default'}
+                          variant={bookmarksPanelOpen ? 'filled' : 'transparent'}
                           size="lg"
                           aria-label={t.bookmarks}
                           aria-expanded={bookmarksPanelOpen}
                           onClick={() => setBookmarksPanelOpen((open) => !open)}
+                          style={bookmarksPanelOpen
+                            ? { backgroundColor: 'var(--reader-fg, #1a1a1a)', color: 'var(--reader-bg, #ffffff)' }
+                            : { color: 'var(--reader-fg, #1a1a1a)' }}
                         >
                           <BookmarkIcon />
                         </ActionIcon>
@@ -2471,11 +2477,14 @@ export const Reader: React.FC<ReaderProps> = ({
                     >
                       <Popover.Target>
                         <ActionIcon
-                          variant={notesPanelOpen ? 'filled' : 'default'}
+                          variant={notesPanelOpen ? 'filled' : 'transparent'}
                           size="lg"
                           aria-label={t.notesPanelTitle}
                           aria-expanded={notesPanelOpen}
                           onClick={() => setNotesPanelOpen((open) => !open)}
+                          style={notesPanelOpen
+                            ? { backgroundColor: 'var(--reader-fg, #1a1a1a)', color: 'var(--reader-bg, #ffffff)' }
+                            : { color: 'var(--reader-fg, #1a1a1a)' }}
                         >
                           <NoteIcon />
                         </ActionIcon>
@@ -2506,11 +2515,14 @@ export const Reader: React.FC<ReaderProps> = ({
                   >
                     <Popover.Target>
                       <ActionIcon
-                        variant={themePanelOpen ? 'filled' : 'default'}
+                        variant={themePanelOpen ? 'filled' : 'transparent'}
                         size="lg"
                         onClick={() => setThemePanelOpen((open) => !open)}
                         aria-label={t.settingsTheme}
                         aria-expanded={themePanelOpen}
+                        style={themePanelOpen
+                          ? { backgroundColor: 'var(--reader-fg, #1a1a1a)', color: 'var(--reader-bg, #ffffff)' }
+                          : { color: 'var(--reader-fg, #1a1a1a)' }}
                       >
                         <ThemeIcon />
                       </ActionIcon>
@@ -2567,11 +2579,14 @@ export const Reader: React.FC<ReaderProps> = ({
                   >
                     <Popover.Target>
                       <ActionIcon
-                        variant={layoutPanelOpen ? 'filled' : 'default'}
+                        variant={layoutPanelOpen ? 'filled' : 'transparent'}
                         size="lg"
                         onClick={() => setLayoutPanelOpen((open) => !open)}
                         aria-label={t.settingsLayout}
                         aria-expanded={layoutPanelOpen}
+                        style={layoutPanelOpen
+                          ? { backgroundColor: 'var(--reader-fg, #1a1a1a)', color: 'var(--reader-bg, #ffffff)' }
+                          : { color: 'var(--reader-fg, #1a1a1a)' }}
                       >
                         {scroll ? <ScrollIcon /> : columns === 2 ? <DoublePageIcon /> : <SinglePageIcon />}
                       </ActionIcon>
@@ -2625,11 +2640,14 @@ export const Reader: React.FC<ReaderProps> = ({
                   >
                     <Popover.Target>
                       <ActionIcon
-                        variant={settingsOpen ? 'filled' : 'default'}
+                        variant={settingsOpen ? 'filled' : 'transparent'}
                         size="lg"
                         onClick={() => setSettingsOpen(!settingsOpen)}
                         aria-label={t.readingSettings}
                         aria-expanded={settingsOpen}
+                        style={settingsOpen
+                          ? { backgroundColor: 'var(--reader-fg, #1a1a1a)', color: 'var(--reader-bg, #ffffff)' }
+                          : { color: 'var(--reader-fg, #1a1a1a)' }}
                       >
                         <span aria-hidden="true" style={{ fontWeight: 600 }}>Aa</span>
                       </ActionIcon>
@@ -2826,20 +2844,24 @@ export const Reader: React.FC<ReaderProps> = ({
 
                   {/* Fullscreen toggle */}
                   <ActionIcon
-                    variant={isFullscreen || isFakeFullscreen ? 'filled' : 'default'}
+                    variant={isFullscreen || isFakeFullscreen ? 'filled' : 'transparent'}
                     size="lg"
                     onClick={toggleFullscreen}
                     aria-label={isFullscreen || isFakeFullscreen ? t.exitFullscreen : t.enterFullscreen}
+                    style={isFullscreen || isFakeFullscreen
+                      ? { backgroundColor: 'var(--reader-fg, #1a1a1a)', color: 'var(--reader-bg, #ffffff)' }
+                      : { color: 'var(--reader-fg, #1a1a1a)' }}
                   >
                     {isFullscreen || isFakeFullscreen ? <ExitFullscreenIcon /> : '⛶'}
                   </ActionIcon>
 
                   {showCloseButton && (
                     <ActionIcon
-                      variant="default"
+                      variant="transparent"
                       size="lg"
                       onClick={() => onClose?.()}
                       aria-label={t.closeReader}
+                      style={{ color: 'var(--reader-fg, #1a1a1a)' }}
                     >
                       ✕
                     </ActionIcon>
