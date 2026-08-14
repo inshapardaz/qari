@@ -301,6 +301,16 @@ function detectTouchDevice(): boolean {
   return hoverNone || hasTouchPoints;
 }
 
+// Below this viewport width, a two-column spread leaves each page too
+// narrow to read comfortably — the two-page layout option is hidden and
+// forced back to single-page (see `effectiveColumns` below).
+const MOBILE_VIEWPORT_MAX_WIDTH = 768;
+
+function detectMobileViewport(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+  return window.matchMedia(`(max-width: ${MOBILE_VIEWPORT_MAX_WIDTH}px)`).matches;
+}
+
 // Mirrors BookmarkPanel's own DEFAULT_CHARS_PER_PAGE (and ChapterNavigator's
 // default charsPerPage) — resuming a saved position converts its character
 // offset back to a page with the same `Math.floor(position / charsPerPage)`
@@ -823,6 +833,12 @@ export const Reader: React.FC<ReaderProps> = ({
   // direct touch-support check (`ontouchstart`/`maxTouchPoints`), and either
   // signal being true is enough to call the device touch-primary.
   const [isTouchDevice, setIsTouchDevice] = useState(detectTouchDevice);
+  // Whether the viewport is narrow enough to count as "mobile view" (see
+  // MOBILE_VIEWPORT_MAX_WIDTH) — a two-column spread doesn't fit
+  // comfortably at phone widths, so the two-page layout option is hidden
+  // and `columns` is overridden down to 1 (see `effectiveColumns` below)
+  // whenever this is true.
+  const [isMobileViewport, setIsMobileViewport] = useState(detectMobileViewport);
   const [lightboxImage, setLightboxImage] = useState<{ src: string; alt: string } | null>(null);
   const [activeFootnote, setActiveFootnote] = useState<FootnoteRefSpan | null>(null);
   const [footnoteAnchor, setFootnoteAnchor] = useState<{ top: number; left: number } | null>(null);
@@ -853,7 +869,11 @@ export const Reader: React.FC<ReaderProps> = ({
   // ---------------------------------------------------------------------------
   const isPdfBook = source.type === 'pdf';
   const pdfScrollStack = scroll && isPdfBook;
-  const pdfSpread = !scroll && columns === 2 && isPdfBook;
+  // The `columns` prop as actually applied to layout — forced to 1 on
+  // narrow/mobile viewports regardless of what the consumer passed, since a
+  // two-column spread doesn't fit comfortably there (see isMobileViewport).
+  const effectiveColumns = isMobileViewport ? 1 : columns;
+  const pdfSpread = !scroll && effectiveColumns === 2 && isPdfBook;
   const spreadStart = pdfSpread ? currentChapterIdx - (currentChapterIdx % 2) : currentChapterIdx;
 
   // ---------------------------------------------------------------------------
@@ -963,6 +983,27 @@ export const Reader: React.FC<ReaderProps> = ({
       mql.removeEventListener('change', handleChange);
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const mql = window.matchMedia(`(max-width: ${MOBILE_VIEWPORT_MAX_WIDTH}px)`);
+    const handleChange = () => setIsMobileViewport(detectMobileViewport());
+    mql.addEventListener('change', handleChange);
+    return () => {
+      mql.removeEventListener('change', handleChange);
+    };
+  }, []);
+
+  // Keep a controlled `columns` prop in sync with the mobile-forced single
+  // page layout: since the reader itself decides columns via
+  // `effectiveColumns` for rendering, a consumer that only reacts to
+  // onSettingsChange (rather than reading effectiveColumns, which isn't
+  // exposed) would otherwise still believe columns is 2 after this fires.
+  useEffect(() => {
+    if (isMobileViewport && !scroll && columns === 2 && onSettingsChange) {
+      onSettingsChange({ columns: 1 });
+    }
+  }, [isMobileViewport, scroll, columns, onSettingsChange]);
 
   // ---------------------------------------------------------------------------
   // Initialize BookmarkStore (responds to adapter prop changes)
@@ -1757,7 +1798,7 @@ export const Reader: React.FC<ReaderProps> = ({
     // viewport) never changes the window's own dimensions at all. Without
     // this, pagination stays computed for the pre-toggle width, so the page
     // ends up misaligned after exiting.
-  }, [currentChapterIdx, state.book, state.preferences.fontSize, state.preferences.fontFamily, state.zoom, columns, margin, scroll, lineSpacing, letterSpacing, wordSpacing, recalcPages, isFullscreen, isFakeFullscreen]);
+  }, [currentChapterIdx, state.book, state.preferences.fontSize, state.preferences.fontFamily, state.zoom, effectiveColumns, margin, scroll, lineSpacing, letterSpacing, wordSpacing, recalcPages, isFullscreen, isFakeFullscreen]);
 
   useEffect(() => {
     const handleResize = () => recalcPages();
@@ -1782,7 +1823,7 @@ export const Reader: React.FC<ReaderProps> = ({
     const containerWidth = containerRef.current.clientWidth;
     if (containerWidth === 0) return;
 
-    const colWidth = (containerWidth - margin * 2 - (columns === 2 ? 64 : 0)) / columns;
+    const colWidth = (containerWidth - margin * 2 - (effectiveColumns === 2 ? 64 : 0)) / effectiveColumns;
     // Same page-pitch correction as recalcPages — see the comment above
     // the `pagePitch` const near the render return.
     const pagePitch = containerWidth - margin * 2 + 64;
@@ -1825,7 +1866,7 @@ export const Reader: React.FC<ReaderProps> = ({
 
     measurer.innerHTML = '';
     setPagesPerChapter(counts);
-  }, [state.book, columns, margin, scroll, fontSize, lineSpacing, letterSpacing, wordSpacing]);
+  }, [state.book, effectiveColumns, margin, scroll, fontSize, lineSpacing, letterSpacing, wordSpacing]);
 
   // ---------------------------------------------------------------------------
   // Render a pending PDF page on demand if the reader navigates to it before
@@ -2639,14 +2680,15 @@ export const Reader: React.FC<ReaderProps> = ({
                           ? { backgroundColor: 'var(--reader-fg, #1a1a1a)', color: 'var(--reader-bg, #ffffff)' }
                           : { color: 'var(--reader-fg, #1a1a1a)' }}
                       >
-                        {scroll ? <ScrollIcon /> : columns === 2 ? <DoublePageIcon /> : <SinglePageIcon />}
+                        {scroll ? <ScrollIcon /> : effectiveColumns === 2 ? <DoublePageIcon /> : <SinglePageIcon />}
                       </ActionIcon>
                     </Popover.Target>
                     <Popover.Dropdown data-testid="layout-panel" p="sm">
                       <div dir={t.uiDirection} style={{ display: 'flex', gap: '0.5rem' }}>
                         {([
-                          { key: 'single', active: !scroll && columns === 1, icon: <SinglePageIcon size="1.2em" />, label: t.settingsLayoutSingle, onClick: () => { if (onSettingsChange) onSettingsChange({ scroll: false, columns: 1 }); } },
-                          { key: 'double', active: !scroll && columns === 2, icon: <DoublePageIcon size="1.2em" />, label: t.settingsLayoutDouble, onClick: () => { if (onSettingsChange) onSettingsChange({ scroll: false, columns: 2 }); } },
+                          { key: 'single', active: !scroll && effectiveColumns === 1, icon: <SinglePageIcon size="1.2em" />, label: t.settingsLayoutSingle, onClick: () => { if (onSettingsChange) onSettingsChange({ scroll: false, columns: 1 }); } },
+                          // Two-page view doesn't fit comfortably on narrow/mobile viewports — hidden there rather than shown-but-forced-back, per issue #6.
+                          ...(isMobileViewport ? [] : [{ key: 'double', active: !scroll && effectiveColumns === 2, icon: <DoublePageIcon size="1.2em" />, label: t.settingsLayoutDouble, onClick: () => { if (onSettingsChange) onSettingsChange({ scroll: false, columns: 2 }); } }]),
                           { key: 'scroll', active: scroll, icon: <ScrollIcon size="1.2em" />, label: t.settingsLayoutScroll, onClick: () => { if (onSettingsChange) onSettingsChange({ scroll: true }); } },
                         ]).map(opt => (
                           <button
@@ -3038,7 +3080,7 @@ export const Reader: React.FC<ReaderProps> = ({
                     wordSpacing: `${wordSpacing}px`,
                   } : {
                     columnWidth: containerRef.current
-                      ? `${(containerRef.current.clientWidth - margin * 2 - (columns === 2 ? 64 : 0)) / columns}px`
+                      ? `${(containerRef.current.clientWidth - margin * 2 - (effectiveColumns === 2 ? 64 : 0)) / effectiveColumns}px`
                       : '100%',
                     columnGap: '64px',
                     columnFill: 'auto',
@@ -3058,7 +3100,7 @@ export const Reader: React.FC<ReaderProps> = ({
                   }}
                 >
                   {currentChapter && (
-                    <div style={(scroll || columns === 1) ? { maxWidth: '720px', margin: '0 auto' } : undefined}>
+                    <div style={(scroll || effectiveColumns === 1) ? { maxWidth: '720px', margin: '0 auto' } : undefined}>
                       {currentChapter.content.map((node, ni) => (
                         <ContentNodeRenderer key={`${currentChapterIdx}-${ni}`} node={node} onImageClick={(src, alt) => setLightboxImage({ src, alt })} onFootnoteClick={handleFootnoteClick} onLinkClick={handleLinkClick} />
                       ))}
