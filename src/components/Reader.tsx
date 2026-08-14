@@ -451,6 +451,12 @@ function getSourceFormat(source: ReaderSource): string {
   }
 }
 
+// Shared between the real code-block render (ContentNodeRenderer) and its
+// HTML-string equivalent used for offscreen page-count measurement
+// (contentNodeToHtml) — see the comment on the code-block case below for why
+// this overrides the browser's default `white-space: pre`.
+const CODE_BLOCK_WRAP_STYLE = 'white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;max-width:100%;';
+
 // ---------------------------------------------------------------------------
 // HTML serializer for measurement (simple, no React rendering needed)
 // ---------------------------------------------------------------------------
@@ -468,7 +474,15 @@ function contentNodeToHtml(node: ContentNode): string {
         ? ''
         : `<img src="${node.src}" alt="Page ${node.pageNumber}" style="max-width:100%;max-height:calc(100vh - 120px);width:auto;height:auto;object-fit:contain" />`;
     case 'code-block':
-      return `<pre><code>${escapeHtml(node.content)}</code></pre>`;
+      // Sources this doesn't actually control the meaning of (Project
+      // Gutenberg EPUBs use bare <pre> for verse/poetry formatting, not
+      // just program code) can contain long unbroken lines. Left at the
+      // browser's default `white-space: pre`, those overflow the CSS
+      // column's width instead of wrapping — which both clips the text
+      // and throws off the column-pagination measurement this HTML feeds
+      // (see the code-block case in ContentNodeRenderer for the matching
+      // style on the real render path).
+      return `<pre style="${CODE_BLOCK_WRAP_STYLE}"><code>${escapeHtml(node.content)}</code></pre>`;
     case 'list': {
       const tag = node.ordered ? 'ol' : 'ul';
       const items = node.items.map(item =>
@@ -673,8 +687,16 @@ const ContentNodeRenderer: React.FC<{ node: ContentNode; onImageClick?: (src: st
         </div>
       );
     case 'code-block':
+      // Sources this doesn't actually control the meaning of (Project
+      // Gutenberg EPUBs use bare <pre> for verse/poetry formatting, not
+      // just program code) can contain long unbroken lines. Left at the
+      // browser's default `white-space: pre`, those overflow the CSS
+      // column's width instead of wrapping — clipping the text and
+      // throwing off column-pagination measurement (see
+      // CODE_BLOCK_WRAP_STYLE, shared with the contentNodeToHtml
+      // equivalent of this element used for that measurement).
       return (
-        <pre>
+        <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowWrap: 'anywhere', maxWidth: '100%' }}>
           <code className={node.language ? `language-${node.language}` : undefined}>
             {node.content}
           </code>
