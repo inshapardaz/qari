@@ -1750,7 +1750,14 @@ export const Reader: React.FC<ReaderProps> = ({
     // Small delay to let DOM settle after content render
     const timer = setTimeout(recalcPages, 50);
     return () => clearTimeout(timer);
-  }, [currentChapterIdx, state.book, state.preferences.fontSize, state.preferences.fontFamily, state.zoom, columns, margin, scroll, lineSpacing, letterSpacing, wordSpacing, recalcPages]);
+    // isFullscreen/isFakeFullscreen: entering/exiting fullscreen changes the
+    // container's width without necessarily firing a window 'resize' event —
+    // real Fullscreen API toggles don't reliably fire one across browsers,
+    // and the CSS-only fake-fullscreen fallback (position: fixed over the
+    // viewport) never changes the window's own dimensions at all. Without
+    // this, pagination stays computed for the pre-toggle width, so the page
+    // ends up misaligned after exiting.
+  }, [currentChapterIdx, state.book, state.preferences.fontSize, state.preferences.fontFamily, state.zoom, columns, margin, scroll, lineSpacing, letterSpacing, wordSpacing, recalcPages, isFullscreen, isFakeFullscreen]);
 
   useEffect(() => {
     const handleResize = () => recalcPages();
