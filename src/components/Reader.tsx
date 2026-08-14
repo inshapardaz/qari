@@ -319,6 +319,33 @@ function detectMobileViewport(): boolean {
 // `handleBookmarkClick` in BookmarkPanel.tsx).
 const DEFAULT_CHARS_PER_PAGE = 1500;
 
+// How many chapters the full-book page-count measurement pass (see the
+// "Measure all chapters' page counts" effect) processes before yielding to
+// the main thread. A large book measured in one uninterrupted synchronous
+// loop — especially with complex-script content like Urdu Nastaliq, where
+// each chapter's own layout/shaping is itself slow — freezes the UI for as
+// long as the whole loop takes; yielding periodically keeps the page
+// responsive to input and paint between batches instead.
+const CHAPTERS_PER_MEASURE_BATCH = 5;
+
+/**
+ * Yields to the main thread, letting queued input/paint work run before the
+ * caller continues. Mirrors pdf-parser.ts's identical helper (kept
+ * separate rather than shared, since importing it would pull the PDF
+ * parsing module into every bundle regardless of whether PDF is used).
+ */
+function yieldToMainThread(): Promise<void> {
+  return new Promise((resolve) => {
+    const ric = (globalThis as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void })
+      .requestIdleCallback;
+    if (typeof ric === 'function') {
+      ric(() => resolve(), { timeout: 200 });
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Initial state
 // ---------------------------------------------------------------------------
@@ -1830,6 +1857,22 @@ export const Reader: React.FC<ReaderProps> = ({
 
   // ---------------------------------------------------------------------------
   // Measure all chapters' page counts on book load
+  //
+  // This only feeds aggregate info (book-wide total page count, chapter
+  // navigator entries) — the currently visible chapter's own page count
+  // comes from the separate, cheap `recalcPages` (measuring just the one
+  // rendered chapter), so nothing the user is actively looking at depends
+  // on this pass finishing quickly. That's what makes it safe to run as a
+  // cancellable, yielding background pass instead of one synchronous loop
+  // over the whole book: a large book (or complex-script content like Urdu
+  // Nastaliq, where each chapter's own layout is itself slow) would
+  // otherwise freeze the UI for the loop's entire duration, and every
+  // property this effect depends on (font size stepper clicks, in
+  // particular) would restart it from scratch on every intermediate value.
+  // Every consumer of `pagesPerChapter` already tolerates a partially
+  // filled array (`p || 1` fallbacks), so publishing counts once at the end
+  // rather than per-chapter is a deliberate, safe choice — it avoids a
+  // flurry of re-renders during the pass without costing correctness.
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!state.book) return;
@@ -1850,6 +1893,7 @@ export const Reader: React.FC<ReaderProps> = ({
     // the `pagePitch` const near the render return.
     const pagePitch = containerWidth - margin * 2 + 64;
     const measurer = measureRef.current;
+    const book = state.book;
 
     // Apply same column styles as the real content
     measurer.style.columnWidth = `${colWidth}px`;
@@ -1863,31 +1907,48 @@ export const Reader: React.FC<ReaderProps> = ({
     measurer.style.letterSpacing = `${letterSpacing}px`;
     measurer.style.wordSpacing = `${wordSpacing}px`;
 
-    const counts: number[] = [];
+    let cancelled = false;
 
-    for (const chapter of state.book.chapters) {
-      // PDF pages are always a single full-bleed image sized to fit one
-      // screen — skip the DOM measurement pass entirely for them, both as
-      // an optimization (background page renders patch `state.book` one
-      // page at a time, which would otherwise re-measure every chapter on
-      // every single page arrival) and because measuring an unrendered
-      // (pending) page's empty placeholder would be meaningless anyway.
-      if (chapter.content.length === 1 && chapter.content[0].type === 'pdf-page') {
-        counts.push(1);
-        continue;
+    async function measureAllChapters() {
+      const counts: number[] = [];
+
+      for (let i = 0; i < book.chapters.length; i++) {
+        if (cancelled) return;
+        const chapter = book.chapters[i];
+        // PDF pages are always a single full-bleed image sized to fit one
+        // screen — skip the DOM measurement pass entirely for them, both as
+        // an optimization (background page renders patch `state.book` one
+        // page at a time, which would otherwise re-measure every chapter on
+        // every single page arrival) and because measuring an unrendered
+        // (pending) page's empty placeholder would be meaningless anyway.
+        if (chapter.content.length === 1 && chapter.content[0].type === 'pdf-page') {
+          counts.push(1);
+        } else {
+          // Build simple HTML for measurement
+          let html = `<h2>${chapter.title}</h2>`;
+          for (const node of chapter.content) {
+            html += contentNodeToHtml(node);
+          }
+          measurer.innerHTML = html;
+          const pages = Math.max(1, Math.round(measurer.scrollWidth / pagePitch));
+          counts.push(pages);
+        }
+
+        if (i % CHAPTERS_PER_MEASURE_BATCH === CHAPTERS_PER_MEASURE_BATCH - 1) {
+          await yieldToMainThread();
+        }
       }
-      // Build simple HTML for measurement
-      let html = `<h2>${chapter.title}</h2>`;
-      for (const node of chapter.content) {
-        html += contentNodeToHtml(node);
+
+      if (!cancelled) {
+        measurer.innerHTML = '';
+        setPagesPerChapter(counts);
       }
-      measurer.innerHTML = html;
-      const pages = Math.max(1, Math.round(measurer.scrollWidth / pagePitch));
-      counts.push(pages);
     }
 
-    measurer.innerHTML = '';
-    setPagesPerChapter(counts);
+    void measureAllChapters();
+    return () => {
+      cancelled = true;
+    };
   }, [state.book, effectiveColumns, margin, scroll, fontSize, lineSpacing, letterSpacing, wordSpacing]);
 
   // ---------------------------------------------------------------------------
@@ -3002,6 +3063,7 @@ export const Reader: React.FC<ReaderProps> = ({
                 {/* Hidden div for measuring chapter page counts */}
                 <div
                   ref={measureRef}
+                  data-testid="page-count-measurer"
                   aria-hidden="true"
                   style={{
                     position: 'absolute',
