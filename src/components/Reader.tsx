@@ -283,6 +283,24 @@ export function clampZoom(value: number): number {
   return Math.round(clamped / ZOOM_STEP) * ZOOM_STEP;
 }
 
+/**
+ * Best-effort touch-primary device detection, combining the `(hover: none)`
+ * media feature with `navigator.maxTouchPoints`. Neither signal alone is
+ * fully reliable — some mobile browsers/WebViews have been known to
+ * misreport `hover: none` as `hover: hover`, and `maxTouchPoints` alone
+ * would flag hybrid mouse+touchscreen laptops as touch-only — but either
+ * being true is a good enough signal that the device is primarily
+ * touch-driven. Deliberately not using `'ontouchstart' in window`: several
+ * non-touch desktop browsers (and jsdom) define it speculatively, making it
+ * an unreliable signal on its own.
+ */
+function detectTouchDevice(): boolean {
+  if (typeof window === 'undefined') return false;
+  const hoverNone = typeof window.matchMedia === 'function' && window.matchMedia('(hover: none)').matches;
+  const hasTouchPoints = typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0;
+  return hoverNone || hasTouchPoints;
+}
+
 // Mirrors BookmarkPanel's own DEFAULT_CHARS_PER_PAGE (and ChapterNavigator's
 // default charsPerPage) — resuming a saved position converts its character
 // offset back to a page with the same `Math.floor(position / charsPerPage)`
@@ -789,6 +807,22 @@ export const Reader: React.FC<ReaderProps> = ({
   // native API.
   const [isFakeFullscreen, setIsFakeFullscreen] = useState(false);
   const [hovered, setHovered] = useState(false);
+  // Whether the primary pointer is touch-only (no hover capability) — e.g.
+  // phones/tablets, as opposed to a mouse/trackpad. Used to hide the
+  // hover-only page-turn arrows on touch devices — they're not reachable by
+  // touch anyway (nothing before a tap can "hover" first), and on touch,
+  // taps that landed near the reader edges have been observed to reveal
+  // them via the browser's touch-to-mouse-event emulation, which then
+  // intercepts a tap meant for something else. Touch devices get side-tap
+  // zones instead (see the same buttons below).
+  //
+  // `(hover: none)` is the feature Mantine's own CSS gates real `:hover`
+  // styles behind, but some mobile browsers/WebViews (certain Android
+  // WebViews and in-app browsers) have been known to misreport it as
+  // `hover: hover` regardless of the device — so it's backed up with a
+  // direct touch-support check (`ontouchstart`/`maxTouchPoints`), and either
+  // signal being true is enough to call the device touch-primary.
+  const [isTouchDevice, setIsTouchDevice] = useState(detectTouchDevice);
   const [lightboxImage, setLightboxImage] = useState<{ src: string; alt: string } | null>(null);
   const [activeFootnote, setActiveFootnote] = useState<FootnoteRefSpan | null>(null);
   const [footnoteAnchor, setFootnoteAnchor] = useState<{ top: number; left: number } | null>(null);
@@ -917,6 +951,16 @@ export const Reader: React.FC<ReaderProps> = ({
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const mql = window.matchMedia('(hover: none)');
+    const handleChange = () => setIsTouchDevice(detectTouchDevice());
+    mql.addEventListener('change', handleChange);
+    return () => {
+      mql.removeEventListener('change', handleChange);
     };
   }, []);
 
@@ -2898,13 +2942,20 @@ export const Reader: React.FC<ReaderProps> = ({
                   }}
                 />
 
-                {/* Hover navigation overlays — in scroll mode there are no
+                {/* Edge navigation zones — in scroll mode there are no
                     pages, so these turn into previous/next CHAPTER
                     navigation instead (isFirstPage/isLastPage and
                     goToPrevPage/goToNextPage already reduce to chapter-level
                     boundaries and navigation when totalPages is forced to 1,
-                    which recalcPages does for every chapter in scroll mode). */}
-                {hovered && !isFirstPage && (
+                    which recalcPages does for every chapter in scroll mode).
+                    On hover-capable devices these are the visible chevron
+                    arrows, shown on hover. On touch devices (isTouchDevice)
+                    there's no hover to reveal them, so instead they're
+                    always-present but fully invisible tap zones — matching
+                    "touch the sides to turn the page" — with swipe (see
+                    handleContentTouchStart/End) covering the rest of the
+                    screen. */}
+                {(isTouchDevice ? !isFirstPage : hovered && !isFirstPage) && (
                   <button
                     onClick={goToPrevPage}
                     aria-label={scroll ? t.previousChapter : t.previousPage}
@@ -2915,23 +2966,23 @@ export const Reader: React.FC<ReaderProps> = ({
                       bottom: 0,
                       width: '60px',
                       border: 'none',
-                      background: 'linear-gradient(to right, rgba(0,0,0,0.04), transparent)',
+                      background: isTouchDevice ? 'transparent' : 'linear-gradient(to right, rgba(0,0,0,0.04), transparent)',
                       color: 'var(--reader-fg, #1a1a1a)',
                       cursor: 'pointer',
-                      opacity: 0.6,
+                      opacity: isTouchDevice ? 0 : 0.6,
                       zIndex: 10,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       transition: 'opacity 0.2s',
                     }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.6'; }}
+                    onMouseEnter={(e) => { if (!isTouchDevice) (e.currentTarget as HTMLElement).style.opacity = '1'; }}
+                    onMouseLeave={(e) => { if (!isTouchDevice) (e.currentTarget as HTMLElement).style.opacity = '0.6'; }}
                   >
-                    {state.direction === 'rtl' ? <ChevronRightIcon size="1.75rem" /> : <ChevronLeftIcon size="1.75rem" />}
+                    {!isTouchDevice && (state.direction === 'rtl' ? <ChevronRightIcon size="1.75rem" /> : <ChevronLeftIcon size="1.75rem" />)}
                   </button>
                 )}
-                {hovered && !isLastPage && (
+                {(isTouchDevice ? !isLastPage : hovered && !isLastPage) && (
                   <button
                     onClick={goToNextPage}
                     aria-label={scroll ? t.nextChapter : t.nextPage}
@@ -2942,20 +2993,20 @@ export const Reader: React.FC<ReaderProps> = ({
                       bottom: 0,
                       width: '60px',
                       border: 'none',
-                      background: 'linear-gradient(to left, rgba(0,0,0,0.04), transparent)',
+                      background: isTouchDevice ? 'transparent' : 'linear-gradient(to left, rgba(0,0,0,0.04), transparent)',
                       color: 'var(--reader-fg, #1a1a1a)',
                       cursor: 'pointer',
-                      opacity: 0.6,
+                      opacity: isTouchDevice ? 0 : 0.6,
                       zIndex: 10,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       transition: 'opacity 0.2s',
                     }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.6'; }}
+                    onMouseEnter={(e) => { if (!isTouchDevice) (e.currentTarget as HTMLElement).style.opacity = '1'; }}
+                    onMouseLeave={(e) => { if (!isTouchDevice) (e.currentTarget as HTMLElement).style.opacity = '0.6'; }}
                   >
-                    {state.direction === 'rtl' ? <ChevronLeftIcon size="1.75rem" /> : <ChevronRightIcon size="1.75rem" />}
+                    {!isTouchDevice && (state.direction === 'rtl' ? <ChevronLeftIcon size="1.75rem" /> : <ChevronRightIcon size="1.75rem" />)}
                   </button>
                 )}
 
