@@ -36,10 +36,12 @@ interface ReaderSource {
 function CollapsiblePanel({
   title,
   defaultOpen = false,
+  style,
   children,
 }: {
   title: string;
   defaultOpen?: boolean;
+  style?: React.CSSProperties;
   children: React.ReactNode;
 }) {
   return (
@@ -48,7 +50,8 @@ function CollapsiblePanel({
       style={{
         border: '1px solid #ccc',
         borderRadius: '6px',
-        marginBottom: '1rem',
+        marginBottom: '0.5rem',
+        ...style,
       }}
     >
       <summary
@@ -277,12 +280,12 @@ function App() {
     : undefined;
 
   return (
-    <div>
-      <header style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <header style={{ marginBottom: '0.5rem', flexShrink: 0 }}>
+        <h1 style={{ fontSize: '1.15rem', marginBottom: '0.15rem' }}>
           📖 Qari — Ebook Reader Demo
         </h1>
-        <p style={{ color: '#666', fontSize: '0.9rem' }}>
+        <p style={{ color: '#666', fontSize: '0.8rem' }}>
           Try the reader with your own EPUB, PDF, or Markdown files.{' '}
           <a
             href="https://github.com/inshapardaz/qari"
@@ -295,8 +298,12 @@ function App() {
         </p>
       </header>
 
+      {/* Settings — collapsed by default and laid out side by side so they
+          take up as little vertical space as possible, leaving the reader
+          below as much room as the viewport allows. */}
+      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', flexShrink: 0 }}>
       {/* Source selection */}
-      <CollapsiblePanel title="Book Source" defaultOpen>
+      <CollapsiblePanel title="Book Source" style={{ flex: '1 1 320px' }}>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
           {/* URL input */}
           <div style={{ flex: '1 1 300px' }}>
@@ -393,7 +400,7 @@ function App() {
       </CollapsiblePanel>
 
       {/* Component props playground */}
-      <CollapsiblePanel title="Component Props">
+      <CollapsiblePanel title="Component Props" style={{ flex: '1 1 320px' }}>
         <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem' }}>
             <input
@@ -532,13 +539,19 @@ function App() {
           </p>
         )}
       </CollapsiblePanel>
+      </div>
 
-      {/* Reader */}
+      {/* Reader — flex:1 fills whatever vertical space the (collapsed by
+          default) settings panels above and the progress bar below leave
+          available, and there's no outer max-width constraining it
+          horizontally, so it gets the full viewport in both dimensions. */}
       <div style={{
         border: '1px solid #ddd',
         borderRadius: '8px',
         overflow: 'hidden',
-        height: '70vh',
+        flex: 1,
+        minHeight: 0,
+        marginTop: '0.5rem',
       }}>
         <Reader
           source={source as any}
@@ -586,8 +599,8 @@ function App() {
       {/* Reading progress info */}
       {progress && (
         <div style={{
-          marginTop: '1rem',
-          padding: '0.75rem 1rem',
+          marginTop: '0.5rem',
+          padding: '0.5rem 1rem',
           background: '#f9fafb',
           border: '1px solid #e5e7eb',
           borderRadius: '6px',
@@ -595,6 +608,7 @@ function App() {
           display: 'flex',
           gap: '1.5rem',
           flexWrap: 'wrap',
+          flexShrink: 0,
         }}>
           <span><strong>Page:</strong> {progress.currentPage}/{progress.totalPages}</span>
           <span><strong>Chapter:</strong> {progress.currentChapter + 1}/{progress.totalChapters} — {progress.chapterTitle}</span>

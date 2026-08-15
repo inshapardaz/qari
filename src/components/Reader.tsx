@@ -825,6 +825,11 @@ export const Reader: React.FC<ReaderProps> = ({
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1); // pages in current chapter
   const [pagesPerChapter, setPagesPerChapter] = useState<number[]>([]); // cached page counts per chapter
+  // Whether a chapter's *last* page, in two-column mode, only has content in
+  // the first of its two columns (the second sits empty) — see where this is
+  // consumed near `pageColumnsForWidth` for why that page's box gets cropped
+  // down to a single column's width instead of staying spread-wide.
+  const [trailingLoneColumn, setTrailingLoneColumn] = useState<boolean[]>([]);
   const [chapterMenuOpen, setChapterMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [moreSettingsOpen, setMoreSettingsOpen] = useState(false);
@@ -1904,6 +1909,7 @@ export const Reader: React.FC<ReaderProps> = ({
     // Scroll mode has no pages — every chapter is a single continuous flow.
     if (scroll) {
       setPagesPerChapter(new Array(state.book.chapters.length).fill(1));
+      setTrailingLoneColumn(new Array(state.book.chapters.length).fill(false));
       return;
     }
 
@@ -1916,6 +1922,12 @@ export const Reader: React.FC<ReaderProps> = ({
     // Same page-pitch correction as recalcPages — see the comment above
     // the `pagePitch` const near the render return.
     const pagePitch = containerWidth - margin * 2 + 64;
+    // Per-*column* pitch (as opposed to `pagePitch`, which is per-*spread* —
+    // i.e. two columns — in two-column mode). Used only to work out whether
+    // a chapter's last spread has content in both of its columns or just the
+    // first, by comparing against the chapter's total column count rather
+    // than its total spread count.
+    const colPitch = colWidth + 64;
     const measurer = measureRef.current;
     const book = state.book;
 
@@ -1935,6 +1947,7 @@ export const Reader: React.FC<ReaderProps> = ({
 
     async function measureAllChapters() {
       const counts: number[] = [];
+      const trailingLone: boolean[] = [];
 
       for (let i = 0; i < book.chapters.length; i++) {
         if (cancelled) return;
@@ -1947,6 +1960,7 @@ export const Reader: React.FC<ReaderProps> = ({
         // (pending) page's empty placeholder would be meaningless anyway.
         if (chapter.content.length === 1 && chapter.content[0].type === 'pdf-page') {
           counts.push(1);
+          trailingLone.push(false);
         } else {
           // Build simple HTML for measurement
           let html = `<h2>${chapter.title}</h2>`;
@@ -1956,6 +1970,13 @@ export const Reader: React.FC<ReaderProps> = ({
           measurer.innerHTML = html;
           const pages = Math.max(1, Math.round(measurer.scrollWidth / pagePitch));
           counts.push(pages);
+          // In two-column mode, a chapter whose content ends partway through
+          // a spread's first column leaves the second column of that last
+          // spread empty — an odd total column count is exactly that case.
+          trailingLone.push(
+            effectiveColumns === 2
+            && Math.max(1, Math.round(measurer.scrollWidth / colPitch)) % 2 === 1
+          );
         }
 
         if (i % CHAPTERS_PER_MEASURE_BATCH === CHAPTERS_PER_MEASURE_BATCH - 1) {
@@ -1966,6 +1987,7 @@ export const Reader: React.FC<ReaderProps> = ({
       if (!cancelled) {
         measurer.innerHTML = '';
         setPagesPerChapter(counts);
+        setTrailingLoneColumn(trailingLone);
       }
     }
 
@@ -2455,6 +2477,15 @@ export const Reader: React.FC<ReaderProps> = ({
   const currentChapter = state.book?.chapters[currentChapterIdx];
   const chapterTitle = currentChapter?.title ?? '';
 
+  // Whether the page currently on screen is a two-column spread's lone
+  // populated column (see `trailingLoneColumn`/measureAllChapters) — if so,
+  // its box gets visually cropped down to one column's width instead of
+  // sitting spread-wide with an empty second column beside it (see the
+  // `pageBoxCrop` wrapper near the render return).
+  const isTrailingLoneColumnPage = !scroll && effectiveColumns === 2
+    && !!trailingLoneColumn[currentChapterIdx]
+    && currentPage === (pagesPerChapter[currentChapterIdx] || 1) - 1;
+
   // Overall progress across the whole book
   const overallProgress = (() => {
     if (!state.book || state.book.chapters.length === 0) return 0;
@@ -2487,6 +2518,21 @@ export const Reader: React.FC<ReaderProps> = ({
   // regardless of `margin`.
   const pageColumnsForWidth = scroll ? 1 : effectiveColumns;
   const pageBoxMaxWidth = pageColumnsForWidth * MAX_PAGE_WIDTH + margin * 2 + (pageColumnsForWidth === 2 ? 64 : 0);
+
+  // On a trailing lone-column page, re-center the populated column within
+  // the still spread-wide page box instead of leaving it pinned to the
+  // leading edge with a blank column's worth of dead space beside it.
+  // Deliberately *not* touching `pageBoxMaxWidth`/`colWidth`/`columnWidth`
+  // for this: those drive the actual CSS multi-column flow for the *whole*
+  // chapter, and narrowing them just for this one page would reflow every
+  // other page in the chapter along with it (the flow only has one
+  // column-width for its entire scrollWidth). A same-magnitude extra
+  // translateX offset, on top of the existing page-turn transform, moves
+  // only the current page's painted position — the underlying column
+  // layout, and every other page's, is untouched.
+  const trailingLoneColumnShift = isTrailingLoneColumnPage && pageBoxRef.current
+    ? (((pageBoxRef.current.clientWidth - margin * 2 - 64) / 2) + 64) / 2
+    : 0;
 
   return (
     <div
@@ -2545,12 +2591,12 @@ export const Reader: React.FC<ReaderProps> = ({
         // instead of extending behind it.
         ...(isFakeFullscreen
           ? {
-              position: 'fixed' as const,
-              inset: 0,
-              width: '100vw',
-              height: '100dvh',
-              zIndex: 2147483647,
-            }
+            position: 'fixed' as const,
+            inset: 0,
+            width: '100vw',
+            height: '100dvh',
+            zIndex: 2147483647,
+          }
           : {}),
       }}
     >
@@ -3231,6 +3277,7 @@ export const Reader: React.FC<ReaderProps> = ({
                     maxWidth: `${pageBoxMaxWidth}px`,
                     height: '100%',
                     margin: '0 auto',
+                    overflow: 'hidden',
                   }}
                 >
                   {/* Content — either horizontally paged via CSS columns +
@@ -3260,9 +3307,13 @@ export const Reader: React.FC<ReaderProps> = ({
                       columnFill: 'auto',
                       height: '100%',
                       padding: `2rem ${margin}px`,
+                      // The extra `trailingLoneColumnShift` term re-centers
+                      // a spread's lone populated column when its second
+                      // column is empty (see where it's computed, near
+                      // `pageBoxMaxWidth`) — zero on every other page.
                       transform: state.direction === 'rtl'
-                        ? `translateX(${currentPage * pagePitch}px)`
-                        : `translateX(${-(currentPage * pagePitch)}px)`,
+                        ? `translateX(${currentPage * pagePitch - trailingLoneColumnShift}px)`
+                        : `translateX(${-(currentPage * pagePitch) + trailingLoneColumnShift}px)`,
                       transition: 'transform 0.3s ease',
                       color: 'var(--reader-fg, #1a1a1a)',
                       fontFamily: selectedFontFamily,
