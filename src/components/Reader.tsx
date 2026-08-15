@@ -24,6 +24,8 @@ import {
   ActionIcon,
   Menu,
   Popover,
+  Drawer,
+  Tabs,
   Select,
   Slider,
   Switch,
@@ -68,7 +70,7 @@ import { NotePanel } from './NotePanel';
 import { DictionaryPopover } from './DictionaryPopover';
 import { FootnotePopover } from './FootnotePopover';
 import { ImageLightbox } from './ImageLightbox';
-import { BookmarkIcon, NoteIcon, ThemeIcon, SinglePageIcon, DoublePageIcon, ScrollIcon, ExitFullscreenIcon, ChevronLeftIcon, ChevronRightIcon } from './icons';
+import { BookmarkIcon, NoteIcon, ChaptersIcon, ThemeIcon, SinglePageIcon, DoublePageIcon, ScrollIcon, ExitFullscreenIcon, ChevronLeftIcon, ChevronRightIcon } from './icons';
 
 import { TranslationContext, DEFAULT_TRANSLATIONS, useTranslations, interpolate } from '../i18n';
 import type { TranslationStrings } from '../i18n';
@@ -310,6 +312,15 @@ function detectTouchDevice(): boolean {
 // narrow to read comfortably — the two-page layout option is hidden and
 // forced back to single-page (see `effectiveColumns` below).
 const MOBILE_VIEWPORT_MAX_WIDTH = 768;
+
+// A single reading page/column is capped at this width for comfortable line
+// lengths, in every view mode (scroll, single-column, and each column of a
+// two-column spread) — see the viewport `maxWidth` near the render return,
+// which caps the whole `.ebook-reader__viewport` (not the content div) so
+// that the existing colWidth/pagePitch math (all derived from
+// `containerRef.current.clientWidth`) automatically produces a 520px column
+// without any special-casing.
+const MAX_PAGE_WIDTH = 520;
 
 function detectMobileViewport(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
@@ -833,8 +844,9 @@ export const Reader: React.FC<ReaderProps> = ({
   // closeOnClickOutside on the settings Popover while this dropdown is open
   // avoids that race.
   const [fontDropdownOpen, setFontDropdownOpen] = useState(false);
-  const [bookmarksPanelOpen, setBookmarksPanelOpen] = useState(false);
-  const [notesPanelOpen, setNotesPanelOpen] = useState(false);
+  // Which tab of the chapter drawer (see the ☰ button below) is active —
+  // chapters is the default, matching it being the first/leftmost tab.
+  const [chapterDrawerTab, setChapterDrawerTab] = useState<'chapters' | 'bookmarks' | 'notes'>('chapters');
   const [themePanelOpen, setThemePanelOpen] = useState(false);
   const [layoutPanelOpen, setLayoutPanelOpen] = useState(false);
   // Pending note context menu — position, plus whichever of these apply to
@@ -898,6 +910,13 @@ export const Reader: React.FC<ReaderProps> = ({
   const [footnoteAnchor, setFootnoteAnchor] = useState<{ top: number; left: number } | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  // The reading-column width cap (MAX_PAGE_WIDTH) applies to this inner box,
+  // not to `containerRef` itself — `containerRef` stays full-width so the
+  // hover/tap zones and edge-navigation arrows (which listen/position on
+  // *it*) still cover the whole viewport, not just the narrow centered text
+  // column. Capping `containerRef` directly used to leave a wide dead zone
+  // on either side of the column where hovering never revealed the arrows.
+  const pageBoxRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
   const lastPointerPositionRef = useRef<{ x: number; y: number } | null>(null);
   const pdfParserRef = useRef<PDFParserImpl | null>(null);
@@ -1818,9 +1837,9 @@ export const Reader: React.FC<ReaderProps> = ({
       });
       return;
     }
-    if (!contentRef.current || !containerRef.current) return;
+    if (!contentRef.current || !pageBoxRef.current) return;
     const scrollWidth = contentRef.current.scrollWidth;
-    const containerWidth = containerRef.current.clientWidth;
+    const containerWidth = pageBoxRef.current.clientWidth;
     if (containerWidth === 0) return;
     // See `pagePitch` near the render return for why this isn't just
     // `scrollWidth / containerWidth` — the 64px inter-column gap and the
@@ -1888,9 +1907,9 @@ export const Reader: React.FC<ReaderProps> = ({
       return;
     }
 
-    if (!containerRef.current || !measureRef.current) return;
+    if (!pageBoxRef.current || !measureRef.current) return;
 
-    const containerWidth = containerRef.current.clientWidth;
+    const containerWidth = pageBoxRef.current.clientWidth;
     if (containerWidth === 0) return;
 
     const colWidth = (containerWidth - margin * 2 - (effectiveColumns === 2 ? 64 : 0)) / effectiveColumns;
@@ -1904,7 +1923,7 @@ export const Reader: React.FC<ReaderProps> = ({
     measurer.style.columnWidth = `${colWidth}px`;
     measurer.style.columnGap = '64px';
     measurer.style.columnFill = 'auto';
-    measurer.style.height = `${containerRef.current.clientHeight}px`;
+    measurer.style.height = `${pageBoxRef.current.clientHeight}px`;
     measurer.style.padding = `2rem ${margin}px`;
     measurer.style.fontFamily = getComputedStyle(contentRef.current || measurer).fontFamily;
     measurer.style.fontSize = `${fontSize}px`;
@@ -2240,8 +2259,6 @@ export const Reader: React.FC<ReaderProps> = ({
   useEffect(() => {
     if (
       chapterMenuOpen ||
-      bookmarksPanelOpen ||
-      notesPanelOpen ||
       pendingNote ||
       themePanelOpen ||
       layoutPanelOpen ||
@@ -2265,7 +2282,7 @@ export const Reader: React.FC<ReaderProps> = ({
     ) {
       setHovered(true);
     }
-  }, [chapterMenuOpen, bookmarksPanelOpen, notesPanelOpen, pendingNote, themePanelOpen, layoutPanelOpen, settingsOpen, lightboxImage, activeFootnote, dictionaryLoading, dictionaryResult]);
+  }, [chapterMenuOpen, pendingNote, themePanelOpen, layoutPanelOpen, settingsOpen, lightboxImage, activeFootnote, dictionaryLoading, dictionaryResult]);
 
   // ---------------------------------------------------------------------------
   // Context value (memoized)
@@ -2320,6 +2337,46 @@ export const Reader: React.FC<ReaderProps> = ({
   );
 
   const t = resolvedTranslations;
+
+  // The header's Bookmarks button bookmarks/unbookmarks the current page
+  // directly rather than opening a picker — it toggles a bookmark using the
+  // same bookId/chapterId/(page * charsPerPage) convention BookmarkPanel's
+  // own "create" form uses (see handleCreate there), so a bookmark placed
+  // here shows up in the drawer's Bookmarks tab (and vice versa) and
+  // resolves back to the same page on navigation either way.
+  const currentBookId = state.book?.metadata.identifier || '';
+  const currentChapterBookmarkId = state.book?.chapters[currentChapterIdx]?.id || '';
+  const currentPageBookmark = state.bookmarks.find(
+    (b) => b.bookId === currentBookId
+      && b.chapterId === currentChapterBookmarkId
+      && Math.floor(b.position / DEFAULT_CHARS_PER_PAGE) === currentPage
+  );
+  const isCurrentPageBookmarked = !!currentPageBookmark;
+
+  const handleToggleBookmark = useCallback(async () => {
+    const store = bookmarkStoreRef.current;
+    if (!store || !state.book) return;
+
+    if (currentPageBookmark) {
+      await store.delete(currentPageBookmark.id);
+      removeBookmark(currentPageBookmark.id);
+      return;
+    }
+
+    const chapterId = state.book.chapters[currentChapterIdx]?.id || '';
+    const position = currentPage * DEFAULT_CHARS_PER_PAGE;
+    const name = interpolate(t.bookmarkAutoName, { chapter: currentChapterIdx + 1, page: currentPage + 1 });
+    try {
+      const bookmark = await store.create(currentBookId, chapterId, position, name);
+      addBookmark(bookmark);
+      if (onBookmarkCreate) {
+        onBookmarkCreate({ type: 'created', bookmark });
+      }
+    } catch {
+      // e.g. the per-book bookmark limit was reached — nothing to recover
+      // into here, same as the equivalent failure in BookmarkPanel.
+    }
+  }, [state.book, currentPageBookmark, currentChapterIdx, currentPage, currentBookId, t, addBookmark, removeBookmark, onBookmarkCreate]);
 
   // ---------------------------------------------------------------------------
   // Context value (memoized)
@@ -2420,7 +2477,16 @@ export const Reader: React.FC<ReaderProps> = ({
   // `containerWidth` on its own; using the raw container width for the
   // page-turn transform (and for the page-count math) only happened to
   // line up when margin was exactly half the gap (the 32px default).
-  const pagePitch = (containerRef.current?.clientWidth ?? 0) - margin * 2 + 64;
+  const pagePitch = (pageBoxRef.current?.clientWidth ?? 0) - margin * 2 + 64;
+
+  // Caps the inner page box (see `pageBoxRef`) at however many
+  // `MAX_PAGE_WIDTH` columns are visible (one in scroll/single-column mode,
+  // two in a spread) plus the same margin-padding and inter-column gap
+  // terms `colWidth`/`pagePitch` already account for, so that the resulting
+  // `colWidth` for each visible page comes out to exactly `MAX_PAGE_WIDTH`
+  // regardless of `margin`.
+  const pageColumnsForWidth = scroll ? 1 : effectiveColumns;
+  const pageBoxMaxWidth = pageColumnsForWidth * MAX_PAGE_WIDTH + margin * 2 + (pageColumnsForWidth === 2 ? 64 : 0);
 
   return (
     <div
@@ -2514,87 +2580,152 @@ export const Reader: React.FC<ReaderProps> = ({
                   position: 'relative',
                 }}
               >
-                {/* Chapter list menu (start) */}
-                <Menu
-                  opened={chapterMenuOpen}
-                  onChange={setChapterMenuOpen}
-                  position={t.uiDirection === 'rtl' ? 'bottom-end' : 'bottom-start'}
-                  withinPortal
-                  portalProps={{ target: mantinePortalTarget }}
-                  shadow="md"
-                  width={240}
+                {/* Chapter drawer trigger (start) — opens a drawer, scoped to
+                    the reader root (see mantinePortalTarget/`transform` on
+                    the root, which makes the reader's own box the containing
+                    block for the drawer's portaled fixed-position overlay
+                    and panel), with the book's details on top and the
+                    chapters/bookmarks/notes lists below as tabs. */}
+                <ActionIcon
+                  variant={chapterMenuOpen ? 'filled' : 'transparent'}
+                  size="lg"
+                  aria-label={t.tableOfContents}
+                  aria-expanded={chapterMenuOpen}
+                  onClick={() => setChapterMenuOpen((open) => !open)}
+                  style={chapterMenuOpen
+                    ? { backgroundColor: 'var(--reader-fg, #1a1a1a)', color: 'var(--reader-bg, #ffffff)' }
+                    : { color: 'var(--reader-fg, #1a1a1a)' }}
                 >
-                  <Menu.Target>
-                    <ActionIcon
-                      variant={chapterMenuOpen ? 'filled' : 'transparent'}
-                      size="lg"
-                      aria-label={t.tableOfContents}
-                      style={chapterMenuOpen
-                        ? { backgroundColor: 'var(--reader-fg, #1a1a1a)', color: 'var(--reader-bg, #ffffff)' }
-                        : { color: 'var(--reader-fg, #1a1a1a)' }}
-                    >
-                      ☰
-                    </ActionIcon>
-                  </Menu.Target>
-                  <Menu.Dropdown data-testid="chapter-menu-panel" mah={340} style={{ overflowY: 'auto' }}>
-                    {state.book?.metadata && (
-                      <div
-                        data-testid="book-info"
-                        dir={t.uiDirection}
-                        style={{
-                          display: 'flex',
-                          gap: '0.6rem',
-                          alignItems: 'center',
-                          padding: '0.4rem 0.7rem 0.7rem',
-                          marginBottom: '0.25rem',
-                          borderBottom: '1px solid var(--mantine-color-default-border)',
-                        }}
-                      >
-                        {state.book.metadata.coverImage && (
-                          <img
-                            src={state.book.metadata.coverImage}
-                            alt=""
-                            style={{
-                              width: '2.5rem',
-                              height: '3.5rem',
-                              objectFit: 'cover',
-                              borderRadius: 4,
-                              flexShrink: 0,
-                            }}
-                          />
-                        )}
-                        <div style={{ minWidth: 0 }}>
-                          <Text size="sm" fw={700} truncate="end">
-                            {state.book.metadata.title}
-                          </Text>
-                          {state.book.metadata.author && (
-                            <Text size="xs" c="dimmed" truncate="end">
-                              {state.book.metadata.author}
-                            </Text>
+                  ☰
+                </ActionIcon>
+                <Drawer.Root
+                  opened={chapterMenuOpen}
+                  onClose={() => setChapterMenuOpen(false)}
+                  position={t.uiDirection === 'rtl' ? 'right' : 'left'}
+                  size={320}
+                  portalProps={{ target: mantinePortalTarget }}
+                >
+                  <Drawer.Overlay />
+                  <Drawer.Content data-testid="chapter-menu-panel">
+                    <Drawer.Body p={0} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                      {state.book?.metadata && (
+                        <div
+                          data-testid="book-info"
+                          dir={t.uiDirection}
+                          style={{
+                            display: 'flex',
+                            gap: '0.6rem',
+                            alignItems: 'center',
+                            padding: '0.75rem',
+                            flexShrink: 0,
+                            borderBottom: '1px solid var(--mantine-color-default-border)',
+                          }}
+                        >
+                          {state.book.metadata.coverImage && (
+                            <img
+                              src={state.book.metadata.coverImage}
+                              alt=""
+                              style={{
+                                width: '2.5rem',
+                                height: '3.5rem',
+                                objectFit: 'cover',
+                                borderRadius: 4,
+                                flexShrink: 0,
+                              }}
+                            />
                           )}
+                          <div style={{ minWidth: 0 }}>
+                            <Text size="sm" fw={700} truncate="end">
+                              {state.book.metadata.title}
+                            </Text>
+                            {state.book.metadata.author && (
+                              <Text size="xs" c="dimmed" truncate="end">
+                                {state.book.metadata.author}
+                              </Text>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    {state.book?.chapters.map((ch, idx) => (
-                      <Menu.Item
-                        key={ch.id}
-                        onClick={() => {
-                          setCurrentChapterIdx(idx);
-                          setCurrentPage(0);
-                          setChapterMenuOpen(false);
-                        }}
-                        bg={idx === currentChapterIdx ? 'var(--mantine-primary-color-filled)' : undefined}
-                        c={idx === currentChapterIdx ? 'white' : undefined}
-                        style={{
-                          textAlign: state.direction === 'rtl' ? 'right' : 'left',
-                          fontWeight: idx === currentChapterIdx ? 700 : 400,
-                        }}
+                      )}
+                      <Tabs
+                        value={chapterDrawerTab}
+                        onChange={(value) => setChapterDrawerTab((value as typeof chapterDrawerTab) ?? 'chapters')}
+                        dir={t.uiDirection}
+                        style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}
                       >
-                        {ch.title}
-                      </Menu.Item>
-                    ))}
-                  </Menu.Dropdown>
-                </Menu>
+                        <Tabs.List grow>
+                          <Tabs.Tab value="chapters" aria-label={t.chaptersTitle}>
+                            <ChaptersIcon size="1.2em" />
+                          </Tabs.Tab>
+                          {enableBookmarks && (
+                            <Tabs.Tab value="bookmarks" aria-label={t.bookmarks}>
+                              <BookmarkIcon size="1.2em" />
+                            </Tabs.Tab>
+                          )}
+                          {enableNotes && (
+                            <Tabs.Tab value="notes" aria-label={t.notesPanelTitle}>
+                              <NoteIcon size="1.2em" />
+                            </Tabs.Tab>
+                          )}
+                        </Tabs.List>
+
+                        <Tabs.Panel value="chapters" style={{ flex: 1, overflowY: 'auto' }} p="xs">
+                          {state.book?.chapters.map((ch, idx) => (
+                            <button
+                              key={ch.id}
+                              type="button"
+                              onClick={() => {
+                                setCurrentChapterIdx(idx);
+                                setCurrentPage(0);
+                                setChapterMenuOpen(false);
+                              }}
+                              style={{
+                                display: 'block',
+                                width: '100%',
+                                textAlign: state.direction === 'rtl' ? 'right' : 'left',
+                                padding: '0.5rem 0.75rem',
+                                marginBottom: 2,
+                                border: 'none',
+                                borderRadius: 'var(--mantine-radius-sm)',
+                                cursor: 'pointer',
+                                fontWeight: idx === currentChapterIdx ? 700 : 400,
+                                backgroundColor: idx === currentChapterIdx ? 'var(--mantine-primary-color-filled)' : 'transparent',
+                                color: idx === currentChapterIdx ? 'white' : 'var(--reader-fg, #1a1a1a)',
+                              }}
+                            >
+                              {ch.title}
+                            </button>
+                          ))}
+                        </Tabs.Panel>
+
+                        {enableBookmarks && (
+                          <Tabs.Panel value="bookmarks" style={{ flex: 1, overflowY: 'auto' }} p="xs">
+                            <BookmarkPanel
+                              onNavigate={(chapterIdx, page) => {
+                                setCurrentChapterIdx(chapterIdx);
+                                setCurrentPage(page);
+                                setChapterMenuOpen(false);
+                              }}
+                              onPageChange={onPageChange}
+                            />
+                          </Tabs.Panel>
+                        )}
+
+                        {enableNotes && (
+                          <Tabs.Panel value="notes" style={{ flex: 1, overflowY: 'auto' }} p="xs">
+                            <NotePanel
+                              onNavigate={(chapterIdx, page) => {
+                                setCurrentChapterIdx(chapterIdx);
+                                setCurrentPage(page);
+                                setChapterMenuOpen(false);
+                              }}
+                              onPageChange={onPageChange}
+                            />
+                          </Tabs.Panel>
+                        )}
+                      </Tabs>
+                    </Drawer.Body>
+                  </Drawer.Content>
+                </Drawer.Root>
 
                 {/* Chapter title (center) */}
                 <Text size="sm" fw={500} truncate="end" style={{ opacity: 0.8, flex: 1, textAlign: 'center' }}>
@@ -2603,83 +2734,22 @@ export const Reader: React.FC<ReaderProps> = ({
 
                 {/* Settings button (right) */}
                 <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                  {/* Bookmarks button */}
+                  {/* Bookmarks button — toggles a bookmark for the current
+                      page directly; the full bookmark list lives in the
+                      chapter drawer's Bookmarks tab (☰ above). */}
                   {enableBookmarks && (
-                    <Popover
-                      opened={bookmarksPanelOpen}
-                      onChange={setBookmarksPanelOpen}
-                      position={t.uiDirection === 'rtl' ? 'bottom-start' : 'bottom-end'}
-                      withinPortal
-                      portalProps={{ target: mantinePortalTarget }}
-                      shadow="md"
-                      width={280}
+                    <ActionIcon
+                      variant={isCurrentPageBookmarked ? 'filled' : 'transparent'}
+                      size="lg"
+                      aria-label={t.bookmarks}
+                      aria-pressed={isCurrentPageBookmarked}
+                      onClick={handleToggleBookmark}
+                      style={isCurrentPageBookmarked
+                        ? { backgroundColor: 'var(--reader-fg, #1a1a1a)', color: 'var(--reader-bg, #ffffff)' }
+                        : { color: 'var(--reader-fg, #1a1a1a)' }}
                     >
-                      <Popover.Target>
-                        <ActionIcon
-                          variant={bookmarksPanelOpen ? 'filled' : 'transparent'}
-                          size="lg"
-                          aria-label={t.bookmarks}
-                          aria-expanded={bookmarksPanelOpen}
-                          onClick={() => setBookmarksPanelOpen((open) => !open)}
-                          style={bookmarksPanelOpen
-                            ? { backgroundColor: 'var(--reader-fg, #1a1a1a)', color: 'var(--reader-bg, #ffffff)' }
-                            : { color: 'var(--reader-fg, #1a1a1a)' }}
-                        >
-                          <BookmarkIcon />
-                        </ActionIcon>
-                      </Popover.Target>
-                      <Popover.Dropdown data-testid="bookmarks-panel" mah={400} style={{ overflowY: 'auto' }}>
-                        <BookmarkPanel
-                          onNavigate={(chapterIdx, page) => {
-                            setCurrentChapterIdx(chapterIdx);
-                            setCurrentPage(page);
-                            setBookmarksPanelOpen(false);
-                          }}
-                          onPageChange={onPageChange}
-                        />
-                      </Popover.Dropdown>
-                    </Popover>
-                  )}
-
-                  {/* Notes button — notes themselves are created by
-                      selecting text and right-clicking (see the content
-                      div's onContextMenu below); this panel just lists,
-                      edits, and navigates to existing ones. */}
-                  {enableNotes && (
-                    <Popover
-                      opened={notesPanelOpen}
-                      onChange={setNotesPanelOpen}
-                      position={t.uiDirection === 'rtl' ? 'bottom-start' : 'bottom-end'}
-                      withinPortal
-                      portalProps={{ target: mantinePortalTarget }}
-                      shadow="md"
-                      width={300}
-                    >
-                      <Popover.Target>
-                        <ActionIcon
-                          variant={notesPanelOpen ? 'filled' : 'transparent'}
-                          size="lg"
-                          aria-label={t.notesPanelTitle}
-                          aria-expanded={notesPanelOpen}
-                          onClick={() => setNotesPanelOpen((open) => !open)}
-                          style={notesPanelOpen
-                            ? { backgroundColor: 'var(--reader-fg, #1a1a1a)', color: 'var(--reader-bg, #ffffff)' }
-                            : { color: 'var(--reader-fg, #1a1a1a)' }}
-                        >
-                          <NoteIcon />
-                        </ActionIcon>
-                      </Popover.Target>
-                      <Popover.Dropdown data-testid="notes-panel" mah={400} style={{ overflowY: 'auto' }}>
-                        <NotePanel
-                          onNavigate={(chapterIdx, page) => {
-                            setCurrentChapterIdx(chapterIdx);
-                            setCurrentPage(page);
-                            setNotesPanelOpen(false);
-                          }}
-                          onPageChange={onPageChange}
-                        />
-                      </Popover.Dropdown>
-                    </Popover>
+                      <BookmarkIcon filled={isCurrentPageBookmarked} />
+                    </ActionIcon>
                   )}
 
                   {/* Theme button — its own title-bar item rather than a
@@ -3074,7 +3144,7 @@ export const Reader: React.FC<ReaderProps> = ({
                     position: 'absolute',
                     top: 0,
                     left: '-9999px',
-                    width: containerRef.current ? `${containerRef.current.clientWidth}px` : '100%',
+                    width: pageBoxRef.current ? `${pageBoxRef.current.clientWidth}px` : '100%',
                     visibility: 'hidden',
                     pointerEvents: 'none',
                   }}
@@ -3148,53 +3218,65 @@ export const Reader: React.FC<ReaderProps> = ({
                   </button>
                 )}
 
-                {/* Content — either horizontally paged via CSS columns +
-                    transform, or (scroll mode) a normal vertically
-                    scrollable flow with no columns/pages at all. */}
+                {/* Page box — caps and centers the reading column at
+                    MAX_PAGE_WIDTH per page (see `pageBoxMaxWidth`), separate
+                    from `containerRef` above so the hover/tap zones and edge
+                    arrows (tied to `containerRef`) still span the whole
+                    viewport rather than just this narrower column. */}
                 <div
-                  ref={contentRef}
-                  className={scroll ? 'ebook-reader__scroll' : 'ebook-reader__columns'}
-                  dir={state.direction}
-                  onContextMenu={handleContentContextMenu}
-                  style={scroll ? {
+                  ref={pageBoxRef}
+                  className="ebook-reader__page-box"
+                  style={{
+                    width: '100%',
+                    maxWidth: `${pageBoxMaxWidth}px`,
                     height: '100%',
-                    overflowY: 'auto',
-                    padding: `2rem ${margin}px`,
-                    color: 'var(--reader-fg, #1a1a1a)',
-                    fontFamily: selectedFontFamily,
-                    fontSize: 'var(--reader-font-size, 16px)',
-                    lineHeight: lineSpacing,
-                    textAlign: justify ? 'justify' : undefined,
-                    letterSpacing: `${letterSpacing}px`,
-                    wordSpacing: `${wordSpacing}px`,
-                  } : {
-                    columnWidth: containerRef.current
-                      ? `${(containerRef.current.clientWidth - margin * 2 - (effectiveColumns === 2 ? 64 : 0)) / effectiveColumns}px`
-                      : '100%',
-                    columnGap: '64px',
-                    columnFill: 'auto',
-                    height: '100%',
-                    padding: `2rem ${margin}px`,
-                    transform: state.direction === 'rtl'
-                      ? `translateX(${currentPage * pagePitch}px)`
-                      : `translateX(${-(currentPage * pagePitch)}px)`,
-                    transition: 'transform 0.3s ease',
-                    color: 'var(--reader-fg, #1a1a1a)',
-                    fontFamily: selectedFontFamily,
-                    fontSize: 'var(--reader-font-size, 16px)',
-                    lineHeight: lineSpacing,
-                    textAlign: justify ? 'justify' : undefined,
-                    letterSpacing: `${letterSpacing}px`,
-                    wordSpacing: `${wordSpacing}px`,
+                    margin: '0 auto',
                   }}
                 >
-                  {currentChapter && (
-                    <div style={(scroll || effectiveColumns === 1) ? { maxWidth: '720px', margin: '0 auto' } : undefined}>
-                      {currentChapter.content.map((node, ni) => (
-                        <ContentNodeRenderer key={`${currentChapterIdx}-${ni}`} node={node} onImageClick={(src, alt) => setLightboxImage({ src, alt })} onFootnoteClick={handleFootnoteClick} onLinkClick={handleLinkClick} />
-                      ))}
-                    </div>
-                  )}
+                  {/* Content — either horizontally paged via CSS columns +
+                      transform, or (scroll mode) a normal vertically
+                      scrollable flow with no columns/pages at all. */}
+                  <div
+                    ref={contentRef}
+                    className={scroll ? 'ebook-reader__scroll' : 'ebook-reader__columns'}
+                    dir={state.direction}
+                    onContextMenu={handleContentContextMenu}
+                    style={scroll ? {
+                      height: '100%',
+                      overflowY: 'auto',
+                      padding: `2rem ${margin}px`,
+                      color: 'var(--reader-fg, #1a1a1a)',
+                      fontFamily: selectedFontFamily,
+                      fontSize: 'var(--reader-font-size, 16px)',
+                      lineHeight: lineSpacing,
+                      textAlign: justify ? 'justify' : undefined,
+                      letterSpacing: `${letterSpacing}px`,
+                      wordSpacing: `${wordSpacing}px`,
+                    } : {
+                      columnWidth: pageBoxRef.current
+                        ? `${(pageBoxRef.current.clientWidth - margin * 2 - (effectiveColumns === 2 ? 64 : 0)) / effectiveColumns}px`
+                        : '100%',
+                      columnGap: '64px',
+                      columnFill: 'auto',
+                      height: '100%',
+                      padding: `2rem ${margin}px`,
+                      transform: state.direction === 'rtl'
+                        ? `translateX(${currentPage * pagePitch}px)`
+                        : `translateX(${-(currentPage * pagePitch)}px)`,
+                      transition: 'transform 0.3s ease',
+                      color: 'var(--reader-fg, #1a1a1a)',
+                      fontFamily: selectedFontFamily,
+                      fontSize: 'var(--reader-font-size, 16px)',
+                      lineHeight: lineSpacing,
+                      textAlign: justify ? 'justify' : undefined,
+                      letterSpacing: `${letterSpacing}px`,
+                      wordSpacing: `${wordSpacing}px`,
+                    }}
+                  >
+                    {currentChapter && currentChapter.content.map((node, ni) => (
+                      <ContentNodeRenderer key={`${currentChapterIdx}-${ni}`} node={node} onImageClick={(src, alt) => setLightboxImage({ src, alt })} onFootnoteClick={handleFootnoteClick} onLinkClick={handleLinkClick} />
+                    ))}
+                  </div>
                 </div>
               </div>
 

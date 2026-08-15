@@ -37,7 +37,7 @@ function createStatefulAdapter(): CustomProgressStoreAdapter {
 async function navigateToChapterTwo() {
   fireEvent.click(screen.getByRole('button', { name: 'Table of contents' }));
   await screen.findByTestId('chapter-menu-panel');
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Chapter Two' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Chapter Two' }));
 }
 
 describe('Reading progress tracking', () => {

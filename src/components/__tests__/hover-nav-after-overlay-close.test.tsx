@@ -76,7 +76,7 @@ describe('Hover nav arrows reappear after a covering overlay closes', () => {
     // the first page, so the "previous" arrow becomes eligible to show.
     fireEvent.click(screen.getByRole('button', { name: 'Table of contents' }));
     await screen.findByTestId('chapter-menu-panel');
-    fireEvent.click(screen.getByRole('menuitem', { name: /Chapter 2/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Chapter 2/ }));
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Previous page' })).toBeInTheDocument();

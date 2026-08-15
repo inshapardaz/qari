@@ -169,7 +169,7 @@ describe('Notes feature', () => {
     expect(screen.queryByTestId('note-context-menu')).not.toBeInTheDocument();
   });
 
-  it('lists a created note in the Notes panel and navigating to it closes the panel', async () => {
+  it('lists a created note in the Notes tab and navigating to it closes the drawer', async () => {
     render(<Reader source={createMarkdownSource()} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
 
@@ -183,14 +183,16 @@ describe('Notes feature', () => {
       expect(content.querySelector('mark.qari-note-highlight')).not.toBeNull();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
-    const panel = await screen.findByTestId('notes-panel');
+    fireEvent.click(screen.getByRole('button', { name: 'Table of contents' }));
+    await screen.findByTestId('chapter-menu-panel');
+    fireEvent.click(screen.getByRole('tab', { name: 'Notes' }));
+    const panel = await screen.findByTestId('note-panel');
     expect(panel).toBeInTheDocument();
     expect(screen.getByTestId('note-list')).toHaveTextContent('Hello');
 
     fireEvent.click(screen.getByTestId(/^note-excerpt-/));
     await waitFor(() => {
-      expect(screen.queryByTestId('notes-panel')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('chapter-menu-panel')).not.toBeInTheDocument();
     });
   });
 
@@ -247,11 +249,13 @@ describe('Notes feature', () => {
     expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Add note']);
   });
 
-  it('does not show the notes button or accept right-click note creation when enableNotes is false', async () => {
+  it('does not show the Notes tab or accept right-click note creation when enableNotes is false', async () => {
     render(<Reader source={createMarkdownSource()} enableNotes={false} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
 
-    expect(screen.queryByRole('button', { name: 'Notes' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Table of contents' }));
+    await screen.findByTestId('chapter-menu-panel');
+    expect(screen.queryByRole('tab', { name: 'Notes' })).not.toBeInTheDocument();
 
     const content = document.querySelector('.ebook-reader__columns') as HTMLElement;
     selectText(content, 'Hello');

@@ -26,12 +26,16 @@ describe('Repagination on fullscreen toggle', () => {
     const { container } = render(<Reader source={createSource()} margin={80} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
 
-    const viewportEl = container.querySelector('.ebook-reader__viewport') as HTMLElement;
+    // Column width/page-pitch are derived from the capped inner page box's
+    // width, not `.ebook-reader__viewport`'s (which stays full-width so the
+    // hover/tap zones and edge arrows still cover the whole viewport) — see
+    // `pageBoxRef` in Reader.tsx.
+    const pageBoxEl = container.querySelector('.ebook-reader__page-box') as HTMLElement;
     const columnsEl = container.querySelector('.ebook-reader__columns') as HTMLElement;
 
     // Establish the pre-fullscreen layout: containerWidth=1000 -> pagePitch
     // 1000-160+64=904, scrollWidth 3000 -> 3 pages.
-    Object.defineProperty(viewportEl, 'clientWidth', { value: 1000, configurable: true });
+    Object.defineProperty(pageBoxEl, 'clientWidth', { value: 1000, configurable: true });
     Object.defineProperty(columnsEl, 'scrollWidth', { value: 3000, configurable: true });
     fireEvent(window, new Event('resize'));
     await waitFor(() => expect(screen.getByText('Page 1 of 3')).toBeInTheDocument());
@@ -40,7 +44,7 @@ describe('Repagination on fullscreen toggle', () => {
     // the viewport in fullscreen — set *before* the click, since a real
     // browser's layout update from the CSS change is synchronous with the
     // DOM mutation, well before recalcPages's own settle timer fires.
-    Object.defineProperty(viewportEl, 'clientWidth', { value: 1400, configurable: true });
+    Object.defineProperty(pageBoxEl, 'clientWidth', { value: 1400, configurable: true });
     Object.defineProperty(columnsEl, 'scrollWidth', { value: 3000, configurable: true });
 
     // jsdom has no Fullscreen API, so this exercises the fake-fullscreen
@@ -56,7 +60,7 @@ describe('Repagination on fullscreen toggle', () => {
 
     // Exiting fullscreen changes the width back — again, no 'resize' event —
     // and set before the click for the same reason as above.
-    Object.defineProperty(viewportEl, 'clientWidth', { value: 1000, configurable: true });
+    Object.defineProperty(pageBoxEl, 'clientWidth', { value: 1000, configurable: true });
     Object.defineProperty(columnsEl, 'scrollWidth', { value: 3000, configurable: true });
     fireEvent.click(screen.getByRole('button', { name: 'Exit fullscreen' }));
     await screen.findByRole('button', { name: 'Enter fullscreen' });

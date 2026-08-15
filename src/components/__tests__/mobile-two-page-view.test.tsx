@@ -88,9 +88,12 @@ describe('Two-page view on mobile', () => {
     const { container } = render(<Reader source={createSource()} columns={2} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
 
-    const columnsEl = container.querySelector('.ebook-reader__columns') as HTMLElement;
-    const inner = columnsEl.firstElementChild as HTMLElement;
-    // Single-column mode caps and centers the reading column; two-column mode does not (see scroll-view.test.tsx).
-    expect(inner.style.maxWidth).toBe('720px');
+    // The inner page box (see `pageBoxRef` in Reader.tsx) is capped to a
+    // single MAX_PAGE_WIDTH column (plus margin padding) once the mobile
+    // viewport forces single-column layout — see scroll-view.test.tsx for
+    // the two-column case. `.ebook-reader__viewport` itself stays full-width
+    // so the hover/tap zones and edge arrows still cover the whole viewport.
+    const pageBoxEl = container.querySelector('.ebook-reader__page-box') as HTMLElement;
+    expect(pageBoxEl.style.maxWidth).toBe('584px');
   });
 });

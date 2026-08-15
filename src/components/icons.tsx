@@ -22,10 +22,23 @@ const defaultProps = {
   'aria-hidden': true,
 };
 
-export function BookmarkIcon({ size = '1.1em' }: IconProps) {
+export function BookmarkIcon({ size = '1.1em', filled = false }: IconProps & { filled?: boolean }) {
+  return (
+    <svg {...defaultProps} width={size} height={size} fill={filled ? 'currentColor' : 'none'}>
+      <path d="M6 3h12v18l-6-4-6 4V3z" />
+    </svg>
+  );
+}
+
+export function ChaptersIcon({ size = '1.1em' }: IconProps) {
   return (
     <svg {...defaultProps} width={size} height={size}>
-      <path d="M6 3h12v18l-6-4-6 4V3z" />
+      <circle cx="4" cy="6" r="1" fill="currentColor" stroke="none" />
+      <line x1="9" y1="6" x2="20" y2="6" />
+      <circle cx="4" cy="12" r="1" fill="currentColor" stroke="none" />
+      <line x1="9" y1="12" x2="20" y2="12" />
+      <circle cx="4" cy="18" r="1" fill="currentColor" stroke="none" />
+      <line x1="9" y1="18" x2="20" y2="18" />
     </svg>
   );
 }

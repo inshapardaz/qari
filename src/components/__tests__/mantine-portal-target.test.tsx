@@ -1,8 +1,8 @@
 /**
- * Regression test: the chapter menu, bookmarks popover, theme panel, layout
- * panel, settings dialog (and its font Select), and the image lightbox must
- * portal their floating content inside the reader's own root element rather
- * than as a document.body-level sibling.
+ * Regression test: the chapter drawer (and its bookmarks/notes tabs), theme
+ * panel, layout panel, settings dialog (and its font Select), and the image
+ * lightbox must portal their floating content inside the reader's own root
+ * element rather than as a document.body-level sibling.
  *
  * This matters specifically for fullscreen mode: `rootRef.current` is the
  * element passed to `requestFullscreen()`, and the Fullscreen API promotes
@@ -32,7 +32,7 @@ describe('Mantine floating UI portals inside the reader root (fullscreen top-lay
     localStorage.clear();
   });
 
-  it('portals the chapter menu dropdown inside the reader root', async () => {
+  it('portals the chapter drawer inside the reader root', async () => {
     render(<Reader source={createMarkdownSource()} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
 
@@ -42,22 +42,26 @@ describe('Mantine floating UI portals inside the reader root (fullscreen top-lay
     expect(isInsideReaderRoot(panel)).toBe(true);
   });
 
-  it('portals the bookmarks popover inside the reader root', async () => {
+  it("portals the chapter drawer's Bookmarks tab inside the reader root", async () => {
     render(<Reader source={createMarkdownSource()} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: 'Bookmarks' }));
-    const panel = await screen.findByTestId('bookmarks-panel');
+    fireEvent.click(screen.getByRole('button', { name: 'Table of contents' }));
+    await screen.findByTestId('chapter-menu-panel');
+    fireEvent.click(screen.getByRole('tab', { name: 'Bookmarks' }));
+    const panel = await screen.findByTestId('bookmark-panel');
 
     expect(isInsideReaderRoot(panel)).toBe(true);
   });
 
-  it('portals the notes panel inside the reader root', async () => {
+  it("portals the chapter drawer's Notes tab inside the reader root", async () => {
     render(<Reader source={createMarkdownSource()} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
-    const panel = await screen.findByTestId('notes-panel');
+    fireEvent.click(screen.getByRole('button', { name: 'Table of contents' }));
+    await screen.findByTestId('chapter-menu-panel');
+    fireEvent.click(screen.getByRole('tab', { name: 'Notes' }));
+    const panel = await screen.findByTestId('note-panel');
 
     expect(isInsideReaderRoot(panel)).toBe(true);
   });

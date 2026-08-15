@@ -68,12 +68,12 @@ function createMockStore(): BookmarkStoreInterface & { load: ReturnType<typeof v
 }
 
 /**
- * Reads which bookmarks are actually displayed by opening the bookmarks
- * popover and reading `BookmarkPanel`'s rendered `bookmark-item-<id>`
- * elements — i.e. verifying through the real UI rather than React fiber
- * internals (which are an implementation detail liable to break with every
- * unrelated rendering change, e.g. how many passes Mantine's popovers take
- * to settle).
+ * Reads which bookmarks are actually displayed by opening the chapter
+ * drawer's Bookmarks tab and reading `BookmarkPanel`'s rendered
+ * `bookmark-item-<id>` elements — i.e. verifying through the real UI rather
+ * than React fiber internals (which are an implementation detail liable to
+ * break with every unrelated rendering change, e.g. how many passes
+ * Mantine's drawer takes to settle).
  */
 function getDisplayedBookmarkIds(): string[] {
   return Array.from(document.querySelectorAll('[data-testid^="bookmark-item-"]')).map((el) =>
@@ -82,7 +82,8 @@ function getDisplayedBookmarkIds(): string[] {
 }
 
 function openBookmarksPanel(container: HTMLElement): void {
-  fireEvent.click(within(container).getByRole('button', { name: 'Bookmarks' }));
+  fireEvent.click(within(container).getByRole('button', { name: 'Table of contents' }));
+  fireEvent.click(within(container).getByRole('tab', { name: 'Bookmarks' }));
 }
 
 // ---------------------------------------------------------------------------

@@ -100,29 +100,36 @@ describe('Scroll view', () => {
     const { container } = render(<Reader source={createTwoChapterSource()} scroll />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
 
-    const scrollEl = container.querySelector('.ebook-reader__scroll') as HTMLElement;
-    const inner = scrollEl.firstElementChild as HTMLElement;
-    expect(inner.style.maxWidth).toBe('720px');
-    expect(inner.style.margin).toBe('0px auto');
+    // The cap is applied to an inner "page box" wrapping the content, not
+    // `.ebook-reader__viewport` itself — that outer element stays full-width
+    // so the hover/tap zones and edge-navigation arrows (which listen and
+    // position on it) still cover the whole viewport, not just the narrow
+    // centered column; see `pageBoxRef`/`pageBoxMaxWidth` in Reader.tsx. At
+    // the default 32px margin, one MAX_PAGE_WIDTH (520px) column plus
+    // margin*2 padding is 584px.
+    const pageBoxEl = container.querySelector('.ebook-reader__page-box') as HTMLElement;
+    expect(pageBoxEl.style.maxWidth).toBe('584px');
+    expect(pageBoxEl.style.margin).toBe('0px auto');
   });
 
   it('caps the reading column at a max width and centers it in single-column paginated mode', async () => {
     const { container } = render(<Reader source={createTwoChapterSource()} columns={1} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
 
-    const columnsEl = container.querySelector('.ebook-reader__columns') as HTMLElement;
-    const inner = columnsEl.firstElementChild as HTMLElement;
-    expect(inner.style.maxWidth).toBe('720px');
-    expect(inner.style.margin).toBe('0px auto');
+    const pageBoxEl = container.querySelector('.ebook-reader__page-box') as HTMLElement;
+    expect(pageBoxEl.style.maxWidth).toBe('584px');
+    expect(pageBoxEl.style.margin).toBe('0px auto');
   });
 
-  it('does not cap the reading column at a max width in two-column paginated mode', async () => {
+  it('caps each column at a max width in two-column paginated mode, not the whole spread', async () => {
     const { container } = render(<Reader source={createTwoChapterSource()} columns={2} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
 
-    const columnsEl = container.querySelector('.ebook-reader__columns') as HTMLElement;
-    const inner = columnsEl.firstElementChild as HTMLElement;
-    expect(inner.style.maxWidth).toBe('');
+    // Two MAX_PAGE_WIDTH (520px) columns, plus margin*2 padding (32*2) and
+    // the 64px inter-column gap: 520*2 + 64 + 64 = 1168.
+    const pageBoxEl = container.querySelector('.ebook-reader__page-box') as HTMLElement;
+    expect(pageBoxEl.style.maxWidth).toBe('1168px');
+    expect(pageBoxEl.style.margin).toBe('0px auto');
   });
 
   it('uses a margin-aware page pitch for the page-turn transform, not the raw container width', async () => {
@@ -138,9 +145,12 @@ describe('Scroll view', () => {
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
 
     const viewportEl = container.querySelector('.ebook-reader__viewport') as HTMLElement;
+    const pageBoxEl = container.querySelector('.ebook-reader__page-box') as HTMLElement;
     const columnsEl = container.querySelector('.ebook-reader__columns') as HTMLElement;
 
-    Object.defineProperty(viewportEl, 'clientWidth', { value: 1000, configurable: true });
+    // Column width/page-pitch are derived from the capped inner page box's
+    // width, not the (full-width) viewport's — see `pageBoxRef` in Reader.tsx.
+    Object.defineProperty(pageBoxEl, 'clientWidth', { value: 1000, configurable: true });
     Object.defineProperty(columnsEl, 'scrollWidth', { value: 3000, configurable: true });
     fireEvent(window, new Event('resize'));
 

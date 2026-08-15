@@ -90,7 +90,7 @@ describe('Reader with a PDF source', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Table of contents' }));
     await screen.findByTestId('chapter-menu-panel');
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Page 2' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
 
     await waitFor(() => {
       const img = screen.getByTestId('pdf-page').querySelector('img');
@@ -152,7 +152,7 @@ describe('Reader with a PDF source', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Table of contents' }));
     await screen.findByTestId('chapter-menu-panel');
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Page 5' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Page 5' }));
 
     // Navigating to a still-pending page triggers an on-demand render for
     // it, replacing the placeholder with the real image (the mocked render

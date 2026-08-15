@@ -1,14 +1,15 @@
 /**
- * Regression test: the chapter menu and bookmarks panel dropdowns must open
- * on the side of the header matching the UI direction, not the book's
- * content direction. The header lays out its buttons via `dir={t.uiDirection}`,
- * so a dropdown positioned by content direction would end up on the wrong
- * side (and potentially off-screen) whenever an RTL book is read in an LTR
- * UI, or vice versa.
+ * Regression test: the chapter drawer must open on the side of the header
+ * matching the UI direction, not the book's content direction. The header
+ * lays out its buttons via `dir={t.uiDirection}`, so a drawer positioned by
+ * content direction would end up on the wrong side (and potentially
+ * off-screen) whenever an RTL book is read in an LTR UI, or vice versa.
  *
- * Positioning itself is delegated to Mantine's Menu/Popover (floating-ui),
- * so this asserts the resolved `data-position` placement rather than raw
- * inline left/right styles.
+ * The drawer's side isn't exposed as a simple DOM attribute — Mantine
+ * encodes `position="right"` as a `--drawer-justify: flex-end` CSS custom
+ * property on the drawer root (left is the unset default), so that's what
+ * this asserts rather than a floating-ui `data-position` (which Drawer,
+ * unlike Menu/Popover, doesn't produce).
  */
 
 import React from 'react';
@@ -22,12 +23,18 @@ function createMarkdownSource(content = '# Test Book\n\n## Chapter 1\n\nHello wo
   return { type: 'markdown', content };
 }
 
-describe('Header panel anchoring follows UI direction, not book content direction', () => {
+/** True if the drawer root's `--drawer-justify` var docks it to the end (right) side. */
+function drawerJustifiesEnd(panel: HTMLElement): boolean {
+  const root = panel.closest('.mantine-Drawer-root') as HTMLElement | null;
+  return !!root?.style.cssText.includes('--drawer-justify: flex-end');
+}
+
+describe('Chapter drawer anchoring follows UI direction, not book content direction', () => {
   beforeEach(() => {
     localStorage.clear();
   });
 
-  it('opens the chapter menu bottom-start and bookmarks panel bottom-end when the book is RTL but the UI is LTR (English)', async () => {
+  it('opens the chapter drawer on the left when the book is RTL but the UI is LTR (English)', async () => {
     const source = createMarkdownSource();
     render(<Reader source={source} direction="rtl" />);
 
@@ -36,15 +43,11 @@ describe('Header panel anchoring follows UI direction, not book content directio
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Table of contents' }));
-    const chapterPanel = await screen.findByTestId('chapter-menu-panel');
-    expect(chapterPanel.getAttribute('data-position')).toBe('bottom-start');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Bookmarks' }));
-    const bookmarksPanel = await screen.findByTestId('bookmarks-panel');
-    expect(bookmarksPanel.getAttribute('data-position')).toBe('bottom-end');
+    const drawerPanel = await screen.findByTestId('chapter-menu-panel');
+    expect(drawerJustifiesEnd(drawerPanel)).toBe(false);
   });
 
-  it('opens the chapter menu bottom-end and bookmarks panel bottom-start when the book is LTR but the UI is RTL (Urdu)', async () => {
+  it('opens the chapter drawer on the right when the book is LTR but the UI is RTL (Urdu)', async () => {
     const source = createMarkdownSource();
     render(<Reader source={source} direction="ltr" translations={ur} />);
 
@@ -53,11 +56,7 @@ describe('Header panel anchoring follows UI direction, not book content directio
     });
 
     fireEvent.click(screen.getByRole('button', { name: ur.tableOfContents }));
-    const chapterPanel = await screen.findByTestId('chapter-menu-panel');
-    expect(chapterPanel.getAttribute('data-position')).toBe('bottom-end');
-
-    fireEvent.click(screen.getByRole('button', { name: ur.bookmarks }));
-    const bookmarksPanel = await screen.findByTestId('bookmarks-panel');
-    expect(bookmarksPanel.getAttribute('data-position')).toBe('bottom-start');
+    const drawerPanel = await screen.findByTestId('chapter-menu-panel');
+    expect(drawerJustifiesEnd(drawerPanel)).toBe(true);
   });
 });
