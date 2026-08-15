@@ -9,7 +9,7 @@
 
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { Reader } from '../Reader';
 import type { ReaderSource } from '../Reader';
 
@@ -98,6 +98,173 @@ describe('Reader with a PDF source', () => {
     });
   });
 
+  it('renders two PDF pages side by side in two-column (spread) mode', async () => {
+    const pdfjsLib = await import('pdfjs-dist');
+    (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+      promise: Promise.resolve(createFakePdfDocument(4)),
+    });
+
+    const source: ReaderSource = { type: 'pdf', data: new ArrayBuffer(8) };
+    render(<Reader source={source} columns={2} />);
+
+    await waitFor(() => {
+      const pages = screen.getAllByTestId('pdf-page');
+      expect(pages.map(p => p.querySelector('img')?.getAttribute('alt'))).toEqual(['Page 1', 'Page 2']);
+    });
+  });
+
+  it('steps by two pages at a time when paging through a spread', async () => {
+    const pdfjsLib = await import('pdfjs-dist');
+    (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+      promise: Promise.resolve(createFakePdfDocument(4)),
+    });
+
+    const source: ReaderSource = { type: 'pdf', data: new ArrayBuffer(8) };
+    const { container } = render(<Reader source={source} columns={2} />);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('pdf-page')).toHaveLength(2);
+    });
+
+    fireEvent.mouseEnter(container.querySelector('.ebook-reader__viewport')!);
+    fireEvent.click(await screen.findByRole('button', { name: 'Next page' }));
+
+    await waitFor(() => {
+      const pages = screen.getAllByTestId('pdf-page');
+      expect(pages.map(p => p.querySelector('img')?.getAttribute('alt'))).toEqual(['Page 3', 'Page 4']);
+    });
+
+    fireEvent.mouseEnter(container.querySelector('.ebook-reader__viewport')!);
+    fireEvent.click(await screen.findByRole('button', { name: 'Previous page' }));
+
+    await waitFor(() => {
+      const pages = screen.getAllByTestId('pdf-page');
+      expect(pages.map(p => p.querySelector('img')?.getAttribute('alt'))).toEqual(['Page 1', 'Page 2']);
+    });
+  });
+
+  it('lays out an RTL spread with plain row direction, not row-reverse, so `dir` alone determines page order', async () => {
+    // Regression test: the spread container sets `dir={state.direction}`,
+    // which already flips the flex main axis for RTL (first DOM child lands
+    // on the right, not the left). Also setting `flexDirection: row-reverse`
+    // for RTL cancels that back out to LTR-like (left-to-right) positioning
+    // — the earlier page (spreadStart, first in DOM) must stay the *first*
+    // child regardless of direction; only `dir` should determine which side
+    // of the screen it renders on.
+    const pdfjsLib = await import('pdfjs-dist');
+    (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+      promise: Promise.resolve(createFakePdfDocument(4)),
+    });
+
+    const source: ReaderSource = { type: 'pdf', data: new ArrayBuffer(8) };
+    const { container } = render(<Reader source={source} columns={2} direction="rtl" />);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('pdf-page')).toHaveLength(2);
+    });
+
+    const spreadEl = container.querySelector('.ebook-reader__pdf-spread') as HTMLElement;
+    expect(spreadEl).toHaveAttribute('dir', 'rtl');
+    expect(spreadEl.style.flexDirection).toBe('row');
+
+    const pages = screen.getAllByTestId('pdf-page');
+    expect(pages.map(p => p.querySelector('img')?.getAttribute('alt'))).toEqual(['Page 1', 'Page 2']);
+  });
+
+  it('zooms a single PDF page and scrolls to reveal the part that no longer fits', async () => {
+    const pdfjsLib = await import('pdfjs-dist');
+    (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+      promise: Promise.resolve(createFakePdfDocument(1)),
+    });
+
+    const source: ReaderSource = { type: 'pdf', data: new ArrayBuffer(8) };
+    const { container } = render(<Reader source={source} />);
+    await screen.findByTestId('pdf-page');
+
+    // Not shown for non-PDF books, and not exposed as the (meaningless for
+    // PDFs) text-settings panel's controls.
+    expect(screen.queryByRole('button', { name: 'Reading settings' })).toBeNull();
+
+    const zoomIn = screen.getByRole('button', { name: /Zoom in/ });
+    const zoomOut = screen.getByRole('button', { name: /Zoom out/ });
+    expect(zoomIn).not.toBeDisabled();
+    expect(zoomOut).not.toBeDisabled();
+
+    const scrollEl = container.querySelector('.ebook-reader__pdf-zoom-scroll') as HTMLElement;
+    const spreadEl = container.querySelector('.ebook-reader__pdf-spread') as HTMLElement;
+    expect(scrollEl.style.overflow).toBe('auto');
+    expect(spreadEl.style.transform).toBe('scale(1)');
+
+    fireEvent.click(zoomIn);
+    expect(screen.getByText('110%')).toBeInTheDocument();
+    expect(spreadEl.style.transform).toBe('scale(1.1)');
+
+    fireEvent.click(zoomOut);
+    fireEvent.click(zoomOut);
+    expect(screen.getByText('90%')).toBeInTheDocument();
+    expect(spreadEl.style.transform).toBe('scale(0.9)');
+  });
+
+  it('clamps PDF zoom to the 50%-300% range', async () => {
+    const pdfjsLib = await import('pdfjs-dist');
+    (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+      promise: Promise.resolve(createFakePdfDocument(1)),
+    });
+
+    const source: ReaderSource = { type: 'pdf', data: new ArrayBuffer(8) };
+    render(<Reader source={source} />);
+    await screen.findByTestId('pdf-page');
+
+    const zoomOut = screen.getByRole('button', { name: /Zoom out/ });
+    for (let i = 0; i < 10; i++) fireEvent.click(zoomOut);
+    expect(screen.getByText('50%')).toBeInTheDocument();
+    expect(zoomOut).toBeDisabled();
+
+    const zoomIn = screen.getByRole('button', { name: /Zoom in/ });
+    for (let i = 0; i < 30; i++) fireEvent.click(zoomIn);
+    expect(screen.getByText('300%')).toBeInTheDocument();
+    expect(zoomIn).toBeDisabled();
+  });
+
+  it('does not show PDF zoom controls in scroll mode', async () => {
+    const pdfjsLib = await import('pdfjs-dist');
+    (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+      promise: Promise.resolve(createFakePdfDocument(1)),
+    });
+
+    const source: ReaderSource = { type: 'pdf', data: new ArrayBuffer(8) };
+    render(<Reader source={source} scroll />);
+    await screen.findByTestId('pdf-page');
+
+    expect(screen.queryByRole('button', { name: /Zoom in/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Zoom out/ })).toBeNull();
+  });
+
+  it('centers a single lone page for the trailing spread of an odd-paged PDF', async () => {
+    const pdfjsLib = await import('pdfjs-dist');
+    (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+      promise: Promise.resolve(createFakePdfDocument(3)),
+    });
+
+    const source: ReaderSource = { type: 'pdf', data: new ArrayBuffer(8) };
+    const { container } = render(<Reader source={source} columns={2} />);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('pdf-page')).toHaveLength(2);
+    });
+
+    fireEvent.mouseEnter(container.querySelector('.ebook-reader__viewport')!);
+    fireEvent.click(await screen.findByRole('button', { name: 'Next page' }));
+
+    await waitFor(() => {
+      const pages = screen.getAllByTestId('pdf-page');
+      expect(pages.map(p => p.querySelector('img')?.getAttribute('alt'))).toEqual(['Page 3']);
+    });
+
+    // No further spread beyond the lone trailing page.
+    expect(screen.queryByRole('button', { name: 'Next page' })).toBeNull();
+  });
+
   it('clones the ArrayBuffer before handing it to pdf.js, rather than passing the source object\'s own buffer', async () => {
     // PDF.js transfers whatever buffer it's given to its worker via
     // postMessage, which detaches (neuters) the original — if the same
@@ -136,6 +303,40 @@ describe('Reader with a PDF source', () => {
     render(<Reader source={source} />);
 
     await screen.findByTestId('pdf-page');
+  });
+
+  it('hides the text-settings ("Aa") panel and the drawer\'s Notes tab for a PDF book', async () => {
+    // Font size/family, justify, line/letter/word spacing, and margin all
+    // only affect reflowable text — a PDF page is a fixed-size rasterized
+    // image, and notes anchor to rendered DOM text that a PDF page doesn't
+    // have either (see `notesEnabled` in Reader.tsx). Contrast-checked
+    // against a non-PDF source below.
+    const pdfjsLib = await import('pdfjs-dist');
+    (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+      promise: Promise.resolve(createFakePdfDocument(1)),
+    });
+
+    const source: ReaderSource = { type: 'pdf', data: new ArrayBuffer(8) };
+    render(<Reader source={source} />);
+    await screen.findByTestId('pdf-page');
+
+    expect(screen.queryByRole('button', { name: 'Reading settings' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Table of contents' }));
+    const panel = await screen.findByTestId('chapter-menu-panel');
+    expect(within(panel).queryByRole('tab', { name: 'Notes' })).toBeNull();
+  });
+
+  it('shows the text-settings panel and Notes tab for a non-PDF book (contrast check)', async () => {
+    const source: ReaderSource = { type: 'markdown', content: '# Book\n\n## Chapter 1\n\nHello world' };
+    render(<Reader source={source} />);
+    await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
+
+    expect(screen.getByRole('button', { name: 'Reading settings' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Table of contents' }));
+    const panel = await screen.findByTestId('chapter-menu-panel');
+    expect(within(panel).getByRole('tab', { name: 'Notes' })).toBeInTheDocument();
   });
 
   it('shows a placeholder for a page beyond the initial batch, then renders it once it loads', async () => {

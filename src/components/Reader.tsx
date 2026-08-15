@@ -37,7 +37,7 @@ import {
 import type { MantineThemeOverride } from '@mantine/core';
 import { DEFAULT_MANTINE_THEME } from '../theme/mantine-theme';
 
-import type { Book, BookMetadata, ContentNode, InlineNode, FootnoteRefSpan } from '../models/book';
+import type { Book, BookMetadata, ContentNode, InlineNode, FootnoteRefSpan, PdfPageNode } from '../models/book';
 import type { Bookmark } from '../models/bookmark';
 import type { Note } from '../models/note';
 import type { ReadingProgressRecord } from '../models/progress';
@@ -827,9 +827,15 @@ export const Reader: React.FC<ReaderProps> = ({
   const [pagesPerChapter, setPagesPerChapter] = useState<number[]>([]); // cached page counts per chapter
   // Whether a chapter's *last* page, in two-column mode, only has content in
   // the first of its two columns (the second sits empty) — see where this is
-  // consumed near `pageColumnsForWidth` for why that page's box gets cropped
-  // down to a single column's width instead of staying spread-wide.
+  // consumed near `isTrailingLoneColumnPage` for why that page gets
+  // re-centered instead of sitting pinned to one edge of the spread.
   const [trailingLoneColumn, setTrailingLoneColumn] = useState<boolean[]>([]);
+  // PDF page zoom (see the header's zoom in/out control and its use near the
+  // render return) — deliberately local, uncontrolled state rather than a
+  // prop: it's a transient view setting for the current page image, not a
+  // persisted reading preference like fontSize/margin, so it isn't part of
+  // ReaderSettings/onSettingsChange.
+  const [pdfZoom, setPdfZoom] = useState(100);
   const [chapterMenuOpen, setChapterMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [moreSettingsOpen, setMoreSettingsOpen] = useState(false);
@@ -925,6 +931,16 @@ export const Reader: React.FC<ReaderProps> = ({
   const measureRef = useRef<HTMLDivElement>(null);
   const lastPointerPositionRef = useRef<{ x: number; y: number } | null>(null);
   const pdfParserRef = useRef<PDFParserImpl | null>(null);
+  // Background/on-demand PDF page renders (see `onPageRendered` below) can
+  // resolve before `state.book` itself is installed — the background pass
+  // starts as soon as `parser.parse()` kicks it off, which is well before
+  // `loadBook`'s own `setState` below runs. Without buffering, such an
+  // update has no book to patch yet and would be silently dropped — and
+  // since the parser's own render-dedup (`renderedPages`) already marks
+  // that page done, it would never be retried, leaving its chapter stuck on
+  // the placeholder forever. Buffered here, then merged into `book` right
+  // before it's installed.
+  const pendingPdfPageUpdatesRef = useRef<Map<number, PdfPageNode>>(new Map());
 
   // Refs for services that persist across renders
   const themeEngineRef = useRef<ThemeEngine | null>(null);
@@ -1082,6 +1098,16 @@ export const Reader: React.FC<ReaderProps> = ({
       onSettingsChange({ columns: 1 });
     }
   }, [isMobileViewport, scroll, columns, onSettingsChange]);
+
+  // The chapter drawer's Notes tab is hidden for PDFs (see `notesEnabled`
+  // near the render return) — if a consumer switches sources into a PDF
+  // while that tab is active, fall back to Chapters rather than leaving the
+  // drawer on a tab that no longer has a corresponding Tabs.Tab to select.
+  useEffect(() => {
+    if (isPdfBook && chapterDrawerTab === 'notes') {
+      setChapterDrawerTab('chapters');
+    }
+  }, [isPdfBook, chapterDrawerTab]);
 
   // ---------------------------------------------------------------------------
   // Initialize BookmarkStore (responds to adapter prop changes)
@@ -1570,6 +1596,7 @@ export const Reader: React.FC<ReaderProps> = ({
   const loadBook = useCallback(async (src: ReaderSource) => {
     setState(prev => ({ ...prev, loading: true, error: null }));
     pdfParserRef.current = null;
+    setPdfZoom(100);
 
     try {
       let book: Book;
@@ -1625,11 +1652,21 @@ export const Reader: React.FC<ReaderProps> = ({
           }
           const parser = new PDFParserImpl();
           pdfParserRef.current = parser;
+          // See the ref's own comment — discard anything left over from a
+          // previous, now-superseded load rather than letting it get merged
+          // into this one below.
+          pendingPdfPageUpdatesRef.current.clear();
           book = await parser.parse(data, {
             workerSrc: pdfWorkerSrc,
             onPageRendered: (pageNumber, node) => {
               setState(prev => {
-                if (!prev.book) return prev;
+                if (!prev.book) {
+                  // Book isn't installed yet — buffer for the merge in the
+                  // book-installing `setState` below rather than dropping
+                  // the render result.
+                  pendingPdfPageUpdatesRef.current.set(pageNumber, node);
+                  return prev;
+                }
                 const idx = pageNumber - 1;
                 if (!prev.book.chapters[idx]) return prev;
                 const chapters = prev.book.chapters.slice();
@@ -1638,6 +1675,9 @@ export const Reader: React.FC<ReaderProps> = ({
               });
             },
           });
+          // Fold in anything that finished rendering in the gap between
+          // `parser.parse()` kicking off its background pass and this
+          // `await` resolving (see `pendingPdfPageUpdatesRef`'s comment).
           break;
         }
       }
@@ -1759,26 +1799,46 @@ export const Reader: React.FC<ReaderProps> = ({
 
       const totalPages = navigator.getTotalPagesInChapter(resolvedChapterIdx);
 
-      setState(prev => ({
-        ...prev,
-        book,
-        loading: false,
-        error: null,
-        currentChapter: resolvedChapterIdx,
-        currentPage: resolvedPage,
-        totalPages,
-        readingProgress: navigator.getReadingProgress(),
-        direction: resolvedDirection,
-        directionConfidence: resolvedConfidence,
-        // In controlled mode, defer to `prev.bookmarks`: the dedicated
-        // bookmarksProp-sync effect (above) is the source of truth and may
-        // have applied a newer prop value while this async load was in
-        // flight (e.g. epub/File/url sources with real awaits). Using the
-        // `bookmarks` captured at load-start would clobber that update with
-        // a stale one.
-        bookmarks: bookmarksProp !== undefined ? prev.bookmarks : bookmarks,
-        notes,
-      }));
+      setState(prev => {
+        // Fold in any PDF pages that finished rendering (background pass or
+        // an on-demand `requestPage`) before this book was installed — see
+        // `pendingPdfPageUpdatesRef`'s comment. Done here, as late as
+        // possible, rather than right after `parser.parse()` above: the
+        // `await`s since then (progress/bookmarks/notes store loads) leave
+        // plenty of time for a render to land in between.
+        let installedBook = book;
+        if (pendingPdfPageUpdatesRef.current.size > 0) {
+          const chapters = installedBook.chapters.slice();
+          for (const [pageNumber, node] of pendingPdfPageUpdatesRef.current) {
+            const idx = pageNumber - 1;
+            if (chapters[idx]) {
+              chapters[idx] = { ...chapters[idx], content: [node] };
+            }
+          }
+          installedBook = { ...installedBook, chapters };
+          pendingPdfPageUpdatesRef.current.clear();
+        }
+        return {
+          ...prev,
+          book: installedBook,
+          loading: false,
+          error: null,
+          currentChapter: resolvedChapterIdx,
+          currentPage: resolvedPage,
+          totalPages,
+          readingProgress: navigator.getReadingProgress(),
+          direction: resolvedDirection,
+          directionConfidence: resolvedConfidence,
+          // In controlled mode, defer to `prev.bookmarks`: the dedicated
+          // bookmarksProp-sync effect (above) is the source of truth and may
+          // have applied a newer prop value while this async load was in
+          // flight (e.g. epub/File/url sources with real awaits). Using the
+          // `bookmarks` captured at load-start would clobber that update with
+          // a stale one.
+          bookmarks: bookmarksProp !== undefined ? prev.bookmarks : bookmarks,
+          notes,
+        };
+      });
 
       // Initialize page count tracking per chapter (will be filled as chapters are visited)
       setCurrentChapterIdx(resolvedChapterIdx);
@@ -1832,8 +1892,12 @@ export const Reader: React.FC<ReaderProps> = ({
   // ---------------------------------------------------------------------------
   const recalcPages = useCallback(() => {
     // Scroll mode has no pages — the whole chapter is one continuously
-    // scrollable flow.
-    if (scroll) {
+    // scrollable flow. A PDF chapter is always exactly one page (a single
+    // fixed-size image) regardless of columns/scroll — measuring it here
+    // would be pointless at best, and actively wrong in spread mode, where
+    // `contentRef` holds *two* chapters' pages side by side and its
+    // scrollWidth reflects the pair, not the current chapter alone.
+    if (scroll || isPdfBook) {
       setTotalPages(1);
       setPagesPerChapter(prev => {
         const updated = [...prev];
@@ -1858,7 +1922,7 @@ export const Reader: React.FC<ReaderProps> = ({
       updated[currentChapterIdx] = computed;
       return updated;
     });
-  }, [currentChapterIdx, scroll, margin]);
+  }, [currentChapterIdx, scroll, margin, isPdfBook]);
 
   // Recalculate on chapter change, font/zoom change, or window resize
   useEffect(() => {
@@ -2080,6 +2144,21 @@ export const Reader: React.FC<ReaderProps> = ({
   // Page navigation
   // ---------------------------------------------------------------------------
   const goToNextPage = useCallback(() => {
+    // A PDF spread shows two chapters (pages) at once — see `spreadStart` —
+    // so turning the page steps by two chapters instead of one, landing on
+    // the start of the next pair, regardless of `totalPages` (always 1 per
+    // PDF chapter, since each page is its own fixed-size-image chapter).
+    if (pdfSpread) {
+      if (state.book && spreadStart + 2 < state.book.chapters.length) {
+        const nextChapter = spreadStart + 2;
+        setCurrentChapterIdx(nextChapter);
+        setCurrentPage(0);
+        if (onPageChange) {
+          onPageChange({ page: 0, chapter: nextChapter, progress: 0 });
+        }
+      }
+      return;
+    }
     if (currentPage < totalPages - 1) {
       const next = currentPage + 1;
       setCurrentPage(next);
@@ -2103,9 +2182,20 @@ export const Reader: React.FC<ReaderProps> = ({
         });
       }
     }
-  }, [currentPage, totalPages, currentChapterIdx, state.book, onPageChange]);
+  }, [pdfSpread, spreadStart, currentPage, totalPages, currentChapterIdx, state.book, onPageChange]);
 
   const goToPrevPage = useCallback(() => {
+    if (pdfSpread) {
+      if (spreadStart - 2 >= 0) {
+        const prevChapter = spreadStart - 2;
+        setCurrentChapterIdx(prevChapter);
+        setCurrentPage(0);
+        if (onPageChange) {
+          onPageChange({ page: 0, chapter: prevChapter, progress: 0 });
+        }
+      }
+      return;
+    }
     if (currentPage > 0) {
       const prev = currentPage - 1;
       setCurrentPage(prev);
@@ -2130,7 +2220,7 @@ export const Reader: React.FC<ReaderProps> = ({
         });
       }
     }
-  }, [currentPage, currentChapterIdx, totalPages, onPageChange]);
+  }, [pdfSpread, spreadStart, currentPage, currentChapterIdx, totalPages, onPageChange]);
 
   // Clamp currentPage when totalPages changes (e.g., navigating to previous chapter's last page)
   useEffect(() => {
@@ -2469,22 +2559,37 @@ export const Reader: React.FC<ReaderProps> = ({
     );
   }
 
-  const isFirstPage = currentPage === 0 && currentChapterIdx === 0;
-  const isLastPage = currentPage >= totalPages - 1
-    && state.book !== null
-    && currentChapterIdx >= state.book.chapters.length - 1;
+  // In PDF spread mode, page-turning steps by two chapters (see
+  // goToNextPage/goToPrevPage) rather than one, and each chapter's own
+  // totalPages is always 1 (a PDF page is a single fixed image) — so
+  // first/last is about whether a further spread exists, not currentPage.
+  const isFirstPage = pdfSpread
+    ? spreadStart <= 0
+    : currentPage === 0 && currentChapterIdx === 0;
+  const isLastPage = pdfSpread
+    ? state.book === null || spreadStart + 2 >= state.book.chapters.length
+    : currentPage >= totalPages - 1
+      && state.book !== null
+      && currentChapterIdx >= state.book.chapters.length - 1;
 
   const currentChapter = state.book?.chapters[currentChapterIdx];
   const chapterTitle = currentChapter?.title ?? '';
 
   // Whether the page currently on screen is a two-column spread's lone
   // populated column (see `trailingLoneColumn`/measureAllChapters) — if so,
-  // its box gets visually cropped down to one column's width instead of
-  // sitting spread-wide with an empty second column beside it (see the
-  // `pageBoxCrop` wrapper near the render return).
+  // it gets re-centered within the still spread-wide page box instead of
+  // sitting pinned to one edge with an empty second column beside it (see
+  // `trailingLoneColumnShift` near the render return).
   const isTrailingLoneColumnPage = !scroll && effectiveColumns === 2
     && !!trailingLoneColumn[currentChapterIdx]
     && currentPage === (pagesPerChapter[currentChapterIdx] || 1) - 1;
+
+  // Notes anchor to rendered DOM text (see the file-level comment on
+  // Note/Bookmark position-anchoring) — meaningless for PDF pages, which
+  // are fixed-size rasterized images with no real text layer to select or
+  // highlight. Hides the drawer's Notes tab/panel rather than showing an
+  // empty, non-functional one.
+  const notesEnabled = enableNotes && !isPdfBook;
 
   // Overall progress across the whole book
   const overallProgress = (() => {
@@ -2707,7 +2812,7 @@ export const Reader: React.FC<ReaderProps> = ({
                               <BookmarkIcon size="1.2em" />
                             </Tabs.Tab>
                           )}
-                          {enableNotes && (
+                          {notesEnabled && (
                             <Tabs.Tab value="notes" aria-label={t.notesPanelTitle}>
                               <NoteIcon size="1.2em" />
                             </Tabs.Tab>
@@ -2756,7 +2861,7 @@ export const Reader: React.FC<ReaderProps> = ({
                           </Tabs.Panel>
                         )}
 
-                        {enableNotes && (
+                        {notesEnabled && (
                           <Tabs.Panel value="notes" style={{ flex: 1, overflowY: 'auto' }} p="xs">
                             <NotePanel
                               onNavigate={(chapterIdx, page) => {
@@ -2920,6 +3025,12 @@ export const Reader: React.FC<ReaderProps> = ({
                     </Popover.Dropdown>
                   </Popover>
 
+                  {/* Text settings (font size/family, justify, spacing,
+                      margin) — all meaningless for PDFs, which render each
+                      page as a fixed-size rasterized image rather than
+                      reflowable text, so the whole "Aa" panel is hidden for
+                      them rather than shown with controls that do nothing. */}
+                  {!isPdfBook && (
                   <Popover
                     opened={settingsOpen}
                     onChange={setSettingsOpen}
@@ -3138,6 +3249,52 @@ export const Reader: React.FC<ReaderProps> = ({
                       </div>
                     </Popover.Dropdown>
                   </Popover>
+                  )}
+
+                  {/* PDF page zoom — the text-settings panel above doesn't
+                      apply to PDFs (fixed-size rasterized images, not
+                      reflowable text), so this replaces it for them. Scoped
+                      to the paginated (non-scroll) PDF path — see
+                      `pdfZoom`'s use near the render return — since that's
+                      the one wired up to actually respect it. Deliberately a
+                      small inline control rather than the standalone
+                      ZoomController/ZoomControls components in
+                      ZoomController.tsx: those apply to a whole external
+                      surface a host app supplies, and (more importantly)
+                      that file imports `clampZoom` from this one, so
+                      importing back from it here would make the two modules
+                      circular. */}
+                  {isPdfBook && !scroll && (
+                    <div
+                      role="toolbar"
+                      aria-label={t.zoomControls}
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                    >
+                      <ActionIcon
+                        variant="default"
+                        size="lg"
+                        onClick={() => setPdfZoom(z => clampZoom(z - 10))}
+                        disabled={pdfZoom <= 50}
+                        aria-label={`${t.zoomOut}. Current zoom ${pdfZoom}%`}
+                        title={t.zoomOut}
+                      >
+                        −
+                      </ActionIcon>
+                      <Text size="xs" fw={600} aria-live="polite" aria-atomic="true" style={{ minWidth: '2.8rem', textAlign: 'center' }}>
+                        {pdfZoom}%
+                      </Text>
+                      <ActionIcon
+                        variant="default"
+                        size="lg"
+                        onClick={() => setPdfZoom(z => clampZoom(z + 10))}
+                        disabled={pdfZoom >= 300}
+                        aria-label={`${t.zoomIn}. Current zoom ${pdfZoom}%`}
+                        title={t.zoomIn}
+                      >
+                        +
+                      </ActionIcon>
+                    </div>
+                  )}
 
                   {/* Fullscreen toggle */}
                   <ActionIcon
@@ -3280,54 +3437,123 @@ export const Reader: React.FC<ReaderProps> = ({
                     overflow: 'hidden',
                   }}
                 >
-                  {/* Content — either horizontally paged via CSS columns +
-                      transform, or (scroll mode) a normal vertically
-                      scrollable flow with no columns/pages at all. */}
-                  <div
-                    ref={contentRef}
-                    className={scroll ? 'ebook-reader__scroll' : 'ebook-reader__columns'}
-                    dir={state.direction}
-                    onContextMenu={handleContentContextMenu}
-                    style={scroll ? {
-                      height: '100%',
-                      overflowY: 'auto',
-                      padding: `2rem ${margin}px`,
-                      color: 'var(--reader-fg, #1a1a1a)',
-                      fontFamily: selectedFontFamily,
-                      fontSize: 'var(--reader-font-size, 16px)',
-                      lineHeight: lineSpacing,
-                      textAlign: justify ? 'justify' : undefined,
-                      letterSpacing: `${letterSpacing}px`,
-                      wordSpacing: `${wordSpacing}px`,
-                    } : {
-                      columnWidth: pageBoxRef.current
-                        ? `${(pageBoxRef.current.clientWidth - margin * 2 - (effectiveColumns === 2 ? 64 : 0)) / effectiveColumns}px`
-                        : '100%',
-                      columnGap: '64px',
-                      columnFill: 'auto',
-                      height: '100%',
-                      padding: `2rem ${margin}px`,
-                      // The extra `trailingLoneColumnShift` term re-centers
-                      // a spread's lone populated column when its second
-                      // column is empty (see where it's computed, near
-                      // `pageBoxMaxWidth`) — zero on every other page.
-                      transform: state.direction === 'rtl'
-                        ? `translateX(${currentPage * pagePitch - trailingLoneColumnShift}px)`
-                        : `translateX(${-(currentPage * pagePitch) + trailingLoneColumnShift}px)`,
-                      transition: 'transform 0.3s ease',
-                      color: 'var(--reader-fg, #1a1a1a)',
-                      fontFamily: selectedFontFamily,
-                      fontSize: 'var(--reader-font-size, 16px)',
-                      lineHeight: lineSpacing,
-                      textAlign: justify ? 'justify' : undefined,
-                      letterSpacing: `${letterSpacing}px`,
-                      wordSpacing: `${wordSpacing}px`,
-                    }}
-                  >
-                    {currentChapter && currentChapter.content.map((node, ni) => (
-                      <ContentNodeRenderer key={`${currentChapterIdx}-${ni}`} node={node} onImageClick={(src, alt) => setLightboxImage({ src, alt })} onFootnoteClick={handleFootnoteClick} onLinkClick={handleLinkClick} />
-                    ))}
-                  </div>
+                  {/* Content — a one- or two-up PDF page view (see
+                      `isPdfBook`/`pdfSpread`), horizontally paged text via
+                      CSS columns + transform, or (scroll mode) a normal
+                      vertically scrollable flow with no columns/pages at
+                      all. */}
+                  {(isPdfBook && !scroll) ? (
+                    // One chapter (single-page mode) or two (see
+                    // `pdfSpread`/`spreadStart`/goToNextPage/goToPrevPage,
+                    // which step by two chapters at a time in spread mode) —
+                    // each one PDF page — rather than the CSS-column trick
+                    // used below: there's no text to reflow, just up to two
+                    // independent images.
+                    //
+                    // The outer div is a plain `overflow: auto` block, not a
+                    // flex/grid container centering the inner one within
+                    // itself: centering an item that overflows its
+                    // container is a known cross-browser flex/grid trap
+                    // (part of it becomes permanently unreachable by
+                    // scrolling) — whereas a *transformed* (see `pdfZoom`)
+                    // descendant of a plain `overflow: auto` block always
+                    // has its full scaled bounding box included in the
+                    // scrollable area, without that trap. The inner div's
+                    // own `justifyContent: center` is a different, safe
+                    // case: it centers its own 1-2 children *within itself*,
+                    // and they're always capped at MAX_PAGE_WIDTH so they
+                    // never overflow the flex container they're centered
+                    // in — only the flex container as a whole (via the
+                    // transform) can ever overflow its ancestor.
+                    <div
+                      className="ebook-reader__pdf-zoom-scroll"
+                      style={{ width: '100%', height: '100%', overflow: 'auto' }}
+                    >
+                      <div
+                        ref={contentRef}
+                        className="ebook-reader__pdf-spread"
+                        dir={state.direction}
+                        style={{
+                          display: 'flex',
+                          // Plain 'row', not 'row-reverse': `dir` above
+                          // already flips the flex main axis for RTL
+                          // (inline-start becomes the right edge), so the
+                          // first child (spreadStart, the earlier page)
+                          // lands on the right and the second on the left —
+                          // reversing it again here would cancel that back
+                          // out to LTR ordering.
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: pdfSpread ? '2rem' : 0,
+                          width: '100%',
+                          minHeight: '100%',
+                          boxSizing: 'border-box',
+                          padding: `2rem ${margin}px`,
+                          color: 'var(--reader-fg, #1a1a1a)',
+                          transform: `scale(${pdfZoom / 100})`,
+                          transformOrigin: 'top left',
+                        }}
+                      >
+                        {(pdfSpread ? [spreadStart, spreadStart + 1] : [currentChapterIdx]).map((idx) => {
+                          const chapter = state.book?.chapters[idx];
+                          const node = chapter?.content[0];
+                          if (!chapter || !node) return null;
+                          return (
+                            <div key={chapter.id} style={{ flex: '1 1 0', minWidth: 0, maxWidth: `${MAX_PAGE_WIDTH}px`, height: '100%' }}>
+                              <ContentNodeRenderer node={node} onImageClick={(src, alt) => setLightboxImage({ src, alt })} onFootnoteClick={handleFootnoteClick} onLinkClick={handleLinkClick} />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      ref={contentRef}
+                      className={scroll ? 'ebook-reader__scroll' : 'ebook-reader__columns'}
+                      dir={state.direction}
+                      onContextMenu={handleContentContextMenu}
+                      style={scroll ? {
+                        height: '100%',
+                        overflowY: 'auto',
+                        padding: `2rem ${margin}px`,
+                        color: 'var(--reader-fg, #1a1a1a)',
+                        fontFamily: selectedFontFamily,
+                        fontSize: 'var(--reader-font-size, 16px)',
+                        lineHeight: lineSpacing,
+                        textAlign: justify ? 'justify' : undefined,
+                        letterSpacing: `${letterSpacing}px`,
+                        wordSpacing: `${wordSpacing}px`,
+                      } : {
+                        columnWidth: pageBoxRef.current
+                          ? `${(pageBoxRef.current.clientWidth - margin * 2 - (effectiveColumns === 2 ? 64 : 0)) / effectiveColumns}px`
+                          : '100%',
+                        columnGap: '64px',
+                        columnFill: 'auto',
+                        height: '100%',
+                        padding: `2rem ${margin}px`,
+                        // The extra `trailingLoneColumnShift` term re-centers
+                        // a spread's lone populated column when its second
+                        // column is empty (see where it's computed, near
+                        // `pageBoxMaxWidth`) — zero on every other page.
+                        transform: state.direction === 'rtl'
+                          ? `translateX(${currentPage * pagePitch - trailingLoneColumnShift}px)`
+                          : `translateX(${-(currentPage * pagePitch) + trailingLoneColumnShift}px)`,
+                        transition: 'transform 0.3s ease',
+                        color: 'var(--reader-fg, #1a1a1a)',
+                        fontFamily: selectedFontFamily,
+                        fontSize: 'var(--reader-font-size, 16px)',
+                        lineHeight: lineSpacing,
+                        textAlign: justify ? 'justify' : undefined,
+                        letterSpacing: `${letterSpacing}px`,
+                        wordSpacing: `${wordSpacing}px`,
+                      }}
+                    >
+                      {currentChapter && currentChapter.content.map((node, ni) => (
+                        <ContentNodeRenderer key={`${currentChapterIdx}-${ni}`} node={node} onImageClick={(src, alt) => setLightboxImage({ src, alt })} onFootnoteClick={handleFootnoteClick} onLinkClick={handleLinkClick} />
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
