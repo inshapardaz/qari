@@ -287,16 +287,21 @@ export function clampZoom(value: number): number {
  * Best-effort touch-primary device detection, combining the `(hover: none)`
  * media feature with `navigator.maxTouchPoints`. Neither signal alone is
  * fully reliable — some mobile browsers/WebViews have been known to
- * misreport `hover: none` as `hover: hover`, and `maxTouchPoints` alone
- * would flag hybrid mouse+touchscreen laptops as touch-only — but either
- * being true is a good enough signal that the device is primarily
- * touch-driven. Deliberately not using `'ontouchstart' in window`: several
- * non-touch desktop browsers (and jsdom) define it speculatively, making it
- * an unreliable signal on its own.
+ * misreport `hover: none` as `hover: hover`, so `maxTouchPoints` is kept as
+ * a fallback for that case. But `maxTouchPoints` alone would flag hybrid
+ * mouse+touchscreen laptops (which do have a real, working hover-capable
+ * pointer) as touch-only, hiding the page-turn arrows for them — so an
+ * explicit `(hover: hover)` match short-circuits to "not touch", overriding
+ * the `maxTouchPoints` fallback. Deliberately not using `'ontouchstart' in
+ * window`: several non-touch desktop browsers (and jsdom) define it
+ * speculatively, making it an unreliable signal on its own.
  */
 function detectTouchDevice(): boolean {
   if (typeof window === 'undefined') return false;
-  const hoverNone = typeof window.matchMedia === 'function' && window.matchMedia('(hover: none)').matches;
+  const matchMediaAvailable = typeof window.matchMedia === 'function';
+  const hoverHover = matchMediaAvailable && window.matchMedia('(hover: hover)').matches;
+  if (hoverHover) return false;
+  const hoverNone = matchMediaAvailable && window.matchMedia('(hover: none)').matches;
   const hasTouchPoints = typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0;
   return hoverNone || hasTouchPoints;
 }
