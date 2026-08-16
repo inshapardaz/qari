@@ -14,6 +14,7 @@ describe('EPUBPrinterImpl', () => {
         language: 'en',
         publisher: 'Test Publisher',
         publicationDate: '2024-01-01',
+        identifier: 'urn:isbn:9780000000000',
       },
       chapters: [
         {
@@ -73,6 +74,7 @@ describe('EPUBPrinterImpl', () => {
     expect(opf).toContain('<dc:language>en</dc:language>');
     expect(opf).toContain('<dc:publisher>Test Publisher</dc:publisher>');
     expect(opf).toContain('<dc:date>2024-01-01</dc:date>');
+    expect(opf).toContain('<dc:identifier>urn:isbn:9780000000000</dc:identifier>');
   });
 
   it('should omit optional metadata fields when not present', async () => {
@@ -88,6 +90,7 @@ describe('EPUBPrinterImpl', () => {
     expect(opf).not.toContain('<dc:language>');
     expect(opf).not.toContain('<dc:publisher>');
     expect(opf).not.toContain('<dc:date>');
+    expect(opf).not.toContain('<dc:identifier>');
   });
 
   it('should include manifest items for each chapter', async () => {

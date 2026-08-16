@@ -1,23 +1,21 @@
 /**
  * NotePanel Component — displays the list of notes for the current book,
- * with comment editing, deletion, and navigation. Notes themselves are
- * created by selecting text in the reading view and right-clicking, not
- * from this panel — there's no create form here.
+ * with deletion and navigation. Notes are created by selecting text in the
+ * reading view and right-clicking, not from this panel — there's no create
+ * form here, and no editing (a note's excerpt is whatever text was
+ * originally selected).
  * Uses NoteStore from ReaderContext.
  */
 
 import React, { useState, useCallback } from 'react';
-import { Textarea, Button, ActionIcon, Alert, Title, Group, Text } from '@mantine/core';
+import { Button, ActionIcon, Alert, Title, Group, Text } from '@mantine/core';
 import { useReaderContext } from './Reader';
 import { useTranslations } from '../i18n';
 import { getChapterCharCount } from '../services/chapter-navigator';
 import type { Note } from '../models/note';
-import type { NoteChangeEvent } from '../interfaces/note-store';
 import type { PageChangeEvent } from '../models/events';
 
 export interface NotePanelProps {
-  /** Called when a note's comment is created, deleted, or updated */
-  onNoteChange?: (event: NoteChangeEvent) => void;
   /** Called when a note is selected (navigate to it) */
   onNoteSelect?: (note: Note) => void;
   /**
@@ -36,7 +34,6 @@ export interface NotePanelProps {
   charsPerPage?: number;
 }
 
-const MAX_COMMENT_LENGTH = 1000;
 const DEFAULT_CHARS_PER_PAGE = 1500;
 const EXCERPT_LENGTH = 140;
 
@@ -45,18 +42,15 @@ function truncate(text: string, max: number): string {
 }
 
 export const NotePanel: React.FC<NotePanelProps> = ({
-  onNoteChange,
   onNoteSelect,
   onNavigate,
   onPageChange,
   charsPerPage = DEFAULT_CHARS_PER_PAGE,
 }) => {
-  const { state, noteStore, removeNote, updateNote } = useReaderContext();
+  const { state, noteStore, removeNote } = useReaderContext();
   const t = useTranslations();
   const { notes, book } = state;
 
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editComment, setEditComment] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const currentBookId = book?.metadata.identifier || '';
@@ -126,40 +120,6 @@ export const NotePanel: React.FC<NotePanelProps> = ({
     [book, charsPerPage, onNavigate, onPageChange, onNoteSelect]
   );
 
-  const handleEditStart = useCallback((note: Note) => {
-    setEditingId(note.id);
-    setEditComment(note.comment ?? '');
-    setError(null);
-  }, []);
-
-  const handleEditConfirm = useCallback(async () => {
-    if (!editingId || !noteStore) return;
-
-    if (editComment.length > MAX_COMMENT_LENGTH) {
-      setError(`Note comment must not exceed ${MAX_COMMENT_LENGTH} characters.`);
-      return;
-    }
-
-    try {
-      const updated = await noteStore.updateComment(editingId, editComment.trim());
-      updateNote(updated);
-      if (onNoteChange) {
-        onNoteChange({ type: 'updated', note: updated });
-      }
-      setEditingId(null);
-      setEditComment('');
-      setError(null);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to update note.');
-    }
-  }, [editingId, editComment, noteStore, updateNote, onNoteChange]);
-
-  const handleEditCancel = useCallback(() => {
-    setEditingId(null);
-    setEditComment('');
-    setError(null);
-  }, []);
-
   const handleDelete = useCallback(
     async (noteId: string) => {
       if (!noteStore) return;
@@ -202,7 +162,7 @@ export const NotePanel: React.FC<NotePanelProps> = ({
             key={note.id}
             className="note-panel__item"
             data-testid={`note-item-${note.id}`}
-            style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}
+            style={{ borderBottom: '1px solid var(--reader-border, #e0e0e0)' }}
           >
             <Group justify="space-between" wrap="nowrap" py="xs" gap="xs" align="flex-start">
               <Button
@@ -211,7 +171,18 @@ export const NotePanel: React.FC<NotePanelProps> = ({
                 onClick={() => handleNoteClick(note)}
                 variant="subtle"
                 justify="start"
-                style={{ flex: 1, height: 'auto', whiteSpace: 'normal', textAlign: 'start' }}
+                // A "subtle"-variant Button's text/hover otherwise come from
+                // the (Mantine primary/brand) `--button-color`/`--button-hover`,
+                // not the reading theme — this list is book content, so it
+                // should read in the same colors as the rest of the reader.
+                style={{
+                  flex: 1,
+                  height: 'auto',
+                  whiteSpace: 'normal',
+                  textAlign: 'start',
+                  color: 'var(--reader-fg, #1a1a1a)',
+                  '--button-hover': 'var(--reader-surface, #f5f5f5)',
+                } as React.CSSProperties}
               >
                 <div>
                   <Text size="sm" fs="italic" style={{ wordBreak: 'break-word' }}>
@@ -224,63 +195,17 @@ export const NotePanel: React.FC<NotePanelProps> = ({
                   )}
                 </div>
               </Button>
-              <Group gap={4} wrap="nowrap">
-                <ActionIcon
-                  data-testid={`note-edit-${note.id}`}
-                  aria-label={`Edit note comment: ${note.text}`}
-                  onClick={() => handleEditStart(note)}
-                  variant="subtle"
-                  size="sm"
-                >
-                  ✎
-                </ActionIcon>
-                <ActionIcon
-                  data-testid={`note-delete-${note.id}`}
-                  aria-label={`Delete note: ${note.text}`}
-                  onClick={() => handleDelete(note.id)}
-                  variant="subtle"
-                  color="red"
-                  size="sm"
-                >
-                  ✕
-                </ActionIcon>
-              </Group>
+              <ActionIcon
+                data-testid={`note-delete-${note.id}`}
+                aria-label={`Delete note: ${note.text}`}
+                onClick={() => handleDelete(note.id)}
+                variant="subtle"
+                color="red"
+                size="sm"
+              >
+                ✕
+              </ActionIcon>
             </Group>
-
-            {editingId === note.id && (
-              <Group gap="xs" data-testid="note-edit-form" wrap="nowrap" pb="xs" align="flex-start">
-                <Textarea
-                  data-testid="note-edit-input"
-                  placeholder={t.noteCommentPlaceholder}
-                  value={editComment}
-                  maxLength={MAX_COMMENT_LENGTH}
-                  aria-label="Edit note comment"
-                  minRows={2}
-                  onChange={(e) => {
-                    setEditComment(e.target.value);
-                    setError(null);
-                  }}
-                  style={{ flex: 1 }}
-                />
-                <Button
-                  data-testid="note-save-btn"
-                  aria-label="Save note comment"
-                  onClick={handleEditConfirm}
-                  size="xs"
-                >
-                  {t.noteSave}
-                </Button>
-                <Button
-                  data-testid="note-cancel-btn"
-                  aria-label="Cancel note edit"
-                  onClick={handleEditCancel}
-                  variant="subtle"
-                  size="xs"
-                >
-                  {t.noteCancel}
-                </Button>
-              </Group>
-            )}
           </li>
         ))}
       </ul>

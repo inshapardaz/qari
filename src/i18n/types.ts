@@ -6,6 +6,8 @@ export interface TranslationStrings {
   loading: string;
   errorSource: string;
   errorFormat: string;
+  /** Shown in place of the book content when `blockDevTools` detects the browser's devtools are open. */
+  devToolsBlockedMessage: string;
   tableOfContents: string;
   bookmarks: string;
   readingSettings: string;
@@ -59,17 +61,10 @@ export interface TranslationStrings {
 
   // Bookmark panel
   bookmarksPanelTitle: string;
-  bookmarkNamePlaceholder: string;
-  /** Auto-generated bookmark name when no custom name is given. Interpolates {chapter} and {page} (both 1-indexed). */
+  /** Bookmark name, always auto-generated (no custom naming). Interpolates {chapter} and {page} (both 1-indexed). */
   bookmarkAutoName: string;
-  bookmarkAdd: string;
   bookmarksEmpty: string;
-  bookmarkRename: string;
   bookmarkDelete: string;
-  bookmarkSave: string;
-  bookmarkCancel: string;
-  bookmarkNewNameAriaLabel: string;
-  bookmarkCreateAriaLabel: string;
 
   // Note panel
   notesPanelTitle: string;
@@ -78,9 +73,6 @@ export interface TranslationStrings {
   noteAddMenuItem: string;
   /** Context menu item shown on right-click over an existing note highlight. */
   noteRemoveMenuItem: string;
-  noteCommentPlaceholder: string;
-  noteSave: string;
-  noteCancel: string;
 
   // Chapter index
   chaptersTitle: string;

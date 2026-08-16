@@ -346,6 +346,14 @@ export class EPUBParserImpl implements EPUBParser {
     const language = this.getDcElement(metadataEl, 'language');
     const publisher = this.getDcElement(metadataEl, 'publisher');
     const publicationDate = this.getDcElement(metadataEl, 'date');
+    // Every EPUB has at least one <dc:identifier> per spec (an ISBN, UUID,
+    // or similar) — grabbing the first one, same as the other dc: fields
+    // above, rather than cross-referencing the package's `unique-identifier`
+    // attribute to find the "canonical" one. This is what bookmark/note/
+    // progress storage keys persistence by (`book.metadata.identifier`), so
+    // without it every EPUB with no identifier would collapse onto the same
+    // storage key and silently share bookmarks/notes with each other.
+    const identifier = this.getDcElement(metadataEl, 'identifier');
 
     return {
       title,
@@ -353,6 +361,7 @@ export class EPUBParserImpl implements EPUBParser {
       ...(language && { language }),
       ...(publisher && { publisher }),
       ...(publicationDate && { publicationDate }),
+      ...(identifier && { identifier }),
     };
   }
 

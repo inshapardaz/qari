@@ -203,14 +203,16 @@ const bookMetadataArb = (): fc.Arbitrary<BookMetadata> =>
       fc.option(safeText(), { nil: undefined }),
       fc.option(fc.constantFrom('en', 'ar', 'ur', 'fr', 'de'), { nil: undefined }),
       fc.option(safeText(), { nil: undefined }),
-      fc.option(fc.constantFrom('2024-01-01', '2023-06-15', '2020-12-31'), { nil: undefined })
+      fc.option(fc.constantFrom('2024-01-01', '2023-06-15', '2020-12-31'), { nil: undefined }),
+      fc.option(safeText(), { nil: undefined })
     )
-    .map(([title, author, language, publisher, publicationDate]) => ({
+    .map(([title, author, language, publisher, publicationDate, identifier]) => ({
       title,
       ...(author !== undefined && { author }),
       ...(language !== undefined && { language }),
       ...(publisher !== undefined && { publisher }),
       ...(publicationDate !== undefined && { publicationDate }),
+      ...(identifier !== undefined && { identifier }),
     }));
 
 /** Generate a full Book with unique chapter IDs */
@@ -391,6 +393,9 @@ function compareBooksStructurally(original: Book, parsed: Book): {
   }
   if (normalizeWhitespace(original.metadata.publicationDate || '') !== normalizeWhitespace(parsed.metadata.publicationDate || '')) {
     return { equal: false, reason: `PublicationDate mismatch: "${original.metadata.publicationDate}" vs "${parsed.metadata.publicationDate}"` };
+  }
+  if (normalizeWhitespace(original.metadata.identifier || '') !== normalizeWhitespace(parsed.metadata.identifier || '')) {
+    return { equal: false, reason: `Identifier mismatch: "${original.metadata.identifier}" vs "${parsed.metadata.identifier}"` };
   }
 
   // Compare chapter count

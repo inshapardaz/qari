@@ -24,7 +24,6 @@ const mockNote: Note = {
 function createMockNoteStore() {
   return {
     create: vi.fn(),
-    updateComment: vi.fn().mockResolvedValue({ ...mockNote, comment: 'updated comment' }),
     delete: vi.fn().mockResolvedValue(undefined),
     load: vi.fn().mockResolvedValue([]),
     list: vi.fn().mockResolvedValue([]),
@@ -91,6 +90,19 @@ describe('NotePanel', () => {
     expect(screen.getByTestId(`note-excerpt-${mockNote.id}`)).toHaveTextContent('my thoughts');
   });
 
+  it("colors the note excerpt with the reading theme, not Mantine's default button color", () => {
+    // Regression test: a "subtle"-variant Button's text/hover otherwise come
+    // from Mantine's primary/brand color, not the reading theme — jarring
+    // against a non-default reading theme (e.g. bright blue text on a sepia
+    // background). `--reader-fg`/`--reader-surface` are set by ThemeEngine
+    // on the reader root, an ancestor of this panel in the real component
+    // tree.
+    renderWithContext(<NotePanel />);
+    const excerptBtn = screen.getByTestId(`note-excerpt-${mockNote.id}`);
+    expect(excerptBtn).toHaveStyle({ color: 'var(--reader-fg, #1a1a1a)' });
+    expect(excerptBtn.style.getPropertyValue('--button-hover')).toBe('var(--reader-surface, #f5f5f5)');
+  });
+
   it('shows empty message when no notes exist', () => {
     const ctx = createMockContext({
       state: { ...createMockContext().state, notes: [] },
@@ -109,35 +121,6 @@ describe('NotePanel', () => {
     renderWithContext(<NotePanel />, ctx);
     expect(screen.getByTestId(`note-excerpt-${mockNote.id}`)).toBeInTheDocument();
     expect(screen.queryByTestId('note-excerpt-note-other-book')).not.toBeInTheDocument();
-  });
-
-  it('enters edit mode when the edit button is clicked, pre-filled with the current comment', () => {
-    renderWithContext(<NotePanel />);
-    fireEvent.click(screen.getByTestId(`note-edit-${mockNote.id}`));
-    expect(screen.getByTestId('note-edit-input')).toBeInTheDocument();
-    expect(screen.getByTestId('note-edit-input')).toHaveValue('my thoughts');
-  });
-
-  it('saves an edited comment', async () => {
-    const ctx = createMockContext();
-    renderWithContext(<NotePanel />, ctx);
-    fireEvent.click(screen.getByTestId(`note-edit-${mockNote.id}`));
-    fireEvent.change(screen.getByTestId('note-edit-input'), { target: { value: 'updated comment' } });
-    fireEvent.click(screen.getByTestId('note-save-btn'));
-
-    await waitFor(() => {
-      expect(ctx.noteStore!.updateComment).toHaveBeenCalledWith('note-1', 'updated comment');
-    });
-    await waitFor(() => {
-      expect(ctx.updateNote).toHaveBeenCalledWith(expect.objectContaining({ comment: 'updated comment' }));
-    });
-  });
-
-  it('cancels edit mode without saving', () => {
-    renderWithContext(<NotePanel />);
-    fireEvent.click(screen.getByTestId(`note-edit-${mockNote.id}`));
-    fireEvent.click(screen.getByTestId('note-cancel-btn'));
-    expect(screen.queryByTestId('note-edit-input')).not.toBeInTheDocument();
   });
 
   it('deletes a note when the delete button is clicked', async () => {

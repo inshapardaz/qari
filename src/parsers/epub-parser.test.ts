@@ -37,7 +37,8 @@ async function createEpubBuffer(options: {
     <dc:creator>Test Author</dc:creator>
     <dc:language>en</dc:language>
     <dc:publisher>Test Publisher</dc:publisher>
-    <dc:date>2024-01-01</dc:date>`;
+    <dc:date>2024-01-01</dc:date>
+    <dc:identifier>urn:isbn:9780000000000</dc:identifier>`;
 
   const manifestItems = spineItems
     .map((item) => `<item id="${item.id}" href="${item.href}" media-type="application/xhtml+xml"/>`)
@@ -87,6 +88,7 @@ describe('EPUBParserImpl', () => {
       expect(book.metadata.language).toBe('en');
       expect(book.metadata.publisher).toBe('Test Publisher');
       expect(book.metadata.publicationDate).toBe('2024-01-01');
+      expect(book.metadata.identifier).toBe('urn:isbn:9780000000000');
     });
 
     it('should handle missing optional metadata', async () => {
@@ -100,6 +102,23 @@ describe('EPUBParserImpl', () => {
       expect(book.metadata.language).toBeUndefined();
       expect(book.metadata.publisher).toBeUndefined();
       expect(book.metadata.publicationDate).toBeUndefined();
+      expect(book.metadata.identifier).toBeUndefined();
+    });
+
+    it("extracts dc:identifier, distinguishing otherwise-identical EPUBs so bookmark/note storage (keyed by book.metadata.identifier) doesn't collapse them onto the same key", async () => {
+      const epubA = await createEpubBuffer({
+        metadata: '<dc:title>Book A</dc:title><dc:identifier>id-a</dc:identifier>',
+      });
+      const epubB = await createEpubBuffer({
+        metadata: '<dc:title>Book B</dc:title><dc:identifier>id-b</dc:identifier>',
+      });
+
+      const bookA = await parser.parse(epubA);
+      const bookB = await parser.parse(epubB);
+
+      expect(bookA.metadata.identifier).toBe('id-a');
+      expect(bookB.metadata.identifier).toBe('id-b');
+      expect(bookA.metadata.identifier).not.toBe(bookB.metadata.identifier);
     });
 
     it('should default title to "Untitled" if dc:title is missing', async () => {

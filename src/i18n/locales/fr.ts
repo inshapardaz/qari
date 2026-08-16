@@ -8,6 +8,7 @@ export const fr: TranslationStrings = {
   loading: 'Chargement…',
   errorSource: 'Source :',
   errorFormat: 'Format :',
+  devToolsBlockedMessage: 'Contenu masqué pendant que les outils de développement sont ouverts.',
   tableOfContents: 'Table des matières',
   bookmarks: 'Signets',
   readingSettings: 'Paramètres de lecture',
@@ -60,25 +61,15 @@ export const fr: TranslationStrings = {
 
   // Bookmark panel
   bookmarksPanelTitle: 'Signets',
-  bookmarkNamePlaceholder: 'Nom du signet (facultatif)',
   bookmarkAutoName: 'Chapitre {chapter}, Page {page}',
-  bookmarkAdd: 'Ajouter un signet',
   bookmarksEmpty: 'Aucun signet pour le moment.',
-  bookmarkRename: 'Renommer',
   bookmarkDelete: 'Supprimer',
-  bookmarkSave: 'Enregistrer',
-  bookmarkCancel: 'Annuler',
-  bookmarkNewNameAriaLabel: 'Nouveau nom du signet',
-  bookmarkCreateAriaLabel: 'Créer un signet',
 
   // Note panel
   notesPanelTitle: 'Notes',
   notesEmpty: 'Aucune note pour le moment. Sélectionnez du texte puis faites un clic droit pour en ajouter une.',
   noteAddMenuItem: 'Ajouter une note',
   noteRemoveMenuItem: 'Supprimer la note',
-  noteCommentPlaceholder: 'Ajouter un commentaire (facultatif)',
-  noteSave: 'Enregistrer',
-  noteCancel: 'Annuler',
 
   // Chapter index
   chaptersTitle: 'Chapitres',

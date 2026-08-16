@@ -8,6 +8,7 @@ export const en: TranslationStrings = {
   loading: 'Loading…',
   errorSource: 'Source:',
   errorFormat: 'Format:',
+  devToolsBlockedMessage: 'Content hidden while developer tools are open.',
   tableOfContents: 'Table of contents',
   bookmarks: 'Bookmarks',
   readingSettings: 'Reading settings',
@@ -60,25 +61,15 @@ export const en: TranslationStrings = {
 
   // Bookmark panel
   bookmarksPanelTitle: 'Bookmarks',
-  bookmarkNamePlaceholder: 'Bookmark name (optional)',
   bookmarkAutoName: 'Chapter {chapter}, Page {page}',
-  bookmarkAdd: 'Add Bookmark',
   bookmarksEmpty: 'No bookmarks yet.',
-  bookmarkRename: 'Rename',
   bookmarkDelete: 'Delete',
-  bookmarkSave: 'Save',
-  bookmarkCancel: 'Cancel',
-  bookmarkNewNameAriaLabel: 'New bookmark name',
-  bookmarkCreateAriaLabel: 'Create bookmark',
 
   // Note panel
   notesPanelTitle: 'Notes',
   notesEmpty: 'No notes yet. Select text and right-click to add one.',
   noteAddMenuItem: 'Add note',
   noteRemoveMenuItem: 'Remove note',
-  noteCommentPlaceholder: 'Add a comment (optional)',
-  noteSave: 'Save',
-  noteCancel: 'Cancel',
 
   // Chapter index
   chaptersTitle: 'Chapters',

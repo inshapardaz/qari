@@ -76,4 +76,29 @@ describe('Chapter drawer tabs', () => {
     fireEvent.click(within(panel).getByRole('tab', { name: 'Notes' }));
     expect(within(panel).getByTestId('book-info')).toHaveTextContent('Test Book');
   });
+
+  it('still has a modal backdrop (blocks/closes on outside click) but blurs rather than dims the rest of the reader', async () => {
+    // Regression test: the drawer is portalled into the reader root, which
+    // spans the header/titlebar and content viewport as well as the drawer
+    // itself (see the root's own `transform` comment) — Mantine's default
+    // 60%-black Drawer.Overlay backdrop would then dim the *entire* reader,
+    // header included, not just the content behind the drawer, reading as
+    // the rest of the reader disappearing while it's open. It's still a
+    // modal (the overlay element is present, blocking/closing on outside
+    // clicks) — just fully transparent (`backgroundOpacity={0}`) with a
+    // `backdrop-filter: blur()` instead, so the header/content stay
+    // visible (just softened) rather than hidden behind a dark scrim.
+    const { container } = render(<Reader source={createMarkdownSource()} />);
+    await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
+
+    await openDrawer();
+
+    const overlay = container.querySelector('.mantine-Overlay-root') as HTMLElement;
+    expect(overlay).not.toBeNull();
+    expect(overlay.style.getPropertyValue('--overlay-bg')).toBe('rgba(0, 0, 0, 0)');
+    expect(overlay.style.getPropertyValue('--overlay-filter')).toContain('blur(');
+    // The header's own controls are still present (not unmounted/hidden).
+    expect(screen.getByRole('button', { name: 'Table of contents' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reading settings' })).toBeInTheDocument();
+  });
 });

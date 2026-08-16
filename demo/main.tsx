@@ -178,6 +178,14 @@ function App() {
   const [source, setSource] = useState<ReaderSource>({ type: 'markdown', content: SAMPLE_MARKDOWN });
   const [urlInput, setUrlInput] = useState('');
   const [sourceLabel, setSourceLabel] = useState('Sample Markdown');
+  // Bookmarks/notes/progress are all keyed by `book.metadata.identifier` —
+  // but markdown and PDF sources never have one parsed from their own
+  // content (unlike EPUB's <dc:identifier>), so without an explicit
+  // override every such book collapses onto the same empty-string storage
+  // key and ends up sharing bookmarks/notes with every other one. Tracked
+  // here and always passed via `bookInfo.identifier` below so each loaded
+  // source gets its own key regardless of format.
+  const [bookIdentifier, setBookIdentifier] = useState('sample-markdown');
   const [language, setLanguage] = useState<DemoLanguage>('en');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -188,6 +196,8 @@ function App() {
   const [enableNotes, setEnableNotes] = useState(true);
   const [enableProgressTracking, setEnableProgressTracking] = useState(true);
   const [enableBuiltInDictionary, setEnableBuiltInDictionary] = useState(true);
+  const [readOnly, setReadOnly] = useState(false);
+  const [blockDevTools, setBlockDevTools] = useState(false);
   const [direction, setDirection] = useState<'auto' | 'ltr' | 'rtl'>('auto');
   const [zoom, setZoom] = useState(100);
   const [closeMessage, setCloseMessage] = useState<string | null>(null);
@@ -234,6 +244,8 @@ function App() {
     if (!trimmed) return;
     setSource({ type: 'url', url: trimmed });
     setSourceLabel(trimmed.length > 50 ? trimmed.slice(0, 50) + '…' : trimmed);
+    // The URL itself is already a stable, unique identifier.
+    setBookIdentifier(trimmed);
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -241,6 +253,9 @@ function App() {
     if (!file) return;
 
     const name = file.name.toLowerCase();
+    // Name + size as the identifier: cheap, synchronous, and distinguishes
+    // same-named files that actually differ, which name alone wouldn't.
+    const identifier = `${file.name}-${file.size}`;
 
     if (name.endsWith('.epub')) {
       const buffer = await file.arrayBuffer();
@@ -260,6 +275,7 @@ function App() {
       setSource({ type: 'markdown', content: text });
       setSourceLabel(file.name + ' (as text)');
     }
+    setBookIdentifier(identifier);
 
     // Reset file input so re-selecting the same file triggers onChange
     if (fileInputRef.current) {
@@ -270,14 +286,14 @@ function App() {
   const handleLoadSample = () => {
     setSource({ type: 'markdown', content: SAMPLE_MARKDOWN });
     setSourceLabel('Sample Markdown');
+    setBookIdentifier('sample-markdown');
   };
 
-  const bookInfo = (bookInfoTitle.trim() || bookInfoAuthor.trim())
-    ? {
-        ...(bookInfoTitle.trim() && { title: bookInfoTitle.trim() }),
-        ...(bookInfoAuthor.trim() && { author: bookInfoAuthor.trim() }),
-      }
-    : undefined;
+  const bookInfo = {
+    identifier: bookIdentifier,
+    ...(bookInfoTitle.trim() && { title: bookInfoTitle.trim() }),
+    ...(bookInfoAuthor.trim() && { author: bookInfoAuthor.trim() }),
+  };
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -447,6 +463,27 @@ function App() {
             enableBuiltInDictionary
           </label>
 
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem' }}>
+            <input
+              type="checkbox"
+              checked={readOnly}
+              onChange={(e) => setReadOnly(e.target.checked)}
+            />
+            readOnly
+          </label>
+
+          <label
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem' }}
+            title="Only takes effect in a production build (checks process.env.NODE_ENV) — has no visible effect here under `npm run dev`."
+          >
+            <input
+              type="checkbox"
+              checked={blockDevTools}
+              onChange={(e) => setBlockDevTools(e.target.checked)}
+            />
+            blockDevTools <span style={{ color: '#888', fontSize: '0.8rem' }}>(prod only)</span>
+          </label>
+
           <div>
             <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: '#555' }}>
               direction
@@ -567,6 +604,8 @@ function App() {
           enableNotes={enableNotes}
           enableProgressTracking={enableProgressTracking}
           enableBuiltInDictionary={enableBuiltInDictionary}
+          readOnly={readOnly}
+          blockDevTools={blockDevTools}
           showCloseButton={showCloseButton}
           direction={direction}
           zoom={zoom}

@@ -14,8 +14,6 @@ import { TranslationContext, DEFAULT_TRANSLATIONS } from '../index';
 const customTranslations = {
   ...DEFAULT_TRANSLATIONS,
   bookmarksPanelTitle: 'Marcadores',
-  bookmarkNamePlaceholder: 'Nombre del marcador',
-  bookmarkAdd: 'Agregar Marcador',
   bookmarksEmpty: 'No hay marcadores aún.',
 };
 
@@ -44,7 +42,6 @@ function createMockContext(overrides: Partial<ReaderContextValue> = {}): ReaderC
     dictionaryService: {} as any,
     bookmarkStore: {
       create: vi.fn(),
-      rename: vi.fn(),
       delete: vi.fn(),
       load: vi.fn(),
       list: vi.fn(),
@@ -79,16 +76,6 @@ describe('BookmarkPanel translation integration', () => {
   it('renders translated heading from bookmarksPanelTitle', () => {
     renderWithProviders(<BookmarkPanel />);
     expect(screen.getByText('Marcadores')).toBeInTheDocument();
-  });
-
-  it('renders translated placeholder from bookmarkNamePlaceholder', () => {
-    renderWithProviders(<BookmarkPanel />);
-    expect(screen.getByPlaceholderText('Nombre del marcador')).toBeInTheDocument();
-  });
-
-  it('renders translated button label from bookmarkAdd', () => {
-    renderWithProviders(<BookmarkPanel />);
-    expect(screen.getByText('Agregar Marcador')).toBeInTheDocument();
   });
 
   it('renders translated empty state from bookmarksEmpty', () => {

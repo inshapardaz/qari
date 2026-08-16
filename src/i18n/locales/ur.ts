@@ -8,6 +8,7 @@ export const ur: TranslationStrings = {
   loading: 'لوڈ ہو رہا ہے…',
   errorSource: 'ذریعہ:',
   errorFormat: 'فارمیٹ:',
+  devToolsBlockedMessage: 'ڈیولپر ٹولز کھلے ہونے کے دوران مواد پوشیدہ ہے۔',
   tableOfContents: 'فہرست مضامین',
   bookmarks: 'بک مارکس',
   readingSettings: 'پڑھنے کی ترتیبات',
@@ -60,25 +61,15 @@ export const ur: TranslationStrings = {
 
   // Bookmark panel
   bookmarksPanelTitle: 'بک مارکس',
-  bookmarkNamePlaceholder: 'بک مارک کا نام (اختیاری)',
   bookmarkAutoName: 'باب {chapter}، صفحہ {page}',
-  bookmarkAdd: 'بک مارک شامل کریں',
   bookmarksEmpty: 'ابھی کوئی بک مارک نہیں۔',
-  bookmarkRename: 'نام تبدیل',
   bookmarkDelete: 'حذف',
-  bookmarkSave: 'محفوظ',
-  bookmarkCancel: 'منسوخ',
-  bookmarkNewNameAriaLabel: 'نیا بک مارک نام',
-  bookmarkCreateAriaLabel: 'بک مارک بنائیں',
 
   // Note panel
   notesPanelTitle: 'نوٹس',
   notesEmpty: 'ابھی کوئی نوٹ نہیں۔ متن منتخب کریں اور شامل کرنے کے لیے دائیں کلک کریں۔',
   noteAddMenuItem: 'نوٹ شامل کریں',
   noteRemoveMenuItem: 'نوٹ حذف کریں',
-  noteCommentPlaceholder: 'تبصرہ شامل کریں (اختیاری)',
-  noteSave: 'محفوظ',
-  noteCancel: 'منسوخ',
 
   // Chapter index
   chaptersTitle: 'ابواب',

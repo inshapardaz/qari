@@ -91,6 +91,10 @@ export class EPUBPrinterImpl implements Pick<PrettyPrinter, 'toEpub'> {
       lines.push(`    <dc:date>${this.escapeXml(metadata.publicationDate)}</dc:date>`);
     }
 
+    if (metadata.identifier) {
+      lines.push(`    <dc:identifier>${this.escapeXml(metadata.identifier)}</dc:identifier>`);
+    }
+
     lines.push('  </metadata>');
     return lines.join('\n  ');
   }

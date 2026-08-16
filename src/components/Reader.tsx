@@ -176,6 +176,38 @@ export interface ReaderProps {
   /** Enable or disable the notes feature (select text, right-click to add a note). Defaults to true. */
   enableNotes?: boolean;
   /**
+   * Blocks copying out of the book content — the copy/cut clipboard events
+   * are prevented, regardless of how a copy is triggered (keyboard
+   * shortcut, the browser's own right-click "Copy", or programmatically).
+   * Text selection itself is deliberately left working, and so is the
+   * content's right-click menu: both the notes feature ("Add note") and
+   * dictionary lookup ("Meaning") depend on being able to select text, and
+   * disabling selection would silently break them too. Doesn't affect the
+   * reader's own UI chrome (header, chapter/bookmark/note list text, etc.),
+   * only the book content itself. Defaults to false.
+   */
+  readOnly?: boolean;
+  /**
+   * Best-effort extra protection on top of `readOnly`: while the browser's
+   * developer tools appear to be open, the book's text content is swapped
+   * out for a placeholder, so it can't be read out of the DOM via the
+   * Elements panel. Only takes effect in production builds (checks
+   * `process.env.NODE_ENV === 'production'`, the same convention React
+   * itself uses) — never in development, so integrating/debugging the
+   * reader isn't hindered by its own devtools disappearing.
+   *
+   * Detection is inherently heuristic — there is no real API for this —
+   * and works by comparing `window.outerWidth`/`outerHeight` against
+   * `innerWidth`/`innerHeight`: a large gap usually means a *docked*
+   * devtools panel is eating into the viewport. This is the same technique
+   * most "anti-devtools" libraries use and is broadly cross-browser
+   * (Chrome, Firefox, Edge, Safari all shrink the viewport this way), but
+   * it cannot see an *undocked* (separate-window) devtools instance, and a
+   * narrow/small browser window can occasionally cross the threshold on
+   * its own. Treat this as a deterrent, not a guarantee. Defaults to false.
+   */
+  blockDevTools?: boolean;
+  /**
    * Custom font options for the font selector.
    * Each entry provides a display name and CSS font-family value.
    * Defaults to DEFAULT_FONT_OPTIONS (Serif, Sans, Mono) if not provided.
@@ -325,6 +357,27 @@ const MAX_PAGE_WIDTH = 520;
 function detectMobileViewport(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
   return window.matchMedia(`(max-width: ${MOBILE_VIEWPORT_MAX_WIDTH}px)`).matches;
+}
+
+// Threshold (px) for the devtools-open heuristic below — generous enough
+// that ordinary browser chrome (toolbars, scrollbars) never crosses it, but
+// well under how much a docked devtools panel typically eats into the
+// viewport (usually 300px+).
+const DEVTOOLS_SIZE_THRESHOLD = 160;
+
+/**
+ * Best-effort, heuristic devtools-open detector for `blockDevTools` (see its
+ * doc comment on ReaderProps for the full caveats). Compares the outer
+ * (whole browser window) and inner (viewport) dimensions: docking devtools
+ * shrinks just the viewport, opening a gap between the two that a normal
+ * browser chrome never produces. Misses undocked/separate-window devtools
+ * entirely — there's no general cross-browser way to catch that case.
+ */
+function detectDevToolsOpen(): boolean {
+  if (typeof window === 'undefined') return false;
+  const widthGap = window.outerWidth - window.innerWidth;
+  const heightGap = window.outerHeight - window.innerHeight;
+  return widthGap > DEVTOOLS_SIZE_THRESHOLD || heightGap > DEVTOOLS_SIZE_THRESHOLD;
 }
 
 // Mirrors BookmarkPanel's own DEFAULT_CHARS_PER_PAGE (and ChapterNavigator's
@@ -800,6 +853,8 @@ export const Reader: React.FC<ReaderProps> = ({
   enableBuiltInDictionary = false,
   enableBookmarks = true,
   enableNotes = true,
+  readOnly = false,
+  blockDevTools = false,
   enableProgressTracking = true,
   fontOptions = DEFAULT_FONT_OPTIONS,
   mantineTheme,
@@ -916,6 +971,10 @@ export const Reader: React.FC<ReaderProps> = ({
   // and `columns` is overridden down to 1 (see `effectiveColumns` below)
   // whenever this is true.
   const [isMobileViewport, setIsMobileViewport] = useState(detectMobileViewport);
+  // See `blockDevTools` on ReaderProps — starts false regardless of the
+  // actual state so there's no flash-of-hidden-content on first paint
+  // before the polling effect below gets a chance to check.
+  const [devToolsOpen, setDevToolsOpen] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<{ src: string; alt: string } | null>(null);
   const [activeFootnote, setActiveFootnote] = useState<FootnoteRefSpan | null>(null);
   const [footnoteAnchor, setFootnoteAnchor] = useState<{ top: number; left: number } | null>(null);
@@ -1087,6 +1146,28 @@ export const Reader: React.FC<ReaderProps> = ({
       mql.removeEventListener('change', handleChange);
     };
   }, []);
+
+  // See `blockDevTools` on ReaderProps. Polled on an interval rather than
+  // event-driven: there's no event that fires when devtools docks/undocks,
+  // only a `resize` on the window when a *docked* panel opens/closes (which
+  // this piggybacks on for a snappier response), so a periodic re-check is
+  // what actually catches it — including someone opening devtools with the
+  // window already at whatever size it's going to stay at, which wouldn't
+  // ever produce a resize. Only active in production (see the prop's own
+  // doc comment for why) and while the feature is actually turned on.
+  useEffect(() => {
+    if (!blockDevTools || typeof process === 'undefined' || process.env.NODE_ENV !== 'production') {
+      return;
+    }
+    const check = () => setDevToolsOpen(detectDevToolsOpen());
+    check();
+    window.addEventListener('resize', check);
+    const interval = setInterval(check, 1000);
+    return () => {
+      window.removeEventListener('resize', check);
+      clearInterval(interval);
+    };
+  }, [blockDevTools]);
 
   // Keep a controlled `columns` prop in sync with the mobile-forced single
   // page layout: since the reader itself decides columns via
@@ -1492,6 +1573,11 @@ export const Reader: React.FC<ReaderProps> = ({
   // the Menu rendered near the content div for the actual menu items.
   // ---------------------------------------------------------------------------
   const handleContentContextMenu = useCallback((e: React.MouseEvent) => {
+    // Deliberately not gated on `readOnly` — selection, and this menu's
+    // "Add note"/dictionary lookup, are meant to keep working under
+    // `readOnly` (see its doc comment on ReaderProps); only the actual
+    // copy/cut clipboard events are blocked (see the content div's
+    // `onCopy`/`onCut`), independent of how the content gets selected.
     if (!enableNotes) return;
 
     const targetEl = e.target as HTMLElement | null;
@@ -2569,8 +2655,8 @@ export const Reader: React.FC<ReaderProps> = ({
   const isLastPage = pdfSpread
     ? state.book === null || spreadStart + 2 >= state.book.chapters.length
     : currentPage >= totalPages - 1
-      && state.book !== null
-      && currentChapterIdx >= state.book.chapters.length - 1;
+    && state.book !== null
+    && currentChapterIdx >= state.book.chapters.length - 1;
 
   const currentChapter = state.book?.chapters[currentChapterIdx];
   const chapterTitle = currentChapter?.title ?? '';
@@ -2756,8 +2842,43 @@ export const Reader: React.FC<ReaderProps> = ({
                   size={320}
                   portalProps={{ target: mantinePortalTarget }}
                 >
-                  <Drawer.Overlay />
-                  <Drawer.Content data-testid="chapter-menu-panel">
+                  {/* Still a modal — the overlay is present, blocks
+                      interaction with the rest of the reader while it's
+                      open, and closes the drawer on an outside click — but
+                      instead of Mantine's default 60%-black scrim (which
+                      would read as the rest of the reader vanishing, since
+                      this drawer is portalled into the reader root and so
+                      the overlay spans the header/titlebar and footer too,
+                      not just the content behind the drawer — see the
+                      root's own `transform` comment for why), it stays
+                      fully see-through (`backgroundOpacity={0}`) and uses a
+                      `backdrop-filter: blur()` instead: the header/content
+                      stay visible, just softened, the same "frosted glass"
+                      effect a modal backdrop typically gives. */}
+                  <Drawer.Overlay backgroundOpacity={0} blur={4} />
+                  {/* Overridden here rather than left to Mantine's own
+                      forced light/dark colorScheme (see `mantineColorScheme`
+                      above): that only gives Mantine components a binary
+                      light/dark palette, which can't represent sepia or
+                      high-contrast — sepia would render as generic Mantine
+                      light (white, not parchment) and high-contrast as
+                      generic Mantine dark (dark gray, not true black/white).
+                      Re-pointing Mantine's own CSS variables at the exact
+                      `--reader-*` colors (set by ThemeEngine) instead makes
+                      every nested Mantine component (Tabs, ActionIcons, and
+                      BookmarkPanel/NotePanel's own controls) inherit the
+                      precise reading theme automatically, the same way
+                      Mantine's own dark-mode override works. */}
+                  <Drawer.Content
+                    data-testid="chapter-menu-panel"
+                    style={{
+                      '--mantine-color-body': 'var(--reader-bg, #ffffff)',
+                      '--mantine-color-text': 'var(--reader-fg, #1a1a1a)',
+                      '--mantine-color-default-border': 'var(--reader-border, #e0e0e0)',
+                      backgroundColor: 'var(--reader-bg, #ffffff)',
+                      color: 'var(--reader-fg, #1a1a1a)',
+                    } as React.CSSProperties}
+                  >
                     <Drawer.Body p={0} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                       {state.book?.metadata && (
                         <div
@@ -2801,9 +2922,25 @@ export const Reader: React.FC<ReaderProps> = ({
                         value={chapterDrawerTab}
                         onChange={(value) => setChapterDrawerTab((value as typeof chapterDrawerTab) ?? 'chapters')}
                         dir={t.uiDirection}
+                        // The active tab's underline reads Mantine's own
+                        // `--tabs-color`, which this `color` prop feeds —
+                        // otherwise it defaults to Mantine's primary/brand
+                        // color rather than the reading theme's accent.
+                        color="var(--reader-accent, #0071e3)"
                         style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}
                       >
-                        <Tabs.List grow>
+                        {/* `--tab-hover-color`/`--tab-border-color` are
+                            otherwise set by Mantine's own default-variant CSS
+                            (a plain gray, independent of the `color` prop
+                            above) — overridden here, on the same element
+                            Mantine's own rule targets, so this wins. */}
+                        <Tabs.List
+                          grow
+                          style={{
+                            '--tab-hover-color': 'var(--reader-surface, #f5f5f5)',
+                            '--tab-border-color': 'var(--reader-border, #e0e0e0)',
+                          } as React.CSSProperties}
+                        >
                           <Tabs.Tab value="chapters" aria-label={t.chaptersTitle}>
                             <ChaptersIcon size="1.2em" />
                           </Tabs.Tab>
@@ -2839,8 +2976,16 @@ export const Reader: React.FC<ReaderProps> = ({
                                 borderRadius: 'var(--mantine-radius-sm)',
                                 cursor: 'pointer',
                                 fontWeight: idx === currentChapterIdx ? 700 : 400,
-                                backgroundColor: idx === currentChapterIdx ? 'var(--mantine-primary-color-filled)' : 'transparent',
-                                color: idx === currentChapterIdx ? 'white' : 'var(--reader-fg, #1a1a1a)',
+                                // The active chapter's highlight used Mantine's
+                                // primary/brand color — jarring against a
+                                // non-default reading theme. `--reader-accent`
+                                // is the same theme's own highlight color
+                                // (set by ThemeEngine), and `--reader-bg`
+                                // reads reliably on top of it across all four
+                                // built-in themes (including high-contrast's
+                                // black-on-yellow).
+                                backgroundColor: idx === currentChapterIdx ? 'var(--reader-accent, #0071e3)' : 'transparent',
+                                color: idx === currentChapterIdx ? 'var(--reader-bg, #ffffff)' : 'var(--reader-fg, #1a1a1a)',
                               }}
                             >
                               {ch.title}
@@ -3031,224 +3176,224 @@ export const Reader: React.FC<ReaderProps> = ({
                       reflowable text, so the whole "Aa" panel is hidden for
                       them rather than shown with controls that do nothing. */}
                   {!isPdfBook && (
-                  <Popover
-                    opened={settingsOpen}
-                    onChange={setSettingsOpen}
-                    position={t.uiDirection === 'rtl' ? 'bottom-start' : 'bottom-end'}
-                    withinPortal
-                    portalProps={{ target: mantinePortalTarget }}
-                    shadow="md"
-                    radius="lg"
-                    width={300}
-                    trapFocus
-                    // See fontDropdownOpen above — keeps a tap on the nested
-                    // typeface dropdown's options from being misread as an
-                    // outside tap that closes this whole panel.
-                    closeOnClickOutside={!fontDropdownOpen}
-                  >
-                    <Popover.Target>
-                      <ActionIcon
-                        variant={settingsOpen ? 'filled' : 'transparent'}
-                        size="lg"
-                        onClick={() => setSettingsOpen(!settingsOpen)}
-                        aria-label={t.readingSettings}
-                        aria-expanded={settingsOpen}
-                        style={settingsOpen
-                          ? { backgroundColor: 'var(--reader-fg, #1a1a1a)', color: 'var(--reader-bg, #ffffff)' }
-                          : { color: 'var(--reader-fg, #1a1a1a)' }}
-                      >
-                        <span aria-hidden="true" style={{ fontWeight: 600 }}>Aa</span>
-                      </ActionIcon>
-                    </Popover.Target>
-                    <Popover.Dropdown data-testid="settings-panel" p="sm">
-                      <div dir={t.uiDirection}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--mantine-spacing-sm)' }}>
-                          <Text fw={700} size="lg">
-                            {t.readingSettings}
-                          </Text>
-                          <ActionIcon
-                            variant="subtle"
-                            size="sm"
-                            aria-label={t.resetToDefaults}
-                            title={t.resetToDefaults}
-                            onClick={() => {
-                              const defaultFamily = fontOptions.find(o => o.name.toLowerCase() === 'serif')?.family
-                                ?? fontOptions[0]?.family
-                                ?? 'Georgia, "Times New Roman", serif';
-                              setSelectedFontFamily(defaultFamily);
-                              if (onSettingsChange) onSettingsChange({
-                                theme: 'light',
-                                fontFamily: 'serif',
-                                fontSize: 16,
-                                justify: true,
-                                lineSpacing: 1.5,
-                                letterSpacing: 0,
-                                wordSpacing: 0,
-                                margin: 32,
-                                columns: 1,
-                              });
-                            }}
-                          >
-                            ↺
-                          </ActionIcon>
-                        </div>
-
-                        {/* Font size — chip row with a percentage readout
-                            (relative to the 16px baseline), no slider. Every
-                            control here applies immediately via onSettingsChange. */}
-                        <div style={{ marginBottom: '1.1rem' }}>
-                          <Text size="xs" c="dimmed" fw={500} mb={4}>
-                            {t.settingsFontSize}
-                          </Text>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                            <ActionIcon
-                              variant="default"
-                              radius="md"
-                              onClick={() => { if (onSettingsChange) onSettingsChange({ fontSize: Math.max(12, fontSize - 2) }); }}
-                              disabled={fontSize <= 12}
-                              aria-label={t.settingsFontSize}
-                            >
-                              −
-                            </ActionIcon>
-                            <Text data-testid="font-size-percent" fw={600} style={{ flex: 1, textAlign: 'center' }}>
-                              {Math.round((fontSize / 16) * 100)}%
+                    <Popover
+                      opened={settingsOpen}
+                      onChange={setSettingsOpen}
+                      position={t.uiDirection === 'rtl' ? 'bottom-start' : 'bottom-end'}
+                      withinPortal
+                      portalProps={{ target: mantinePortalTarget }}
+                      shadow="md"
+                      radius="lg"
+                      width={300}
+                      trapFocus
+                      // See fontDropdownOpen above — keeps a tap on the nested
+                      // typeface dropdown's options from being misread as an
+                      // outside tap that closes this whole panel.
+                      closeOnClickOutside={!fontDropdownOpen}
+                    >
+                      <Popover.Target>
+                        <ActionIcon
+                          variant={settingsOpen ? 'filled' : 'transparent'}
+                          size="lg"
+                          onClick={() => setSettingsOpen(!settingsOpen)}
+                          aria-label={t.readingSettings}
+                          aria-expanded={settingsOpen}
+                          style={settingsOpen
+                            ? { backgroundColor: 'var(--reader-fg, #1a1a1a)', color: 'var(--reader-bg, #ffffff)' }
+                            : { color: 'var(--reader-fg, #1a1a1a)' }}
+                        >
+                          <span aria-hidden="true" style={{ fontWeight: 600 }}>Aa</span>
+                        </ActionIcon>
+                      </Popover.Target>
+                      <Popover.Dropdown data-testid="settings-panel" p="sm">
+                        <div dir={t.uiDirection}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--mantine-spacing-sm)' }}>
+                            <Text fw={700} size="lg">
+                              {t.readingSettings}
                             </Text>
                             <ActionIcon
-                              variant="default"
-                              radius="md"
-                              onClick={() => { if (onSettingsChange) onSettingsChange({ fontSize: Math.min(48, fontSize + 2) }); }}
-                              disabled={fontSize >= 48}
-                              aria-label={t.settingsFontSize}
+                              variant="subtle"
+                              size="sm"
+                              aria-label={t.resetToDefaults}
+                              title={t.resetToDefaults}
+                              onClick={() => {
+                                const defaultFamily = fontOptions.find(o => o.name.toLowerCase() === 'serif')?.family
+                                  ?? fontOptions[0]?.family
+                                  ?? 'Georgia, "Times New Roman", serif';
+                                setSelectedFontFamily(defaultFamily);
+                                if (onSettingsChange) onSettingsChange({
+                                  theme: 'light',
+                                  fontFamily: 'serif',
+                                  fontSize: 16,
+                                  justify: true,
+                                  lineSpacing: 1.5,
+                                  letterSpacing: 0,
+                                  wordSpacing: 0,
+                                  margin: 32,
+                                  columns: 1,
+                                });
+                              }}
                             >
-                              +
+                              ↺
                             </ActionIcon>
                           </div>
-                        </div>
 
-                        {/* Typeface */}
-                        <div style={{ marginBottom: '1.1rem' }}>
-                          <Select
-                            size="xs"
-                            label={t.settingsFontFamily}
-                            value={selectedFontFamily}
-                            onChange={(family) => {
-                              if (!family) return;
-                              setSelectedFontFamily(family);
-                              const opt = fontOptions.find(o => o.family === family);
-                              if (onSettingsChange) onSettingsChange({ fontFamily: opt?.name ?? family });
-                            }}
-                            data={fontOptions.map(opt => ({ value: opt.family, label: t.fontNames[opt.name] ?? opt.name }))}
-                            allowDeselect={false}
-                            onDropdownOpen={() => setFontDropdownOpen(true)}
-                            onDropdownClose={() => setFontDropdownOpen(false)}
-                            comboboxProps={{ withinPortal: true, portalProps: { target: mantinePortalTarget } }}
-                            styles={{
-                              label: { fontSize: 'var(--mantine-font-size-xs)', color: 'var(--mantine-color-dimmed)', fontWeight: 500, marginBottom: 4 },
-                              input: { fontFamily: selectedFontFamily },
-                            }}
-                          />
-                        </div>
+                          {/* Font size — chip row with a percentage readout
+                            (relative to the 16px baseline), no slider. Every
+                            control here applies immediately via onSettingsChange. */}
+                          <div style={{ marginBottom: '1.1rem' }}>
+                            <Text size="xs" c="dimmed" fw={500} mb={4}>
+                              {t.settingsFontSize}
+                            </Text>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                              <ActionIcon
+                                variant="default"
+                                radius="md"
+                                onClick={() => { if (onSettingsChange) onSettingsChange({ fontSize: Math.max(12, fontSize - 2) }); }}
+                                disabled={fontSize <= 12}
+                                aria-label={t.settingsFontSize}
+                              >
+                                −
+                              </ActionIcon>
+                              <Text data-testid="font-size-percent" fw={600} style={{ flex: 1, textAlign: 'center' }}>
+                                {Math.round((fontSize / 16) * 100)}%
+                              </Text>
+                              <ActionIcon
+                                variant="default"
+                                radius="md"
+                                onClick={() => { if (onSettingsChange) onSettingsChange({ fontSize: Math.min(48, fontSize + 2) }); }}
+                                disabled={fontSize >= 48}
+                                aria-label={t.settingsFontSize}
+                              >
+                                +
+                              </ActionIcon>
+                            </div>
+                          </div>
 
-                        {/* Justify text */}
-                        <div style={{ marginBottom: '1.1rem' }}>
-                          <Switch
-                            size="sm"
-                            checked={justify}
-                            onChange={(e) => { if (onSettingsChange) onSettingsChange({ justify: e.currentTarget.checked }); }}
-                            label={t.settingsJustify}
-                            aria-label={t.settingsJustify}
-                            labelPosition="left"
-                            styles={{ body: { justifyContent: 'space-between' }, label: { fontSize: 'var(--mantine-font-size-xs)', fontWeight: 600 } }}
-                          />
-                        </div>
+                          {/* Typeface */}
+                          <div style={{ marginBottom: '1.1rem' }}>
+                            <Select
+                              size="xs"
+                              label={t.settingsFontFamily}
+                              value={selectedFontFamily}
+                              onChange={(family) => {
+                                if (!family) return;
+                                setSelectedFontFamily(family);
+                                const opt = fontOptions.find(o => o.family === family);
+                                if (onSettingsChange) onSettingsChange({ fontFamily: opt?.name ?? family });
+                              }}
+                              data={fontOptions.map(opt => ({ value: opt.family, label: t.fontNames[opt.name] ?? opt.name }))}
+                              allowDeselect={false}
+                              onDropdownOpen={() => setFontDropdownOpen(true)}
+                              onDropdownClose={() => setFontDropdownOpen(false)}
+                              comboboxProps={{ withinPortal: true, portalProps: { target: mantinePortalTarget } }}
+                              styles={{
+                                label: { fontSize: 'var(--mantine-font-size-xs)', color: 'var(--mantine-color-dimmed)', fontWeight: 500, marginBottom: 4 },
+                                input: { fontFamily: selectedFontFamily },
+                              }}
+                            />
+                          </div>
 
-                        {/* Extra properties — collapsed by default, since
+                          {/* Justify text */}
+                          <div style={{ marginBottom: '1.1rem' }}>
+                            <Switch
+                              size="sm"
+                              checked={justify}
+                              onChange={(e) => { if (onSettingsChange) onSettingsChange({ justify: e.currentTarget.checked }); }}
+                              label={t.settingsJustify}
+                              aria-label={t.settingsJustify}
+                              labelPosition="left"
+                              styles={{ body: { justifyContent: 'space-between' }, label: { fontSize: 'var(--mantine-font-size-xs)', fontWeight: 600 } }}
+                            />
+                          </div>
+
+                          {/* Extra properties — collapsed by default, since
                             they're not part of the primary at-a-glance
                             controls above (font size, typeface, justify).
                             Theme and layout are now their own title-bar
                             items. */}
-                        <Button
-                          variant="subtle"
-                          size="xs"
-                          color="gray"
-                          fullWidth
-                          justify="space-between"
-                          rightSection={<span aria-hidden="true" style={{ transform: moreSettingsOpen ? 'rotate(180deg)' : undefined, transition: 'transform 150ms', display: 'inline-block' }}>⌄</span>}
-                          onClick={() => setMoreSettingsOpen((open) => !open)}
-                          aria-expanded={moreSettingsOpen}
-                        >
-                          {t.settingsMore}
-                        </Button>
-                        {moreSettingsOpen && (
-                          <div style={{ marginTop: '1.1rem' }}>
-                            {/* Line height */}
-                            <div style={{ marginBottom: '1.1rem' }}>
-                              <Text size="xs" c="dimmed" fw={500} mb={4}>
-                                {t.settingsLineSpacing}
-                              </Text>
-                              <Slider
-                                size="xs"
-                                min={1} max={3} step={0.25} value={lineSpacing}
-                                onChange={(value) => { if (onSettingsChange) onSettingsChange({ lineSpacing: value }); }}
-                                marks={[1, 2, 3].map(value => ({ value, label: value.toFixed(1) }))}
-                                label={(value) => `${value}×`}
-                                aria-label={t.settingsLineSpacing}
-                                mb="0.6rem"
-                              />
-                            </div>
+                          <Button
+                            variant="subtle"
+                            size="xs"
+                            color="gray"
+                            fullWidth
+                            justify="space-between"
+                            rightSection={<span aria-hidden="true" style={{ transform: moreSettingsOpen ? 'rotate(180deg)' : undefined, transition: 'transform 150ms', display: 'inline-block' }}>⌄</span>}
+                            onClick={() => setMoreSettingsOpen((open) => !open)}
+                            aria-expanded={moreSettingsOpen}
+                          >
+                            {t.settingsMore}
+                          </Button>
+                          {moreSettingsOpen && (
+                            <div style={{ marginTop: '1.1rem' }}>
+                              {/* Line height */}
+                              <div style={{ marginBottom: '1.1rem' }}>
+                                <Text size="xs" c="dimmed" fw={500} mb={4}>
+                                  {t.settingsLineSpacing}
+                                </Text>
+                                <Slider
+                                  size="xs"
+                                  min={1} max={3} step={0.25} value={lineSpacing}
+                                  onChange={(value) => { if (onSettingsChange) onSettingsChange({ lineSpacing: value }); }}
+                                  marks={[1, 2, 3].map(value => ({ value, label: value.toFixed(1) }))}
+                                  label={(value) => `${value}×`}
+                                  aria-label={t.settingsLineSpacing}
+                                  mb="0.6rem"
+                                />
+                              </div>
 
-                            {/* Letter spacing */}
-                            <div style={{ marginBottom: '1.1rem' }}>
-                              <Text size="xs" c="dimmed" fw={500} mb={4}>
-                                {t.settingsLetterSpacing}
-                              </Text>
-                              <Slider
-                                size="xs"
-                                min={0} max={5} step={0.5} value={letterSpacing}
-                                onChange={(value) => { if (onSettingsChange) onSettingsChange({ letterSpacing: value }); }}
-                                marks={[0, 2.5, 5].map(value => ({ value, label: String(value) }))}
-                                label={(value) => `${value}px`}
-                                aria-label={t.settingsLetterSpacing}
-                                mb="0.6rem"
-                              />
-                            </div>
+                              {/* Letter spacing */}
+                              <div style={{ marginBottom: '1.1rem' }}>
+                                <Text size="xs" c="dimmed" fw={500} mb={4}>
+                                  {t.settingsLetterSpacing}
+                                </Text>
+                                <Slider
+                                  size="xs"
+                                  min={0} max={5} step={0.5} value={letterSpacing}
+                                  onChange={(value) => { if (onSettingsChange) onSettingsChange({ letterSpacing: value }); }}
+                                  marks={[0, 2.5, 5].map(value => ({ value, label: String(value) }))}
+                                  label={(value) => `${value}px`}
+                                  aria-label={t.settingsLetterSpacing}
+                                  mb="0.6rem"
+                                />
+                              </div>
 
-                            {/* Word spacing */}
-                            <div style={{ marginBottom: '1.1rem' }}>
-                              <Text size="xs" c="dimmed" fw={500} mb={4}>
-                                {t.settingsWordSpacing}
-                              </Text>
-                              <Slider
-                                size="xs"
-                                min={0} max={10} step={1} value={wordSpacing}
-                                onChange={(value) => { if (onSettingsChange) onSettingsChange({ wordSpacing: value }); }}
-                                marks={[0, 5, 10].map(value => ({ value, label: String(value) }))}
-                                label={(value) => `${value}px`}
-                                aria-label={t.settingsWordSpacing}
-                                mb="0.6rem"
-                              />
-                            </div>
+                              {/* Word spacing */}
+                              <div style={{ marginBottom: '1.1rem' }}>
+                                <Text size="xs" c="dimmed" fw={500} mb={4}>
+                                  {t.settingsWordSpacing}
+                                </Text>
+                                <Slider
+                                  size="xs"
+                                  min={0} max={10} step={1} value={wordSpacing}
+                                  onChange={(value) => { if (onSettingsChange) onSettingsChange({ wordSpacing: value }); }}
+                                  marks={[0, 5, 10].map(value => ({ value, label: String(value) }))}
+                                  label={(value) => `${value}px`}
+                                  aria-label={t.settingsWordSpacing}
+                                  mb="0.6rem"
+                                />
+                              </div>
 
-                            {/* Margin */}
-                            <div style={{ marginBottom: '1.1rem' }}>
-                              <Text size="xs" c="dimmed" fw={500} mb={4}>
-                                {t.settingsMargin}
-                              </Text>
-                              <Slider
-                                size="xs"
-                                min={0} max={100} step={8} value={margin}
-                                onChange={(value) => { if (onSettingsChange) onSettingsChange({ margin: value }); }}
-                                marks={[0, 50, 100].map(value => ({ value, label: String(value) }))}
-                                label={(value) => `${value}px`}
-                                aria-label={t.settingsMargin}
-                                mb="0.6rem"
-                              />
+                              {/* Margin */}
+                              <div style={{ marginBottom: '1.1rem' }}>
+                                <Text size="xs" c="dimmed" fw={500} mb={4}>
+                                  {t.settingsMargin}
+                                </Text>
+                                <Slider
+                                  size="xs"
+                                  min={0} max={100} step={8} value={margin}
+                                  onChange={(value) => { if (onSettingsChange) onSettingsChange({ margin: value }); }}
+                                  marks={[0, 50, 100].map(value => ({ value, label: String(value) }))}
+                                  label={(value) => `${value}px`}
+                                  aria-label={t.settingsMargin}
+                                  mb="0.6rem"
+                                />
+                              </div>
                             </div>
-                          </div>
-                        )}
-                      </div>
-                    </Popover.Dropdown>
-                  </Popover>
+                          )}
+                        </div>
+                      </Popover.Dropdown>
+                    </Popover>
                   )}
 
                   {/* PDF page zoom — the text-settings panel above doesn't
@@ -3271,25 +3416,27 @@ export const Reader: React.FC<ReaderProps> = ({
                       style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
                     >
                       <ActionIcon
-                        variant="default"
+                        variant="transparent"
                         size="lg"
                         onClick={() => setPdfZoom(z => clampZoom(z - 10))}
                         disabled={pdfZoom <= 50}
                         aria-label={`${t.zoomOut}. Current zoom ${pdfZoom}%`}
                         title={t.zoomOut}
+                        style={{ color: 'var(--reader-fg, #1a1a1a)' }}
                       >
                         −
                       </ActionIcon>
-                      <Text size="xs" fw={600} aria-live="polite" aria-atomic="true" style={{ minWidth: '2.8rem', textAlign: 'center' }}>
+                      <Text size="xs" fw={600} aria-live="polite" aria-atomic="true" style={{ minWidth: '2.8rem', textAlign: 'center', color: 'var(--reader-fg, #1a1a1a)' }}>
                         {pdfZoom}%
                       </Text>
                       <ActionIcon
-                        variant="default"
+                        variant="transparent"
                         size="lg"
                         onClick={() => setPdfZoom(z => clampZoom(z + 10))}
                         disabled={pdfZoom >= 300}
                         aria-label={`${t.zoomIn}. Current zoom ${pdfZoom}%`}
                         title={t.zoomIn}
+                        style={{ color: 'var(--reader-fg, #1a1a1a)' }}
                       >
                         +
                       </ActionIcon>
@@ -3473,6 +3620,13 @@ export const Reader: React.FC<ReaderProps> = ({
                         ref={contentRef}
                         className="ebook-reader__pdf-spread"
                         dir={state.direction}
+                        // PDF pages have no selectable text, so there's no
+                        // notes/dictionary tradeoff here the way there is
+                        // for the text content div below — the context menu
+                        // (e.g. "Save image as") is simply blocked outright.
+                        onContextMenu={readOnly ? (e) => e.preventDefault() : undefined}
+                        onCopy={readOnly ? (e) => e.preventDefault() : undefined}
+                        onCut={readOnly ? (e) => e.preventDefault() : undefined}
                         style={{
                           display: 'flex',
                           // Plain 'row', not 'row-reverse': `dir` above
@@ -3495,7 +3649,9 @@ export const Reader: React.FC<ReaderProps> = ({
                           transformOrigin: 'top left',
                         }}
                       >
-                        {(pdfSpread ? [spreadStart, spreadStart + 1] : [currentChapterIdx]).map((idx) => {
+                        {devToolsOpen ? (
+                          <Text ta="center">{t.devToolsBlockedMessage}</Text>
+                        ) : (pdfSpread ? [spreadStart, spreadStart + 1] : [currentChapterIdx]).map((idx) => {
                           const chapter = state.book?.chapters[idx];
                           const node = chapter?.content[0];
                           if (!chapter || !node) return null;
@@ -3513,6 +3669,8 @@ export const Reader: React.FC<ReaderProps> = ({
                       className={scroll ? 'ebook-reader__scroll' : 'ebook-reader__columns'}
                       dir={state.direction}
                       onContextMenu={handleContentContextMenu}
+                      onCopy={readOnly ? (e) => e.preventDefault() : undefined}
+                      onCut={readOnly ? (e) => e.preventDefault() : undefined}
                       style={scroll ? {
                         height: '100%',
                         overflowY: 'auto',
@@ -3549,7 +3707,9 @@ export const Reader: React.FC<ReaderProps> = ({
                         wordSpacing: `${wordSpacing}px`,
                       }}
                     >
-                      {currentChapter && currentChapter.content.map((node, ni) => (
+                      {devToolsOpen ? (
+                        <Text ta="center">{t.devToolsBlockedMessage}</Text>
+                      ) : currentChapter && currentChapter.content.map((node, ni) => (
                         <ContentNodeRenderer key={`${currentChapterIdx}-${ni}`} node={node} onImageClick={(src, alt) => setLightboxImage({ src, alt })} onFootnoteClick={handleFootnoteClick} onLinkClick={handleLinkClick} />
                       ))}
                     </div>

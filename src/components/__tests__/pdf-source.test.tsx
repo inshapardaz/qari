@@ -190,6 +190,15 @@ describe('Reader with a PDF source', () => {
     expect(zoomIn).not.toBeDisabled();
     expect(zoomOut).not.toBeDisabled();
 
+    // Regression test: these used Mantine's plain bordered `variant="default"`
+    // button style, visually inconsistent with every other header button
+    // (bookmark, theme, layout, fullscreen), which are all transparent
+    // icon-only buttons colored from the reading theme, not Mantine's
+    // default palette.
+    expect(zoomIn).toHaveStyle({ color: 'var(--reader-fg, #1a1a1a)' });
+    expect(zoomOut).toHaveStyle({ color: 'var(--reader-fg, #1a1a1a)' });
+    expect(screen.getByText('100%')).toHaveStyle({ color: 'var(--reader-fg, #1a1a1a)' });
+
     const scrollEl = container.querySelector('.ebook-reader__pdf-zoom-scroll') as HTMLElement;
     const spreadEl = container.querySelector('.ebook-reader__pdf-spread') as HTMLElement;
     expect(scrollEl.style.overflow).toBe('auto');
