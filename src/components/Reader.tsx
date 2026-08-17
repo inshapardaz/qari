@@ -553,6 +553,30 @@ function getSourceFormat(source: ReaderSource): string {
 // this overrides the browser's default `white-space: pre`.
 const CODE_BLOCK_WRAP_STYLE = 'white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;max-width:100%;';
 
+// Applied to the theme/layout/settings header Popover.Dropdowns (and, via
+// the font Select's `styles.dropdown`, its Combobox dropdown) so their
+// chrome follows the exact active reading theme rather than Mantine's own
+// forced light/dark `colorScheme`. Redefining the `--mantine-color-*`
+// variables alone (see the reader root's own style, which does this for
+// every Mantine control generally) isn't enough here: Mantine's Popover
+// stylesheet hardcodes its dropdown's `background-color`/border off
+// `--mantine-color-white`/`--mantine-color-gray-2` (or the `-dark-6`/`-4`
+// equivalents) picked by the ancestor `[data-mantine-color-scheme]`
+// attribute — a binary light/dark switch that never consults
+// `--mantine-color-body` at all, so sepia/high-contrast still rendered as
+// plain Mantine white/black. Explicit inline `backgroundColor`/`color` (and
+// `--popover-border-color`, the one custom property this component's
+// border rule *does* read) override that directly, the same way
+// Drawer.Content's own inline style already does for the chapter drawer.
+const POPOVER_THEME_STYLE = {
+  '--mantine-color-body': 'var(--reader-bg, #ffffff)',
+  '--mantine-color-text': 'var(--reader-fg, #1a1a1a)',
+  '--mantine-color-default-border': 'var(--reader-border, #e0e0e0)',
+  '--popover-border-color': 'var(--reader-border, #e0e0e0)',
+  backgroundColor: 'var(--reader-bg, #ffffff)',
+  color: 'var(--reader-fg, #1a1a1a)',
+} as React.CSSProperties;
+
 // ---------------------------------------------------------------------------
 // HTML serializer for measurement (simple, no React rendering needed)
 // ---------------------------------------------------------------------------
@@ -747,7 +771,15 @@ const ContentNodeRenderer: React.FC<{ node: ContentNode; onImageClick?: (src: st
               justifyContent: 'center',
               breakInside: 'avoid',
               maxWidth: '100%',
-              maxHeight: 'calc(100vh - 120px)',
+              // `100%` of the (definite — see `.ebook-reader__pdf-spread`)
+              // page column height, not a `100vh`-based guess: a viewport
+              // unit can't account for the reader being embedded in a
+              // constrained area smaller than the full viewport, or for a
+              // fixed px offset not exactly matching the real header/footer
+              // height, either of which previously left this a few px
+              // taller than actually available and forced a permanent
+              // scrollbar.
+              maxHeight: '100%',
               aspectRatio: `${node.width} / ${node.height}`,
               margin: '0 auto',
             }}
@@ -764,6 +796,12 @@ const ContentNodeRenderer: React.FC<{ node: ContentNode; onImageClick?: (src: st
             alignItems: 'center',
             justifyContent: 'center',
             breakInside: 'avoid',
+            // Gives the `100%` max-height below a definite basis to resolve
+            // against — a CSS percentage height only ever resolves against
+            // the *direct* parent's own height, not any ancestor further
+            // up, so without this the image's max-height would silently
+            // fall back to unconstrained.
+            height: '100%',
           }}
         >
           <img
@@ -773,7 +811,10 @@ const ContentNodeRenderer: React.FC<{ node: ContentNode; onImageClick?: (src: st
             onError={(e) => console.warn(`[qari] PDF page ${node.pageNumber} failed to render`, e)}
             style={{
               maxWidth: '100%',
-              maxHeight: 'calc(100vh - 120px)',
+              // See the `height: '100%'` comment on this img's parent div
+              // above for why this is container-relative rather than the
+              // `calc(100vh - 120px)` viewport guess it used to be.
+              maxHeight: '100%',
               width: 'auto',
               height: 'auto',
               objectFit: 'contain',
@@ -1068,6 +1109,15 @@ export const Reader: React.FC<ReaderProps> = ({
   // reader's own root keeps these dropdowns/dialogs inside that subtree so
   // they stay visible in fullscreen too.
   const mantinePortalTarget = rootRef.current ?? undefined;
+  // The chapter drawer alone portals into the content viewport
+  // (`containerRef`, the area between the header and footer bars) instead
+  // of the whole reader root: its overlay is a blur-only "frosted glass"
+  // backdrop (see the Drawer.Overlay props below), and confining it to the
+  // content area — rather than the full `mantinePortalTarget` — keeps the
+  // header/footer chrome (theme, zoom, close, etc.) fully visible and
+  // clickable while the drawer is open, instead of being blurred over and
+  // made unclickable by an overlay that used to span the entire reader.
+  const mantineContentPortalTarget = containerRef.current ?? undefined;
 
   // ---------------------------------------------------------------------------
   // Track the pointer's last known position (ref only, no re-render) so we
@@ -2750,15 +2800,30 @@ export const Reader: React.FC<ReaderProps> = ({
         fontFamily: 'system-ui, -apple-system, sans-serif',
         fontSize: '14px',
         backgroundColor: 'var(--reader-bg, #ffffff)',
-        // Deliberately NOT `var(--reader-fg)` here — this is the color
-        // inherited by descendants that don't set their own (chapter/
-        // bookmarks/theme/layout/settings menus and popovers), and those
-        // are UI chrome, not book content. The header and footer bars are
-        // the exception: their background/border already follow the
-        // reading theme (`--reader-surface`/`--reader-border`), so their
-        // text does too, via an explicit `color: var(--reader-fg)` on each
-        // (see below) rather than relying on this root default. The content
-        // div gets the same explicit override for the same reason.
+        // Re-point Mantine's own body/text/border variables at the exact
+        // `--reader-*` colors ThemeEngine sets for the active theme, the
+        // same fix applied to the chapter drawer's own Drawer.Content (see
+        // its comment) but done once here at the root instead of per
+        // component: every Mantine control portalled into this root
+        // (theme/layout/settings popovers, the font Select's dropdown, the
+        // chapter drawer) inherits these variables via normal CSS custom
+        // property cascade. Without this, Mantine's own forced light/dark
+        // `colorScheme` (see `mantineColorScheme` above) is a binary
+        // palette that can't represent sepia or high-contrast — sepia would
+        // render as generic Mantine light (white, not parchment) and
+        // high-contrast as generic Mantine dark (dark gray, not true
+        // black/white).
+        '--mantine-color-body': 'var(--reader-bg, #ffffff)',
+        '--mantine-color-text': 'var(--reader-fg, #1a1a1a)',
+        '--mantine-color-default-border': 'var(--reader-border, #e0e0e0)',
+        // This is the color inherited by descendants that don't set their
+        // own (chapter/bookmarks/theme/layout/settings menus and popovers),
+        // and those are UI chrome, not book content. The header and footer
+        // bars are the exception: their background/border already follow
+        // the reading theme (`--reader-surface`/`--reader-border`), so
+        // their text does too, via an explicit `color: var(--reader-fg)` on
+        // each (see below) rather than relying on this root default. The
+        // content div gets the same explicit override for the same reason.
         color: 'var(--mantine-color-text, #1a1a1a)',
         height: '100%',
         transition: 'background-color 0.1s, color 0.1s',
@@ -2789,7 +2854,7 @@ export const Reader: React.FC<ReaderProps> = ({
             zIndex: 2147483647,
           }
           : {}),
-      }}
+      } as React.CSSProperties}
     >
       <DirectionProvider initialDirection={t.uiDirection} detectDirection={false} key={t.uiDirection}>
         <MantineProvider
@@ -2840,21 +2905,26 @@ export const Reader: React.FC<ReaderProps> = ({
                   onClose={() => setChapterMenuOpen(false)}
                   position={t.uiDirection === 'rtl' ? 'right' : 'left'}
                   size={320}
-                  portalProps={{ target: mantinePortalTarget }}
+                  portalProps={{ target: mantineContentPortalTarget }}
                 >
                   {/* Still a modal — the overlay is present, blocks
-                      interaction with the rest of the reader while it's
+                      interaction with the content behind it while it's
                       open, and closes the drawer on an outside click — but
                       instead of Mantine's default 60%-black scrim (which
-                      would read as the rest of the reader vanishing, since
-                      this drawer is portalled into the reader root and so
-                      the overlay spans the header/titlebar and footer too,
-                      not just the content behind the drawer — see the
-                      root's own `transform` comment for why), it stays
-                      fully see-through (`backgroundOpacity={0}`) and uses a
-                      `backdrop-filter: blur()` instead: the header/content
-                      stay visible, just softened, the same "frosted glass"
-                      effect a modal backdrop typically gives. */}
+                      would read as the content vanishing), it stays fully
+                      see-through (`backgroundOpacity={0}`) and uses a
+                      `backdrop-filter: blur()` instead, the same "frosted
+                      glass" effect a modal backdrop typically gives. This
+                      portals into the content viewport
+                      (`mantineContentPortalTarget`, not the whole-reader
+                      `mantinePortalTarget` every other overlay here uses) so
+                      the overlay/blur only spans the content area: the
+                      header and footer bars sit outside it entirely, so
+                      their buttons (theme, zoom, close, etc.) stay fully
+                      visible, sharp, and clickable while the drawer is
+                      open, instead of being blurred over and made
+                      unclickable by an overlay that used to span the whole
+                      reader. */}
                   <Drawer.Overlay backgroundOpacity={0} blur={4} />
                   {/* Overridden here rather than left to Mantine's own
                       forced light/dark colorScheme (see `mantineColorScheme`
@@ -3073,7 +3143,7 @@ export const Reader: React.FC<ReaderProps> = ({
                         <ThemeIcon />
                       </ActionIcon>
                     </Popover.Target>
-                    <Popover.Dropdown data-testid="theme-panel" p="sm">
+                    <Popover.Dropdown data-testid="theme-panel" p="sm" style={POPOVER_THEME_STYLE}>
                       <div dir={t.uiDirection} style={{ display: 'flex', gap: '0.75rem' }}>
                         {(['light', 'dark', 'sepia', 'high-contrast'] as ThemeName[]).map(thm => {
                           const active = theme === thm;
@@ -3137,7 +3207,7 @@ export const Reader: React.FC<ReaderProps> = ({
                         {scroll ? <ScrollIcon /> : effectiveColumns === 2 ? <DoublePageIcon /> : <SinglePageIcon />}
                       </ActionIcon>
                     </Popover.Target>
-                    <Popover.Dropdown data-testid="layout-panel" p="sm">
+                    <Popover.Dropdown data-testid="layout-panel" p="sm" style={POPOVER_THEME_STYLE}>
                       <div dir={t.uiDirection} style={{ display: 'flex', gap: '0.5rem' }}>
                         {([
                           { key: 'single', active: !scroll && effectiveColumns === 1, icon: <SinglePageIcon size="1.2em" />, label: t.settingsLayoutSingle, onClick: () => { if (onSettingsChange) onSettingsChange({ scroll: false, columns: 1 }); } },
@@ -3205,7 +3275,7 @@ export const Reader: React.FC<ReaderProps> = ({
                           <span aria-hidden="true" style={{ fontWeight: 600 }}>Aa</span>
                         </ActionIcon>
                       </Popover.Target>
-                      <Popover.Dropdown data-testid="settings-panel" p="sm">
+                      <Popover.Dropdown data-testid="settings-panel" p="sm" style={POPOVER_THEME_STYLE}>
                         <div dir={t.uiDirection}>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--mantine-spacing-sm)' }}>
                             <Text fw={700} size="lg">
@@ -3290,6 +3360,11 @@ export const Reader: React.FC<ReaderProps> = ({
                               styles={{
                                 label: { fontSize: 'var(--mantine-font-size-xs)', color: 'var(--mantine-color-dimmed)', fontWeight: 500, marginBottom: 4 },
                                 input: { fontFamily: selectedFontFamily },
+                                // Its dropdown is portaled to `mantinePortalTarget` directly
+                                // (a sibling of the settings Popover.Dropdown above, not
+                                // nested inside it), so it needs the same theme override
+                                // independently rather than inheriting the popover's.
+                                dropdown: POPOVER_THEME_STYLE,
                               }}
                             />
                           </div>
@@ -3483,6 +3558,15 @@ export const Reader: React.FC<ReaderProps> = ({
                   flex: 1,
                   overflow: 'hidden',
                   position: 'relative',
+                  // Establishes this element as the containing block for
+                  // `position: fixed` descendants — same trick, and same
+                  // reason, as the root's own `transform` (see its
+                  // comment): the chapter drawer portals into this element
+                  // (`mantineContentPortalTarget` above) so its overlay/
+                  // panel size and center against this viewport instead of
+                  // the whole reader root, leaving the header/footer bars
+                  // outside it and unaffected.
+                  transform: 'translate(0, 0)',
                 }}
               >
                 {/* Hidden div for measuring chapter page counts */}
@@ -3568,53 +3652,67 @@ export const Reader: React.FC<ReaderProps> = ({
                   </button>
                 )}
 
-                {/* Page box — caps and centers the reading column at
-                    MAX_PAGE_WIDTH per page (see `pageBoxMaxWidth`), separate
-                    from `containerRef` above so the hover/tap zones and edge
-                    arrows (tied to `containerRef`) still span the whole
-                    viewport rather than just this narrower column. */}
-                <div
-                  ref={pageBoxRef}
-                  className="ebook-reader__page-box"
-                  style={{
-                    width: '100%',
-                    maxWidth: `${pageBoxMaxWidth}px`,
-                    height: '100%',
-                    margin: '0 auto',
-                    overflow: 'hidden',
-                  }}
-                >
-                  {/* Content — a one- or two-up PDF page view (see
-                      `isPdfBook`/`pdfSpread`), horizontally paged text via
-                      CSS columns + transform, or (scroll mode) a normal
-                      vertically scrollable flow with no columns/pages at
-                      all. */}
-                  {(isPdfBook && !scroll) ? (
-                    // One chapter (single-page mode) or two (see
-                    // `pdfSpread`/`spreadStart`/goToNextPage/goToPrevPage,
-                    // which step by two chapters at a time in spread mode) —
-                    // each one PDF page — rather than the CSS-column trick
-                    // used below: there's no text to reflow, just up to two
-                    // independent images.
-                    //
-                    // The outer div is a plain `overflow: auto` block, not a
-                    // flex/grid container centering the inner one within
-                    // itself: centering an item that overflows its
-                    // container is a known cross-browser flex/grid trap
-                    // (part of it becomes permanently unreachable by
-                    // scrolling) — whereas a *transformed* (see `pdfZoom`)
-                    // descendant of a plain `overflow: auto` block always
-                    // has its full scaled bounding box included in the
-                    // scrollable area, without that trap. The inner div's
-                    // own `justifyContent: center` is a different, safe
-                    // case: it centers its own 1-2 children *within itself*,
-                    // and they're always capped at MAX_PAGE_WIDTH so they
-                    // never overflow the flex container they're centered
-                    // in — only the flex container as a whole (via the
-                    // transform) can ever overflow its ancestor.
+                {/* Content — a one- or two-up PDF page view (see
+                    `isPdfBook`/`pdfSpread`), horizontally paged text via CSS
+                    columns + transform, or (scroll mode) a normal vertically
+                    scrollable flow with no columns/pages at all. The PDF
+                    branch gets its own full-width `overflow: auto` wrapper
+                    *outside* the centered page box (rather than sharing the
+                    page box as its own scroll boundary, like the CSS-column
+                    branch below does) so a vertical scrollbar — only ever
+                    needed once `pdfZoom` scales a page taller than the
+                    viewport — tracks the true right/left edge of the
+                    reading area instead of hugging the narrower centered
+                    column. */}
+                {(isPdfBook && !scroll) ? (
+                  // One chapter (single-page mode) or two (see
+                  // `pdfSpread`/`spreadStart`/goToNextPage/goToPrevPage,
+                  // which step by two chapters at a time in spread mode) —
+                  // each one PDF page — rather than the CSS-column trick
+                  // used below: there's no text to reflow, just up to two
+                  // independent images.
+                  //
+                  // The outer div is a plain `overflow: auto` block, not a
+                  // flex/grid container centering the inner one within
+                  // itself: centering an item that overflows its
+                  // container is a known cross-browser flex/grid trap
+                  // (part of it becomes permanently unreachable by
+                  // scrolling) — whereas a *transformed* (see `pdfZoom`)
+                  // descendant of a plain `overflow: auto` block always
+                  // has its full scaled bounding box included in the
+                  // scrollable area, without that trap. The inner div's
+                  // own `justifyContent: center` is a different, safe
+                  // case: it centers its own 1-2 children *within itself*,
+                  // and they're always capped at MAX_PAGE_WIDTH so they
+                  // never overflow the flex container they're centered
+                  // in — only the flex container as a whole (via the
+                  // transform) can ever overflow its ancestor.
+                  <div
+                    className="ebook-reader__pdf-zoom-scroll"
+                    style={{ width: '100%', height: '100%', overflow: 'auto' }}
+                  >
+                    {/* `height: '100%'` here (not `minHeight`) and on
+                        `.ebook-reader__pdf-spread` below: a definite,
+                        non-growing height all the way down to the page
+                        image (see its own `maxHeight: '100%'`) is what lets
+                        the image size against the *actual* space available
+                        instead of falling back to a viewport-relative
+                        guess — which, whenever the reader doesn't fill the
+                        full viewport (or the header/footer aren't exactly
+                        the height a fixed offset assumed), rendered the
+                        image a few px taller than available and left a
+                        permanent scrollbar no amount of zooming out could
+                        clear, since only `pdfZoom`'s *transform* scales
+                        with zoom, not this base layout height. */}
                     <div
-                      className="ebook-reader__pdf-zoom-scroll"
-                      style={{ width: '100%', height: '100%', overflow: 'auto' }}
+                      ref={pageBoxRef}
+                      className="ebook-reader__page-box"
+                      style={{
+                        width: '100%',
+                        maxWidth: `${pageBoxMaxWidth}px`,
+                        height: '100%',
+                        margin: '0 auto',
+                      }}
                     >
                       <div
                         ref={contentRef}
@@ -3637,11 +3735,26 @@ export const Reader: React.FC<ReaderProps> = ({
                           // reversing it again here would cancel that back
                           // out to LTR ordering.
                           flexDirection: 'row',
-                          alignItems: 'center',
+                          // 'stretch' (the flexbox default — spelled out
+                          // here since it's load-bearing, not decorative):
+                          // each page column below sets `height: '100%'`
+                          // expecting to fill the row exactly, but a
+                          // non-stretch `alignItems` makes a flex item's
+                          // percentage cross-size resolve against its own
+                          // *content* instead of the line's cross size,
+                          // silently falling back to auto-height and
+                          // reopening the same viewport-relative-fallback
+                          // gap the page image's `maxHeight: '100%'` above
+                          // was fixed to close. Horizontal centering for a
+                          // narrower-than-row page is unaffected — that's
+                          // `justifyContent` (the main axis, since this is
+                          // `flexDirection: 'row'`) and each page's own
+                          // internal centering, both untouched.
+                          alignItems: 'stretch',
                           justifyContent: 'center',
                           gap: pdfSpread ? '2rem' : 0,
                           width: '100%',
-                          minHeight: '100%',
+                          height: '100%',
                           boxSizing: 'border-box',
                           padding: `2rem ${margin}px`,
                           color: 'var(--reader-fg, #1a1a1a)',
@@ -3663,7 +3776,23 @@ export const Reader: React.FC<ReaderProps> = ({
                         })}
                       </div>
                     </div>
-                  ) : (
+                  </div>
+                ) : (
+                  // Text content keeps the page box as its own overflow
+                  // boundary (`overflow: hidden`, unlike the PDF branch
+                  // above): it needs to clip sibling pages during the
+                  // translateX page-turn transform, not scroll.
+                  <div
+                    ref={pageBoxRef}
+                    className="ebook-reader__page-box"
+                    style={{
+                      width: '100%',
+                      maxWidth: `${pageBoxMaxWidth}px`,
+                      height: '100%',
+                      margin: '0 auto',
+                      overflow: 'hidden',
+                    }}
+                  >
                     <div
                       ref={contentRef}
                       className={scroll ? 'ebook-reader__scroll' : 'ebook-reader__columns'}
@@ -3713,8 +3842,8 @@ export const Reader: React.FC<ReaderProps> = ({
                         <ContentNodeRenderer key={`${currentChapterIdx}-${ni}`} node={node} onImageClick={(src, alt) => setLightboxImage({ src, alt })} onFootnoteClick={handleFootnoteClick} onLinkClick={handleLinkClick} />
                       ))}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
 
               {/* Footer — page info */}
