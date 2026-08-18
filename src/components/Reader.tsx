@@ -711,7 +711,7 @@ const InlineNodeRenderer: React.FC<{ node: InlineNode; onImageClick?: (src: stri
   }
 };
 
-const ContentNodeRenderer: React.FC<{ node: ContentNode; onImageClick?: (src: string, alt: string) => void; onFootnoteClick?: (node: FootnoteRefSpan, e: React.MouseEvent) => void; onLinkClick?: (href: string, e: React.MouseEvent) => void }> = ({ node, onImageClick, onFootnoteClick, onLinkClick }) => {
+const ContentNodeRenderer: React.FC<{ node: ContentNode; onImageClick?: (src: string, alt: string) => void; onFootnoteClick?: (node: FootnoteRefSpan, e: React.MouseEvent) => void; onLinkClick?: (href: string, e: React.MouseEvent) => void; invertPdfPageColors?: boolean }> = ({ node, onImageClick, onFootnoteClick, onLinkClick, invertPdfPageColors }) => {
   switch (node.type) {
     case 'paragraph':
       return (
@@ -793,15 +793,19 @@ const ContentNodeRenderer: React.FC<{ node: ContentNode; onImageClick?: (src: st
           data-testid="pdf-page"
           style={{
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
             breakInside: 'avoid',
-            // Gives the `100%` max-height below a definite basis to resolve
-            // against — a CSS percentage height only ever resolves against
-            // the *direct* parent's own height, not any ancestor further
-            // up, so without this the image's max-height would silently
-            // fall back to unconstrained.
-            height: '100%',
+            maxWidth: '100%',
+            // Same `aspectRatio`-driven sizing as the pending placeholder
+            // above, rather than a `height: 100%` box with the image
+            // centered inside it: a box that's already exactly the page's
+            // own aspect ratio has no leftover vertical/horizontal slack
+            // around the image to begin with, so there's nothing for the
+            // zoom `transform: scale(...)` (anchored top-left — see
+            // `.ebook-reader__pdf-spread`) to amplify into a growing gap
+            // above the image as zoom increases.
+            maxHeight: '100%',
+            aspectRatio: `${node.width} / ${node.height}`,
+            margin: '0 auto',
           }}
         >
           <img
@@ -810,15 +814,21 @@ const ContentNodeRenderer: React.FC<{ node: ContentNode; onImageClick?: (src: st
             loading="lazy"
             onError={(e) => console.warn(`[qari] PDF page ${node.pageNumber} failed to render`, e)}
             style={{
-              maxWidth: '100%',
-              // See the `height: '100%'` comment on this img's parent div
-              // above for why this is container-relative rather than the
-              // `calc(100vh - 120px)` viewport guess it used to be.
-              maxHeight: '100%',
-              width: 'auto',
-              height: 'auto',
+              width: '100%',
+              height: '100%',
               objectFit: 'contain',
               display: 'block',
+              // Rasterized pages are baked-in white paper with dark ink —
+              // the dark/high-contrast reading themes only recolor the
+              // reader's own chrome (CSS custom properties), not pixels
+              // already inside an image, so without this a bright white
+              // page would glare against an otherwise dark reader.
+              // `hue-rotate(180deg)` alongside the invert restores original
+              // hues for any color content on the page (photos, colored
+              // diagrams) instead of also flipping them to their
+              // complementary color — the same trick browsers' own
+              // force-dark image handling uses.
+              filter: invertPdfPageColors ? 'invert(1) hue-rotate(180deg)' : undefined,
             }}
           />
         </div>
@@ -1028,6 +1038,11 @@ export const Reader: React.FC<ReaderProps> = ({
   // column. Capping `containerRef` directly used to leave a wide dead zone
   // on either side of the column where hovering never revealed the arrows.
   const pageBoxRef = useRef<HTMLDivElement>(null);
+  // The PDF branch's own outer `overflow: auto` scroll boundary (see the
+  // comment above its JSX) — kept separate from `pageBoxRef` so the
+  // zoom-recentering effect below can read/set *its* scrollLeft without
+  // disturbing `pageBoxRef`'s unrelated (static, non-scrolling) box.
+  const pdfZoomScrollRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
   const lastPointerPositionRef = useRef<{ x: number; y: number } | null>(null);
   const pdfParserRef = useRef<PDFParserImpl | null>(null);
@@ -1054,20 +1069,22 @@ export const Reader: React.FC<ReaderProps> = ({
 
   // ---------------------------------------------------------------------------
   // PDF pages don't reflow like text — each one is a single fixed-size image
-  // occupying its own chapter (see pdf-parser.ts). The page-display strategy
-  // (columns / scroll) still applies to them, but rather than CSS-column
-  // pagination or a per-chapter scroll flow, it changes which *chapters* are
-  // shown and how: scroll mode stacks every page vertically in one
-  // continuous flow, and two-column mode shows a spread of two consecutive
-  // pages side by side instead of one page at a time.
+  // occupying its own chapter (see pdf-parser.ts). The `columns` display
+  // strategy still applies to them (two-column mode shows a spread of two
+  // consecutive pages side by side instead of one at a time), but continuous
+  // vertical scroll doesn't: paging through fixed-size raster images one at
+  // a time works far better than an endless scroll of them, so `scroll` is
+  // forced off for PDF sources regardless of what the consumer passed or
+  // last selected — the layout menu hides its "Scroll" option for PDFs
+  // accordingly (see the layout-menu options list further down).
   // ---------------------------------------------------------------------------
   const isPdfBook = source.type === 'pdf';
-  const pdfScrollStack = scroll && isPdfBook;
+  if (isPdfBook) scroll = false;
   // The `columns` prop as actually applied to layout — forced to 1 on
   // narrow/mobile viewports regardless of what the consumer passed, since a
   // two-column spread doesn't fit comfortably there (see isMobileViewport).
   const effectiveColumns = isMobileViewport ? 1 : columns;
-  const pdfSpread = !scroll && effectiveColumns === 2 && isPdfBook;
+  const pdfSpread = effectiveColumns === 2 && isPdfBook;
   const spreadStart = pdfSpread ? currentChapterIdx - (currentChapterIdx % 2) : currentChapterIdx;
 
   // ---------------------------------------------------------------------------
@@ -1092,6 +1109,12 @@ export const Reader: React.FC<ReaderProps> = ({
   // instead of the reader theme the user actually picked (light/sepia read
   // as Mantine "light"; dark/high-contrast read as Mantine "dark").
   const mantineColorScheme: 'light' | 'dark' = theme === 'dark' || theme === 'high-contrast' ? 'dark' : 'light';
+  // PDF pages are baked-in raster images (white paper, dark ink) — the
+  // reading theme otherwise only ever recolors the reader's own CSS custom
+  // properties, which a pre-rendered image can't respond to, so a bright
+  // white page would glare against the dark/high-contrast themes without
+  // this (see its use in the `pdf-page` case of `ContentNodeRenderer`).
+  const invertPdfPageColors = theme === 'dark' || theme === 'high-contrast';
   // Mantine's default `getRootElement` is `document.documentElement` — with
   // `forceColorScheme` alone, the reader would still write its own
   // colorScheme onto that same shared `<html>` element, clobbering whatever
@@ -2214,67 +2237,37 @@ export const Reader: React.FC<ReaderProps> = ({
   }, [state.book, currentChapterIdx, pdfSpread, spreadStart]);
 
   // ---------------------------------------------------------------------------
+  // Keep the PDF page(s) horizontally centered in their scroll boundary
+  // (`.ebook-reader__pdf-zoom-scroll`) after every zoom or page change.
+  //
+  // `.ebook-reader__pdf-spread`'s `transformOrigin: 'center top'` (see its
+  // own comment) already makes zoomed-in growth symmetric left/right, so at
+  // low zoom — where the scaled page(s) still fit within the scroll
+  // boundary's width — nothing here needs to do anything (`scrollWidth`
+  // equals `clientWidth`, so the assignment below is a no-op). It only
+  // matters once zoom grows the content past that width: a scrollable
+  // element's *default* scroll position shows the start (left) edge of its
+  // scrollable region, not its middle, so without this the user would land
+  // on the left half of a symmetrically-grown spread instead of its center.
+  useLayoutEffect(() => {
+    if (!isPdfBook || scroll) return;
+    const scrollEl = pdfZoomScrollRef.current;
+    if (!scrollEl) return;
+    scrollEl.scrollLeft = (scrollEl.scrollWidth - scrollEl.clientWidth) / 2;
+  }, [isPdfBook, scroll, pdfZoom, pdfSpread, spreadStart, currentChapterIdx, margin, effectiveColumns]);
+
+  // ---------------------------------------------------------------------------
   // In scroll mode, jump the scroll position back to the top whenever the
   // chapter changes (e.g. via the previous/next chapter hover arrows, or the
   // chapter menu) — the scrollable content div persists across chapters, so
-  // its scrollTop wouldn't otherwise reset on its own.
-  //
-  // Not for the PDF stacked-scroll case: there, every page lives in the same
-  // continuous flow and `currentChapterIdx` changes *because* the user
-  // scrolled (see the IntersectionObserver effect below) — resetting
-  // scrollTop in response would immediately fight the user's own scroll.
+  // its scrollTop wouldn't otherwise reset on its own. (PDF sources never
+  // reach here with `scroll` true — see where it's forced off above.)
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    if (scroll && !pdfScrollStack && contentRef.current) {
+    if (scroll && contentRef.current) {
       contentRef.current.scrollTop = 0;
     }
-  }, [currentChapterIdx, scroll, pdfScrollStack]);
-
-  // ---------------------------------------------------------------------------
-  // PDF stacked-scroll mode: track which page is most in view and keep
-  // currentChapterIdx (used for the footer indicator, chapter-menu highlight,
-  // and progress callbacks) in sync as the user scrolls through the stack.
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    if (!pdfScrollStack || !contentRef.current || typeof IntersectionObserver === 'undefined') return;
-    const container = contentRef.current;
-    const pageEls = Array.from(container.querySelectorAll<HTMLElement>('[data-pdf-page-index]'));
-    if (pageEls.length === 0) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        let best: { idx: number; ratio: number } | null = null;
-        for (const entry of entries) {
-          if (!entry.isIntersecting) continue;
-          const idx = Number(entry.target.getAttribute('data-pdf-page-index'));
-          if (best === null || entry.intersectionRatio > best.ratio) {
-            best = { idx, ratio: entry.intersectionRatio };
-          }
-        }
-        if (best !== null) {
-          setCurrentChapterIdx((prev) => (prev === best!.idx ? prev : best!.idx));
-        }
-      },
-      { root: container, threshold: [0.25, 0.5, 0.75, 1] }
-    );
-
-    pageEls.forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
-  }, [pdfScrollStack, state.book?.chapters.length]);
-
-  // ---------------------------------------------------------------------------
-  // Scrolls a specific PDF page (by chapter index) into view within the
-  // stacked-scroll container. Used by chapter/bookmark/note navigation and
-  // the next/prev page arrows when pdfScrollStack is active, since all pages
-  // are already mounted and a plain state update wouldn't move the scroll
-  // position on its own.
-  // ---------------------------------------------------------------------------
-  const scrollToPdfPage = useCallback((idx: number) => {
-    requestAnimationFrame(() => {
-      const el = contentRef.current?.querySelector<HTMLElement>(`[data-pdf-page-index="${idx}"]`);
-      el?.scrollIntoView({ block: 'start' });
-    });
-  }, []);
+  }, [currentChapterIdx, scroll]);
 
   // ---------------------------------------------------------------------------
   // Page navigation
@@ -3213,7 +3206,13 @@ export const Reader: React.FC<ReaderProps> = ({
                           { key: 'single', active: !scroll && effectiveColumns === 1, icon: <SinglePageIcon size="1.2em" />, label: t.settingsLayoutSingle, onClick: () => { if (onSettingsChange) onSettingsChange({ scroll: false, columns: 1 }); } },
                           // Two-page view doesn't fit comfortably on narrow/mobile viewports — hidden there rather than shown-but-forced-back, per issue #6.
                           ...(isMobileViewport ? [] : [{ key: 'double', active: !scroll && effectiveColumns === 2, icon: <DoublePageIcon size="1.2em" />, label: t.settingsLayoutDouble, onClick: () => { if (onSettingsChange) onSettingsChange({ scroll: false, columns: 2 }); } }]),
-                          { key: 'scroll', active: scroll, icon: <ScrollIcon size="1.2em" />, label: t.settingsLayoutScroll, onClick: () => { if (onSettingsChange) onSettingsChange({ scroll: true }); } },
+                          // PDF pages are fixed-size raster images, not
+                          // reflowable text — paging through them one at a
+                          // time works far better than an endless vertical
+                          // scroll of them, so this option (and the ability
+                          // to enter that mode at all — see where `scroll`
+                          // is forced off for PDFs above) doesn't apply.
+                          ...(isPdfBook ? [] : [{ key: 'scroll', active: scroll, icon: <ScrollIcon size="1.2em" />, label: t.settingsLayoutScroll, onClick: () => { if (onSettingsChange) onSettingsChange({ scroll: true }); } }]),
                         ]).map(opt => (
                           <button
                             key={opt.key}
@@ -3473,18 +3472,15 @@ export const Reader: React.FC<ReaderProps> = ({
 
                   {/* PDF page zoom — the text-settings panel above doesn't
                       apply to PDFs (fixed-size rasterized images, not
-                      reflowable text), so this replaces it for them. Scoped
-                      to the paginated (non-scroll) PDF path — see
-                      `pdfZoom`'s use near the render return — since that's
-                      the one wired up to actually respect it. Deliberately a
-                      small inline control rather than the standalone
-                      ZoomController/ZoomControls components in
+                      reflowable text), so this replaces it for them.
+                      Deliberately a small inline control rather than the
+                      standalone ZoomController/ZoomControls components in
                       ZoomController.tsx: those apply to a whole external
                       surface a host app supplies, and (more importantly)
                       that file imports `clampZoom` from this one, so
                       importing back from it here would make the two modules
                       circular. */}
-                  {isPdfBook && !scroll && (
+                  {isPdfBook && (
                     <div
                       role="toolbar"
                       aria-label={t.zoomControls}
@@ -3664,7 +3660,7 @@ export const Reader: React.FC<ReaderProps> = ({
                     viewport — tracks the true right/left edge of the
                     reading area instead of hugging the narrower centered
                     column. */}
-                {(isPdfBook && !scroll) ? (
+                {isPdfBook ? (
                   // One chapter (single-page mode) or two (see
                   // `pdfSpread`/`spreadStart`/goToNextPage/goToPrevPage,
                   // which step by two chapters at a time in spread mode) —
@@ -3688,6 +3684,7 @@ export const Reader: React.FC<ReaderProps> = ({
                   // in — only the flex container as a whole (via the
                   // transform) can ever overflow its ancestor.
                   <div
+                    ref={pdfZoomScrollRef}
                     className="ebook-reader__pdf-zoom-scroll"
                     style={{ width: '100%', height: '100%', overflow: 'auto' }}
                   >
@@ -3759,7 +3756,30 @@ export const Reader: React.FC<ReaderProps> = ({
                           padding: `2rem ${margin}px`,
                           color: 'var(--reader-fg, #1a1a1a)',
                           transform: `scale(${pdfZoom / 100})`,
-                          transformOrigin: 'top left',
+                          // 'center top': horizontally, the anchor sits at
+                          // this row's own midpoint, which (since the row
+                          // fills `.ebook-reader__page-box` exactly, and
+                          // that box is itself centered — see its own
+                          // `margin: '0 auto'`) coincides with the visual
+                          // center of the whole reading area. Scaling from
+                          // there grows a page, or a two-page spread, out
+                          // symmetrically to both sides (`<--|-->`) instead
+                          // of dragging it sideways the way anchoring at the
+                          // row's literal top-left corner did — that corner
+                          // is wherever it happens to sit, not the visual
+                          // center, so top-left-anchored growth read as the
+                          // page(s) drifting right as zoom increased.
+                          // Vertically still 'top', not 'center': growing
+                          // upward as well as downward would push part of
+                          // the page above the scroll boundary's reachable
+                          // range (see the scroll-recentering effect's own
+                          // comment on `.ebook-reader__pdf-zoom-scroll` for
+                          // why the *scroll position*, not the transform,
+                          // is what's asymmetric here) — top-anchored keeps
+                          // all vertical growth in the one direction
+                          // `overflow: auto` already scrolls into by
+                          // default.
+                          transformOrigin: 'center top',
                         }}
                       >
                         {devToolsOpen ? (
@@ -3769,8 +3789,21 @@ export const Reader: React.FC<ReaderProps> = ({
                           const node = chapter?.content[0];
                           if (!chapter || !node) return null;
                           return (
-                            <div key={chapter.id} style={{ flex: '1 1 0', minWidth: 0, maxWidth: `${MAX_PAGE_WIDTH}px`, height: '100%' }}>
-                              <ContentNodeRenderer node={node} onImageClick={(src, alt) => setLightboxImage({ src, alt })} onFootnoteClick={handleFootnoteClick} onLinkClick={handleLinkClick} />
+                            // `flex: '0 1 auto'`, not `'1 1 0'`: a page
+                            // shouldn't grow to claim an equal share of the
+                            // row (up to `MAX_PAGE_WIDTH`) regardless of its
+                            // own aspect ratio — that stretched a column far
+                            // wider than the image it held, leaving the
+                            // image centered in the extra width and reading
+                            // as dead space between the two pages of a
+                            // spread. Sized to content (capped by
+                            // `maxWidth`) instead, so each page's column is
+                            // only as wide as its own image, and the two sit
+                            // snug against each other, centered as a pair by
+                            // `.ebook-reader__pdf-spread`'s own
+                            // `justifyContent: center`.
+                            <div key={chapter.id} style={{ flex: '0 1 auto', minWidth: 0, maxWidth: `${MAX_PAGE_WIDTH}px`, height: '100%' }}>
+                              <ContentNodeRenderer node={node} onImageClick={(src, alt) => setLightboxImage({ src, alt })} onFootnoteClick={handleFootnoteClick} onLinkClick={handleLinkClick} invertPdfPageColors={invertPdfPageColors} />
                             </div>
                           );
                         })}

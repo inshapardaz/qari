@@ -113,6 +113,32 @@ describe('Reader with a PDF source', () => {
     });
   });
 
+  it.each(['dark', 'high-contrast'] as const)('inverts the PDF page image colors under the %s theme', async (theme) => {
+    const pdfjsLib = await import('pdfjs-dist');
+    (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+      promise: Promise.resolve(createFakePdfDocument(1)),
+    });
+
+    const source: ReaderSource = { type: 'pdf', data: new ArrayBuffer(8) };
+    render(<Reader source={source} theme={theme} />);
+    const page = await screen.findByTestId('pdf-page');
+
+    expect(page.querySelector('img')).toHaveStyle({ filter: 'invert(1) hue-rotate(180deg)' });
+  });
+
+  it.each(['light', 'sepia'] as const)('does not invert the PDF page image colors under the %s theme', async (theme) => {
+    const pdfjsLib = await import('pdfjs-dist');
+    (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+      promise: Promise.resolve(createFakePdfDocument(1)),
+    });
+
+    const source: ReaderSource = { type: 'pdf', data: new ArrayBuffer(8) };
+    render(<Reader source={source} theme={theme} />);
+    const page = await screen.findByTestId('pdf-page');
+
+    expect(page.querySelector('img')?.style.filter).toBe('');
+  });
+
   it('steps by two pages at a time when paging through a spread', async () => {
     const pdfjsLib = await import('pdfjs-dist');
     (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
@@ -235,18 +261,34 @@ describe('Reader with a PDF source', () => {
     expect(zoomIn).toBeDisabled();
   });
 
-  it('does not show PDF zoom controls in scroll mode', async () => {
+  it('ignores `scroll` for PDF sources — no continuous vertical flow, zoom controls always shown', async () => {
     const pdfjsLib = await import('pdfjs-dist');
     (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
       promise: Promise.resolve(createFakePdfDocument(1)),
     });
 
     const source: ReaderSource = { type: 'pdf', data: new ArrayBuffer(8) };
-    render(<Reader source={source} scroll />);
+    const { container } = render(<Reader source={source} scroll />);
     await screen.findByTestId('pdf-page');
 
-    expect(screen.queryByRole('button', { name: /Zoom in/ })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Zoom out/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /Zoom in/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Zoom out/ })).toBeInTheDocument();
+    expect(container.querySelector('.ebook-reader__pdf-zoom-scroll')).not.toBeNull();
+    expect(container.querySelector('.ebook-reader__scroll')).toBeNull();
+  });
+
+  it('hides the "Scroll" layout option for PDF sources', async () => {
+    const pdfjsLib = await import('pdfjs-dist');
+    (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+      promise: Promise.resolve(createFakePdfDocument(1)),
+    });
+
+    const source: ReaderSource = { type: 'pdf', data: new ArrayBuffer(8) };
+    render(<Reader source={source} />);
+    await screen.findByTestId('pdf-page');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Layout' }));
+    expect(screen.queryByRole('button', { name: 'Scroll' })).toBeNull();
   });
 
   it('centers a single lone page for the trailing spread of an odd-paged PDF', async () => {
