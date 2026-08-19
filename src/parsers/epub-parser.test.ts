@@ -342,6 +342,64 @@ describe('EPUBParserImpl', () => {
       }
     });
 
+    it('should map <svg><image xlink:href> (EPUB cover/title page pattern) to ImageNode', async () => {
+      const epub = await createEpubBuffer({
+        spineItems: [
+          {
+            id: 'titlepage',
+            href: 'titlepage.xhtml',
+            content: `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Title Page</title></head>
+<body>
+  <div id="cover-image">
+    <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 600 800">
+      <image width="600" height="800" xlink:href="images/cover.jpg"/>
+    </svg>
+  </div>
+</body>
+</html>`,
+          },
+        ],
+      });
+
+      const book = await parser.parse(epub);
+      const node = book.chapters[0].content[0];
+
+      expect(node.type).toBe('image');
+      if (node.type === 'image') {
+        expect(node.src).toBe('images/cover.jpg');
+      }
+    });
+
+    it('should map <svg><image href> (SVG2 form, no xlink namespace) to ImageNode', async () => {
+      const epub = await createEpubBuffer({
+        spineItems: [
+          {
+            id: 'titlepage',
+            href: 'titlepage.xhtml',
+            content: `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><title>Title Page</title></head>
+<body>
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 800">
+    <image width="600" height="800" href="images/cover.jpg"/>
+  </svg>
+</body>
+</html>`,
+          },
+        ],
+      });
+
+      const book = await parser.parse(epub);
+      const node = book.chapters[0].content[0];
+
+      expect(node.type).toBe('image');
+      if (node.type === 'image') {
+        expect(node.src).toBe('images/cover.jpg');
+      }
+    });
+
     it('should map <pre><code> to CodeBlockNode', async () => {
       const epub = await createEpubBuffer({
         spineItems: [

@@ -709,6 +709,16 @@ export class EPUBParserImpl implements EPUBParser {
       return this.createImageNode(el);
     }
 
+    // SVG-wrapped images: EPUB title/cover pages commonly embed the cover
+    // art as <svg><image xlink:href="..."/></svg> (the EPUB3-recommended
+    // pattern, since it lets reading systems scale the page) rather than a
+    // plain <img>. Without this, svg isn't a container or a recognized
+    // element and has no text content, so it fell through to the "no
+    // content" fallback below and the whole title page rendered blank.
+    if (tagName === 'svg') {
+      return this.createSvgImageNode(el);
+    }
+
     // Fallback: if the element has text content, wrap it as a paragraph
     const textContent = el.textContent?.trim();
     if (textContent) {
@@ -741,6 +751,33 @@ export class EPUBParserImpl implements EPUBParser {
       type: 'image',
       src: el.getAttribute('src') || '',
       ...(el.getAttribute('alt') && { alt: el.getAttribute('alt')! }),
+    };
+  }
+
+  /**
+   * Finds the nested SVG <image> element and reads its href. XLink's
+   * `xlink:href` is the EPUB2/older-SVG form; plain `href` is the SVG2 form
+   * some newer EPUBs use instead — checked in that order since xlink:href
+   * is the one actually required by the EPUB3 spec's own examples.
+   */
+  private createSvgImageNode(svgEl: Element): ImageNode | null {
+    const imageEl = svgEl.getElementsByTagNameNS('http://www.w3.org/2000/svg', 'image')[0]
+      ?? svgEl.getElementsByTagName('image')[0];
+    if (!imageEl) {
+      return null;
+    }
+
+    const src = imageEl.getAttributeNS('http://www.w3.org/1999/xlink', 'href')
+      || imageEl.getAttribute('href')
+      || '';
+    if (!src) {
+      return null;
+    }
+
+    return {
+      type: 'image',
+      src,
+      ...(imageEl.getAttribute('alt') && { alt: imageEl.getAttribute('alt')! }),
     };
   }
 
