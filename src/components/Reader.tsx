@@ -2185,8 +2185,16 @@ export const Reader: React.FC<ReaderProps> = ({
           counts.push(1);
           trailingLone.push(false);
         } else {
-          // Build simple HTML for measurement
-          let html = `<h2>${chapter.title}</h2>`;
+          // Build simple HTML for measurement — deliberately just the
+          // chapter body, with no title heading prepended. The real
+          // rendered content (`contentRef`, below) never shows a title
+          // inside the paginated flow either (it's shown separately in the
+          // header bar) — a title heading here inflated this offscreen
+          // measurement past what the real DOM produces, which could flip
+          // the odd/even column-count parity `trailingLone` depends on and
+          // misapply (or fail to apply) the last-page recentering shift,
+          // rendering the actual last page misaligned (issue #14).
+          let html = '';
           for (const node of chapter.content) {
             html += contentNodeToHtml(node);
           }
