@@ -2999,7 +2999,21 @@ export const Reader: React.FC<ReaderProps> = ({
                 <Drawer.Root
                   opened={chapterMenuOpen}
                   onClose={() => setChapterMenuOpen(false)}
-                  position={t.uiDirection === 'rtl' ? 'right' : 'left'}
+                  // Mantine's `position` maps directly to a *logical*
+                  // (direction-relative) flex alignment — 'left' means
+                  // flex-start, 'right' means flex-end — rather than a
+                  // physical side. This drawer renders inside the reader
+                  // root, which carries `dir={t.uiDirection}` (see below),
+                  // so under an RTL ambient direction flex-end/flex-start
+                  // already flip to the physical left/right on their own.
+                  // Passing 'right' here for RTL would flip it a *second*
+                  // time, landing the drawer on the physical left instead
+                  // of the right — always passing 'left' is what actually
+                  // keeps it on the physical left in LTR and physical right
+                  // in RTL, matching the ☰ button's own side (which flips
+                  // purely from the ambient `dir`, with no manual
+                  // conditional of its own).
+                  position="left"
                   size={320}
                   portalProps={{ target: mantineContentPortalTarget }}
                 >
