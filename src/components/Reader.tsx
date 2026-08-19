@@ -64,7 +64,7 @@ import { NoteStore } from '../services/note-store';
 import { ProgressStore } from '../services/progress-store';
 import { ChapterNavigator, getChapterCharCount } from '../services/chapter-navigator';
 import { URDU_WEB_FONT_OPTIONS, injectUrduWebFontsCss } from '../services/urdu-web-fonts';
-import { getRangeOffsets, applyHighlights, clearHighlights } from '../utils/text-highlight';
+import { getRangeOffsets, applyHighlights, clearHighlights, findTextRange } from '../utils/text-highlight';
 
 import { BookmarkPanel } from './BookmarkPanel';
 import { NotePanel } from './NotePanel';
@@ -978,6 +978,14 @@ export const Reader: React.FC<ReaderProps> = ({
   // Which tab of the chapter drawer (see the ☰ button below) is active —
   // chapters is the default, matching it being the first/leftmost tab.
   const [chapterDrawerTab, setChapterDrawerTab] = useState<'chapters' | 'bookmarks' | 'notes' | 'search'>('chapters');
+  // Lifted out of SearchPanel (rather than kept as its own local state)
+  // specifically so it survives the chapter drawer closing/reopening — the
+  // drawer's content unmounts when closed (e.g. right after clicking a
+  // result), which would otherwise reset the query/results to blank.
+  const [searchQuery, setSearchQuery] = useState('');
+  // Set when a search result is clicked; resolved by the effect below once
+  // the target chapter has actually rendered, then cleared.
+  const [pendingSearchSelection, setPendingSearchSelection] = useState<{ chapterId: string; matchedText: string; occurrence: number } | null>(null);
   const [themePanelOpen, setThemePanelOpen] = useState(false);
   const [layoutPanelOpen, setLayoutPanelOpen] = useState(false);
   // Pending note context menu — position, plus whichever of these apply to
@@ -1763,6 +1771,47 @@ export const Reader: React.FC<ReaderProps> = ({
       chapterNotes.map(n => ({ id: n.id, start: n.startOffset, end: n.endOffset, color: n.color }))
     );
   }, [enableNotes, state.book, state.notes, currentChapterIdx]);
+
+  // ---------------------------------------------------------------------------
+  // Select the matched text after navigating to a search result (see
+  // SearchPanel's onResultSelect). Deferred to an effect, rather than done
+  // directly in the click handler, because the target chapter/page isn't
+  // rendered into `contentRef` yet at click time — this fires once it is
+  // (keyed on the chapter actually matching), finds the exact occurrence
+  // via `findTextRange` (DOM-text-based, not the AST-based offset the
+  // result itself carries — see that function's own comment), and clears
+  // the pending selection whether or not a match was actually found so a
+  // stale request can't fire again after further navigation.
+  // ---------------------------------------------------------------------------
+  useLayoutEffect(() => {
+    if (!pendingSearchSelection || !contentRef.current || !state.book) return;
+    const chapterId = state.book.chapters[currentChapterIdx]?.id;
+    if (chapterId !== pendingSearchSelection.chapterId) return;
+
+    const range = findTextRange(
+      contentRef.current,
+      pendingSearchSelection.matchedText,
+      pendingSearchSelection.occurrence
+    );
+    if (range) {
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      // Only safe in scroll mode, where `.ebook-reader__scroll` is a real
+      // scrollable ancestor — in paginated mode there's no scrollable
+      // ancestor between the match and the document, so scrollIntoView
+      // could bubble up and scroll the *host page* instead of the reader.
+      // Paginated mode instead relies on already having landed on the
+      // right page via the offset-based approximation in handleResultClick.
+      if (scroll) {
+        const el = range.startContainer.nodeType === Node.TEXT_NODE
+          ? range.startContainer.parentElement
+          : (range.startContainer as Element);
+        el?.scrollIntoView({ block: 'center' });
+      }
+    }
+    setPendingSearchSelection(null);
+  }, [pendingSearchSelection, state.book, currentChapterIdx, currentPage, scroll]);
 
   // ---------------------------------------------------------------------------
   // Load book from source
@@ -3154,10 +3203,19 @@ export const Reader: React.FC<ReaderProps> = ({
                         {searchEnabled && (
                           <Tabs.Panel value="search" style={{ flex: 1, overflowY: 'auto' }} p="xs">
                             <SearchPanel
+                              query={searchQuery}
+                              onQueryChange={setSearchQuery}
                               onNavigate={(chapterIdx, page) => {
                                 setCurrentChapterIdx(chapterIdx);
                                 setCurrentPage(page);
                                 setChapterMenuOpen(false);
+                              }}
+                              onResultSelect={(result) => {
+                                setPendingSearchSelection({
+                                  chapterId: result.chapterId,
+                                  matchedText: result.snippet.slice(result.snippetMatchStart, result.snippetMatchEnd),
+                                  occurrence: result.occurrence,
+                                });
                               }}
                               onPageChange={onPageChange}
                             />

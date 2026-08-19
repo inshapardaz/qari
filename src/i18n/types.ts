@@ -92,6 +92,8 @@ export interface TranslationStrings {
   searchNoResults: string;
   /** Match count summary shown above the results list. Supports {count}. */
   searchResultsCount: string;
+  /** Button that clears the search query. */
+  searchClear: string;
 
   // Chapter index
   chaptersTitle: string;

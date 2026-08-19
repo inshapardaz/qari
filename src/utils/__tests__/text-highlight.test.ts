@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { getTextOffset, getRangeOffsets, applyHighlights, clearHighlights } from '../text-highlight';
+import { getTextOffset, getRangeOffsets, applyHighlights, clearHighlights, findTextRange } from '../text-highlight';
 
 function setContainerHTML(html: string): HTMLDivElement {
   const container = document.createElement('div');
@@ -148,5 +148,56 @@ describe('applyHighlights / clearHighlights', () => {
     const container = setContainerHTML('<p>Hello world</p>');
     expect(() => applyHighlights(container, [{ id: 'note-1', start: 5, end: 5 }])).not.toThrow();
     expect(container.querySelector('mark')).toBeNull();
+  });
+});
+
+describe('findTextRange', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('finds the first occurrence of a needle by default', () => {
+    const container = setContainerHTML('<p>Hello wonderful world</p>');
+    const range = findTextRange(container, 'wonderful');
+    expect(range).not.toBeNull();
+    expect(range!.toString()).toBe('wonderful');
+  });
+
+  it('is case-insensitive', () => {
+    const container = setContainerHTML('<p>Hello WONDERFUL world</p>');
+    const range = findTextRange(container, 'wonderful');
+    expect(range!.toString()).toBe('WONDERFUL');
+  });
+
+  it('finds the Nth occurrence when given a non-zero occurrence index', () => {
+    const container = setContainerHTML('<p>cat sat on the cat mat with a cat</p>');
+    expect(findTextRange(container, 'cat', 0)!.toString()).toBe('cat');
+    const second = findTextRange(container, 'cat', 1)!;
+    expect(second.toString()).toBe('cat');
+    expect(getRangeOffsets(container, second)).toEqual({ start: 15, end: 18 });
+    const third = findTextRange(container, 'cat', 2)!;
+    expect(getRangeOffsets(container, third)).toEqual({ start: 30, end: 33 });
+  });
+
+  it('returns null when the needle does not occur', () => {
+    const container = setContainerHTML('<p>Hello world</p>');
+    expect(findTextRange(container, 'zebra')).toBeNull();
+  });
+
+  it('returns null when asked for an occurrence beyond how many exist', () => {
+    const container = setContainerHTML('<p>one cat, no more</p>');
+    expect(findTextRange(container, 'cat', 1)).toBeNull();
+  });
+
+  it('returns null for a blank needle', () => {
+    const container = setContainerHTML('<p>Hello world</p>');
+    expect(findTextRange(container, '  ')).toBeNull();
+  });
+
+  it('finds a match that spans across an inline element boundary', () => {
+    const container = setContainerHTML('<p>a <strong>bold</strong> word here</p>');
+    const range = findTextRange(container, 'bold word');
+    expect(range).not.toBeNull();
+    expect(range!.toString()).toBe('bold word');
   });
 });

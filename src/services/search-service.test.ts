@@ -55,6 +55,7 @@ describe('searchBook', () => {
     const results = searchBook(book, 'cat');
 
     expect(results.map(r => r.offset)).toEqual([0, 15, 30]);
+    expect(results.map(r => r.occurrence)).toEqual([0, 1, 2]);
   });
 
   it('finds matches across multiple chapters, in reading order', () => {
@@ -64,6 +65,14 @@ describe('searchBook', () => {
     expect(results).toHaveLength(2);
     expect(results[0].chapterIdx).toBe(1);
     expect(results[1].chapterIdx).toBe(2);
+  });
+
+  it('resets occurrence per chapter rather than counting globally', () => {
+    const book = createBook(['cat and cat', 'cat and cat and cat']);
+    const results = searchBook(book, 'cat');
+
+    expect(results.filter(r => r.chapterIdx === 0).map(r => r.occurrence)).toEqual([0, 1]);
+    expect(results.filter(r => r.chapterIdx === 1).map(r => r.occurrence)).toEqual([0, 1, 2]);
   });
 
   it('does not match overlapping occurrences (advances past each match)', () => {

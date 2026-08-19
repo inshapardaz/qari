@@ -2,12 +2,16 @@
  * SearchPanel Component — full-text search across the current book, with
  * a result list (chapter + snippet) that navigates to a match on click.
  * Search runs against `state.book` from ReaderContext; there's no store —
- * unlike bookmarks/notes, search results aren't persisted, just recomputed
- * from the live query.
+ * unlike bookmarks/notes, search results aren't persisted across reloads,
+ * just recomputed from the live query. The query text itself *is*
+ * controlled by the parent (Reader.tsx) rather than kept as local state
+ * here, so it survives the chapter drawer closing/reopening (e.g. after
+ * clicking a result) instead of resetting to blank every time this
+ * component remounts along with the drawer.
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Button, Text, TextInput } from '@mantine/core';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { ActionIcon, Button, Text, TextInput } from '@mantine/core';
 import { useReaderContext } from './Reader';
 import { useTranslations, interpolate } from '../i18n';
 import { getChapterCharCount } from '../services/chapter-navigator';
@@ -17,11 +21,20 @@ import type { PageChangeEvent } from '../models/events';
 import { SearchIcon } from './icons';
 
 export interface SearchPanelProps {
+  /** The search query, lifted to the parent so it persists across the panel remounting. */
+  query: string;
+  onQueryChange: (query: string) => void;
   /**
    * Called when navigation to a search result is requested.
    * Provides the resolved chapter index, page number, and reading progress percentage.
    */
   onNavigate?: (chapterIdx: number, page: number, progress: number) => void;
+  /**
+   * Called after `onNavigate`, with the specific result clicked — lets the
+   * caller select/highlight the actual matched text once the target
+   * chapter/page has rendered (see Reader.tsx's use of `findTextRange`).
+   */
+  onResultSelect?: (result: SearchResult) => void;
   /**
    * Called when navigation completes with the standard PageChangeEvent.
    */
@@ -41,7 +54,10 @@ const DEFAULT_CHARS_PER_PAGE = 1500;
 const DEBOUNCE_MS = 200;
 
 export const SearchPanel: React.FC<SearchPanelProps> = ({
+  query,
+  onQueryChange,
   onNavigate,
+  onResultSelect,
   onPageChange,
   charsPerPage = DEFAULT_CHARS_PER_PAGE,
 }) => {
@@ -49,8 +65,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({
   const t = useTranslations();
   const { book } = state;
 
-  const [query, setQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState(query);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(query), DEBOUNCE_MS);
@@ -110,8 +125,11 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({
       if (onPageChange) {
         onPageChange({ chapter: result.chapterIdx, page: targetPage, progress: clampedProgress });
       }
+      if (onResultSelect) {
+        onResultSelect(result);
+      }
     },
-    [book, charsPerPage, onNavigate, onPageChange]
+    [book, charsPerPage, onNavigate, onPageChange, onResultSelect]
   );
 
   return (
@@ -121,8 +139,24 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({
         aria-label={t.searchPanelTitle}
         placeholder={t.searchPlaceholder}
         value={query}
-        onChange={(e) => setQuery(e.currentTarget.value)}
+        onChange={(e) => onQueryChange(e.currentTarget.value)}
         leftSection={<SearchIcon size="1em" />}
+        // The clear button needs actual pointer events — Mantine's default
+        // for rightSection is `none` (so an empty/decorative section, the
+        // common case, doesn't intercept clicks meant for the input).
+        rightSectionPointerEvents={query ? 'auto' : 'none'}
+        rightSection={query && (
+          <ActionIcon
+            data-testid="search-clear"
+            aria-label={t.searchClear}
+            onClick={() => onQueryChange('')}
+            variant="subtle"
+            size="sm"
+            style={{ color: 'var(--reader-fg, #1a1a1a)' }}
+          >
+            ✕
+          </ActionIcon>
+        )}
         mb="sm"
         // A default-variant TextInput otherwise takes its background/text/
         // border/placeholder color from Mantine's own forced light/dark

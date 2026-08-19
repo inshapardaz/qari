@@ -89,6 +89,7 @@ export const fr: TranslationStrings = {
   searchEmpty: 'Tapez pour rechercher dans le livre.',
   searchNoResults: 'Aucun résultat pour « {query} ».',
   searchResultsCount: '{count} résultats',
+  searchClear: 'Effacer la recherche',
 
   // Chapter index
   chaptersTitle: 'Chapitres',

@@ -56,6 +56,69 @@ export function getRangeOffsets(container: Node, range: Range): { start: number;
 }
 
 /**
+ * Finds the DOM Range spanning the `occurrence`-th (0-based) case-insensitive
+ * match of `needle` within `container`'s rendered text, by searching the
+ * live DOM text directly rather than the parsed content AST — search
+ * results carry an AST-based character offset (see `SearchResult.offset` in
+ * search-service.ts) that doesn't necessarily line up with rendered DOM
+ * text (e.g. a chapter containing images or code blocks renders differently
+ * than its extracted plain text), so re-finding the match directly against
+ * what's actually on screen is the only way to select the right text
+ * reliably. Returns null if `needle` doesn't occur (`occurrence`+1) times.
+ */
+export function findTextRange(container: Node, needle: string, occurrence: number = 0): Range | null {
+  const trimmed = needle.trim();
+  if (!trimmed) return null;
+
+  const haystack = (container.textContent ?? '').toLocaleLowerCase();
+  const target = trimmed.toLocaleLowerCase();
+
+  let matchStart = -1;
+  let fromIndex = 0;
+  for (let i = 0; i <= occurrence; i++) {
+    matchStart = haystack.indexOf(target, fromIndex);
+    if (matchStart === -1) return null;
+    fromIndex = matchStart + target.length;
+  }
+  const matchEnd = matchStart + target.length;
+
+  // Walk the same text nodes `container.textContent` concatenated, in the
+  // same order, to convert [matchStart, matchEnd) into node+offset
+  // boundaries. Unlike `highlightOne` below, a Range spanning multiple
+  // elements is fine here — it's only used for `Selection.addRange`, not
+  // `Range.surroundContents` (which is what requires staying within one
+  // text node per fragment).
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  let pos = 0;
+  let startNode: Text | null = null;
+  let startOffset = 0;
+  let endNode: Text | null = null;
+  let endOffset = 0;
+  let node: Node | null;
+  while ((node = walker.nextNode())) {
+    const len = node.textContent?.length ?? 0;
+    const nodeStart = pos;
+    const nodeEnd = pos + len;
+    if (startNode === null && nodeEnd > matchStart) {
+      startNode = node as Text;
+      startOffset = matchStart - nodeStart;
+    }
+    if (nodeEnd >= matchEnd) {
+      endNode = node as Text;
+      endOffset = matchEnd - nodeStart;
+      break;
+    }
+    pos = nodeEnd;
+  }
+  if (!startNode || !endNode) return null;
+
+  const range = document.createRange();
+  range.setStart(startNode, startOffset);
+  range.setEnd(endNode, endOffset);
+  return range;
+}
+
+/**
  * Removes all existing note highlight marks from `container`, restoring
  * plain text in their place, and normalizes the container so adjacent text
  * nodes are merged back together (keeping subsequent offset math stable).

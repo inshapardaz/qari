@@ -18,6 +18,15 @@ export interface SearchResult {
   chapterTitle: string;
   /** Character offset of the match within the chapter's plain-text content. */
   offset: number;
+  /**
+   * 0-based index of this match among every match of the same query within
+   * this chapter, in reading order. Lets the reader re-locate the exact
+   * occurrence in the *rendered* DOM (see `findTextRange` in
+   * text-highlight.ts) without relying on `offset`, which is an AST-based
+   * character count that doesn't necessarily line up with rendered DOM text
+   * (e.g. a chapter containing images or code blocks).
+   */
+  occurrence: number;
   /** Text surrounding the match, for display. */
   snippet: string;
   /** Start/end offset of the matched query within `snippet`. */
@@ -61,6 +70,7 @@ export function searchBook(
     const haystack = text.toLocaleLowerCase();
 
     let fromIndex = 0;
+    let occurrence = 0;
     while (true) {
       const matchIndex = haystack.indexOf(needle, fromIndex);
       if (matchIndex === -1) break;
@@ -73,6 +83,7 @@ export function searchBook(
         chapterId: chapter.id,
         chapterTitle: chapter.title,
         offset: matchIndex,
+        occurrence,
         snippet: text.slice(snippetStart, snippetEnd),
         snippetMatchStart: matchIndex - snippetStart,
         snippetMatchEnd: matchIndex - snippetStart + needle.length,
@@ -80,6 +91,7 @@ export function searchBook(
 
       if (results.length >= maxResults) break outer;
       fromIndex = matchIndex + needle.length;
+      occurrence++;
     }
   }
 

@@ -89,6 +89,7 @@ export const ur: TranslationStrings = {
   searchEmpty: 'کتاب میں تلاش کے لیے ٹائپ کریں۔',
   searchNoResults: '"{query}" کے لیے کوئی نتیجہ نہیں ملا۔',
   searchResultsCount: '{count} نتائج',
+  searchClear: 'تلاش صاف کریں',
 
   // Chapter index
   chaptersTitle: 'ابواب',

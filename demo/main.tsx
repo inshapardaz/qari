@@ -5,6 +5,7 @@ import '@mantine/core/styles.css';
 import { Reader } from '../src/components/Reader';
 import { LOCALES } from '../src/i18n';
 import type { LocaleCode } from '../src/i18n';
+import type { PdfChapterMapEntry } from '../src/interfaces/parser';
 
 type SourceType = 'markdown' | 'epub' | 'pdf' | 'url';
 
@@ -194,6 +195,7 @@ function App() {
   const [showCloseButton, setShowCloseButton] = useState(false);
   const [enableBookmarks, setEnableBookmarks] = useState(false);
   const [enableNotes, setEnableNotes] = useState(true);
+  const [enableSearch, setEnableSearch] = useState(true);
   const [enableProgressTracking, setEnableProgressTracking] = useState(true);
   const [enableBuiltInDictionary, setEnableBuiltInDictionary] = useState(true);
   const [readOnly, setReadOnly] = useState(false);
@@ -206,6 +208,10 @@ function App() {
   // bookInfo prop's doc comment on ReaderProps).
   const [bookInfoTitle, setBookInfoTitle] = useState('');
   const [bookInfoAuthor, setBookInfoAuthor] = useState('');
+  // PDF chapter map (see `pdfChapters` prop, only relevant for `{ type: 'pdf' }`
+  // sources) — entered as one "startPage: title" pair per line rather than
+  // building a whole mini-editor for a handful of rows.
+  const [pdfChaptersInput, setPdfChaptersInput] = useState('1: Foreword\n5: Chapter 1');
 
   // Persist settings whenever they change
   useEffect(() => {
@@ -294,6 +300,17 @@ function App() {
     ...(bookInfoTitle.trim() && { title: bookInfoTitle.trim() }),
     ...(bookInfoAuthor.trim() && { author: bookInfoAuthor.trim() }),
   };
+
+  // Parses the "startPage: title" lines above into a PdfChapterMapEntry[] —
+  // malformed lines (no leading "N:") are silently skipped rather than
+  // blocking the rest of the map from applying.
+  const pdfChapters: PdfChapterMapEntry[] = pdfChaptersInput
+    .split('\n')
+    .map((line) => {
+      const match = line.trim().match(/^(\d+)\s*:\s*(.+)$/);
+      return match ? { startPage: Number(match[1]), title: match[2].trim() } : null;
+    })
+    .filter((entry): entry is PdfChapterMapEntry => entry !== null);
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -448,6 +465,15 @@ function App() {
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem' }}>
             <input
               type="checkbox"
+              checked={enableSearch}
+              onChange={(e) => setEnableSearch(e.target.checked)}
+            />
+            enableSearch
+          </label>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem' }}>
+            <input
+              type="checkbox"
               checked={enableProgressTracking}
               onChange={(e) => setEnableProgressTracking(e.target.checked)}
             />
@@ -556,10 +582,32 @@ function App() {
               }}
             />
           </div>
+
+          {source.type === 'pdf' && (
+            <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: '#555' }}>
+                pdfChapters (one "startPage: title" per line)
+              </label>
+              <textarea
+                value={pdfChaptersInput}
+                onChange={(e) => setPdfChaptersInput(e.target.value)}
+                rows={3}
+                style={{
+                  padding: '0.5rem',
+                  border: '1px solid #ccc',
+                  borderRadius: '4px',
+                  fontSize: '0.85rem',
+                  width: '220px',
+                  fontFamily: 'monospace',
+                }}
+              />
+            </div>
+          )}
         </div>
 
         <p style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#888' }}>
           bookInfo overrides show up in the reader's chapter menu (☰) — see the book title/author there.
+          {source.type === 'pdf' && ' pdfChapters titles the matching page ranges there too, instead of "Page N".'}
         </p>
 
         {closeMessage && (
@@ -602,6 +650,7 @@ function App() {
           wordSpacing={wordSpacing}
           enableBookmarks={enableBookmarks}
           enableNotes={enableNotes}
+          enableSearch={enableSearch}
           enableProgressTracking={enableProgressTracking}
           enableBuiltInDictionary={enableBuiltInDictionary}
           readOnly={readOnly}
@@ -613,6 +662,7 @@ function App() {
           columns={columns}
           scroll={scroll}
           translations={LOCALES[language]}
+          pdfChapters={source.type === 'pdf' ? pdfChapters : undefined}
           onPageChange={(e) => console.log('Page change:', e)}
           onBookmarkCreate={(e) => console.log('Bookmark created:', e)}
           onError={(e) => console.error('Reader error:', e)}

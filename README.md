@@ -338,7 +338,7 @@ interface Note {
 
 ## Search
 
-In-book search is enabled by default — a 🔍 Search tab in the chapter drawer alongside Chapters/Bookmarks/Notes. Type a query to see every match across the whole book, each shown with its chapter title and a snippet of surrounding text; clicking a result jumps straight to that chapter and page. Search isn't available for PDF sources, since rasterized pages have no extractable text (same limitation as notes/dictionary lookup).
+In-book search is enabled by default — a 🔍 Search tab in the chapter drawer alongside Chapters/Bookmarks/Notes. Type a query to see every match across the whole book, each shown with its chapter title and a snippet of surrounding text; clicking a result jumps to that chapter and page and selects the matched text there. The query and result list stay put if you close the drawer without clicking a result (e.g. to re-read some context) and reopen it — they only clear when you actually change the query. Search isn't available for PDF sources, since rasterized pages have no extractable text (same limitation as notes/dictionary lookup).
 
 ```tsx
 <Reader source={source} enableSearch={false} />

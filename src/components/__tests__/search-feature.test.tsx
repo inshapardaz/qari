@@ -77,6 +77,22 @@ describe('Search feature', () => {
     await waitFor(() => expect(within(panel).getByTestId('search-no-results')).toBeInTheDocument());
   });
 
+  it('shows no clear button before typing, and clears the query and results when clicked', async () => {
+    render(<Reader source={createMarkdownSource()} />);
+    const panel = await openSearchTab();
+
+    expect(within(panel).queryByTestId('search-clear')).not.toBeInTheDocument();
+
+    fireEvent.change(within(panel).getByTestId('search-input'), { target: { value: 'needle' } });
+    await waitFor(() => expect(within(panel).getByTestId('search-list')).toBeInTheDocument());
+
+    fireEvent.click(within(panel).getByTestId('search-clear'));
+
+    expect(within(panel).getByTestId('search-input')).toHaveValue('');
+    await waitFor(() => expect(within(panel).getByTestId('search-empty')).toBeInTheDocument());
+    expect(within(panel).queryByTestId('search-clear')).not.toBeInTheDocument();
+  });
+
   it('navigates to the matched chapter and closes the drawer on result click', async () => {
     render(<Reader source={createMarkdownSource()} />);
     const panel = await openSearchTab();
@@ -88,6 +104,40 @@ describe('Search feature', () => {
 
     await waitFor(() => expect(screen.queryByTestId('chapter-menu-panel')).not.toBeInTheDocument());
     expect(document.body.textContent).toContain('A needle in a haystack');
+  });
+
+  it('selects the matched text in the reading view after navigating to a result', async () => {
+    render(<Reader source={createMarkdownSource()} />);
+    const panel = await openSearchTab();
+
+    fireEvent.change(within(panel).getByTestId('search-input'), { target: { value: 'haystack' } });
+    await waitFor(() => expect(within(panel).getByTestId('search-list')).toBeInTheDocument());
+
+    fireEvent.click(within(panel).getByRole('button', { name: /Go to result in Chapter 2/ }));
+
+    await waitFor(() => expect(screen.queryByTestId('chapter-menu-panel')).not.toBeInTheDocument());
+    await waitFor(() => expect(window.getSelection()?.toString().toLowerCase()).toBe('haystack'));
+  });
+
+  it('persists the query and results after closing and reopening the drawer', async () => {
+    render(<Reader source={createMarkdownSource()} />);
+    const panel = await openSearchTab();
+
+    fireEvent.change(within(panel).getByTestId('search-input'), { target: { value: 'needle' } });
+    await waitFor(() => expect(within(panel).getByTestId('search-list')).toBeInTheDocument());
+
+    // Close the drawer (toggling the same button that opens it) without
+    // clicking a result, then reopen and switch back to the Search tab.
+    fireEvent.click(screen.getByRole('button', { name: 'Table of contents' }));
+    await waitFor(() => expect(screen.queryByTestId('chapter-menu-panel')).not.toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Table of contents' }));
+    const reopenedPanel = await screen.findByTestId('chapter-menu-panel');
+    fireEvent.click(within(reopenedPanel).getByRole('tab', { name: 'Search' }));
+
+    expect(within(reopenedPanel).getByTestId('search-input')).toHaveValue('needle');
+    expect(within(reopenedPanel).getByTestId('search-list')).toBeInTheDocument();
+    expect(within(reopenedPanel).getByRole('button', { name: /Go to result in Chapter 2/ })).toBeInTheDocument();
   });
 
   describe('with a PDF source (no extractable text)', () => {
