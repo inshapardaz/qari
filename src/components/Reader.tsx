@@ -3226,6 +3226,7 @@ export const Reader: React.FC<ReaderProps> = ({
                               borderRadius: 'var(--mantine-radius-md)',
                               border: opt.active ? '2px solid var(--mantine-primary-color-filled)' : '1px solid var(--mantine-color-default-border)',
                               backgroundColor: 'transparent',
+                              color: opt.active ? 'var(--reader-accent, #0071e3)' : 'var(--reader-fg, #1a1a1a)',
                               cursor: 'pointer',
                               display: 'flex',
                               alignItems: 'center',
