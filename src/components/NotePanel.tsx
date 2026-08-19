@@ -1,18 +1,19 @@
 /**
  * NotePanel Component — displays the list of notes for the current book,
- * with deletion and navigation. Notes are created by selecting text in the
- * reading view and right-clicking, not from this panel — there's no create
- * form here, and no editing (a note's excerpt is whatever text was
- * originally selected).
+ * with deletion and navigation, plus editing a note's comment and
+ * highlight color. Notes are *created* by selecting text in the reading
+ * view and right-clicking (there's no create form here), but a note's
+ * comment and color can be changed after the fact from this panel.
  * Uses NoteStore from ReaderContext.
  */
 
 import React, { useState, useCallback } from 'react';
-import { Button, ActionIcon, Alert, Title, Group, Text } from '@mantine/core';
+import { Button, ActionIcon, Alert, Title, Group, Text, Textarea } from '@mantine/core';
 import { useReaderContext } from './Reader';
-import { useTranslations } from '../i18n';
+import { useTranslations, interpolate } from '../i18n';
 import { getChapterCharCount } from '../services/chapter-navigator';
-import type { Note } from '../models/note';
+import { NOTE_HIGHLIGHT_COLORS, DEFAULT_NOTE_COLOR } from '../utils/text-highlight';
+import type { Note, NoteColor } from '../models/note';
 import type { PageChangeEvent } from '../models/events';
 
 export interface NotePanelProps {
@@ -36,6 +37,7 @@ export interface NotePanelProps {
 
 const DEFAULT_CHARS_PER_PAGE = 1500;
 const EXCERPT_LENGTH = 140;
+const NOTE_COLORS: NoteColor[] = ['yellow', 'green', 'blue', 'pink', 'purple'];
 
 function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
@@ -47,11 +49,13 @@ export const NotePanel: React.FC<NotePanelProps> = ({
   onPageChange,
   charsPerPage = DEFAULT_CHARS_PER_PAGE,
 }) => {
-  const { state, noteStore, removeNote } = useReaderContext();
+  const { state, noteStore, removeNote, updateNote } = useReaderContext();
   const t = useTranslations();
   const { notes, book } = state;
 
   const [error, setError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftComment, setDraftComment] = useState('');
 
   const currentBookId = book?.metadata.identifier || '';
   const bookNotes = notes.filter((n) => n.bookId === currentBookId);
@@ -135,6 +139,48 @@ export const NotePanel: React.FC<NotePanelProps> = ({
     [noteStore, removeNote]
   );
 
+  const handleStartEdit = useCallback((note: Note) => {
+    setEditingId(note.id);
+    setDraftComment(note.comment ?? '');
+  }, []);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingId(null);
+    setDraftComment('');
+  }, []);
+
+  const handleSaveComment = useCallback(
+    async (noteId: string) => {
+      if (!noteStore) return;
+
+      try {
+        const updated = await noteStore.updateComment(noteId, draftComment);
+        updateNote(updated);
+        setEditingId(null);
+        setDraftComment('');
+        setError(null);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to save comment.');
+      }
+    },
+    [noteStore, draftComment, updateNote]
+  );
+
+  const handleColorChange = useCallback(
+    async (noteId: string, color: NoteColor) => {
+      if (!noteStore) return;
+
+      try {
+        const updated = await noteStore.updateColor(noteId, color);
+        updateNote(updated);
+        setError(null);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to change highlight color.');
+      }
+    },
+    [noteStore, updateNote]
+  );
+
   return (
     <div className="note-panel" data-testid="note-panel" role="region" aria-label="Notes">
       <Title order={2} size="h4" mb="sm">{t.notesPanelTitle}</Title>
@@ -157,57 +203,138 @@ export const NotePanel: React.FC<NotePanelProps> = ({
             {t.notesEmpty}
           </li>
         )}
-        {bookNotes.map((note) => (
-          <li
-            key={note.id}
-            className="note-panel__item"
-            data-testid={`note-item-${note.id}`}
-            style={{ borderBottom: '1px solid var(--reader-border, #e0e0e0)' }}
-          >
-            <Group justify="space-between" wrap="nowrap" py="xs" gap="xs" align="flex-start">
-              <Button
-                data-testid={`note-excerpt-${note.id}`}
-                aria-label={`Go to note: ${note.text}`}
-                onClick={() => handleNoteClick(note)}
-                variant="subtle"
-                justify="start"
-                // A "subtle"-variant Button's text/hover otherwise come from
-                // the (Mantine primary/brand) `--button-color`/`--button-hover`,
-                // not the reading theme — this list is book content, so it
-                // should read in the same colors as the rest of the reader.
-                style={{
-                  flex: 1,
-                  height: 'auto',
-                  whiteSpace: 'normal',
-                  textAlign: 'start',
-                  color: 'var(--reader-fg, #1a1a1a)',
-                  '--button-hover': 'var(--reader-surface, #f5f5f5)',
-                } as React.CSSProperties}
-              >
-                <div>
+        {bookNotes.map((note) => {
+          const activeColor = note.color ?? DEFAULT_NOTE_COLOR;
+          const isEditing = editingId === note.id;
+
+          return (
+            <li
+              key={note.id}
+              className="note-panel__item"
+              data-testid={`note-item-${note.id}`}
+              style={{ borderBottom: '1px solid var(--reader-border, #e0e0e0)', paddingBottom: '0.4rem', marginBottom: '0.2rem' }}
+            >
+              <Group justify="space-between" wrap="nowrap" py="xs" gap="xs" align="flex-start">
+                <Button
+                  data-testid={`note-excerpt-${note.id}`}
+                  aria-label={`Go to note: ${note.text}`}
+                  onClick={() => handleNoteClick(note)}
+                  variant="subtle"
+                  justify="start"
+                  // A "subtle"-variant Button's text/hover otherwise come from
+                  // the (Mantine primary/brand) `--button-color`/`--button-hover`,
+                  // not the reading theme — this list is book content, so it
+                  // should read in the same colors as the rest of the reader.
+                  style={{
+                    flex: 1,
+                    height: 'auto',
+                    whiteSpace: 'normal',
+                    textAlign: 'start',
+                    color: 'var(--reader-fg, #1a1a1a)',
+                    '--button-hover': 'var(--reader-surface, #f5f5f5)',
+                  } as React.CSSProperties}
+                >
                   <Text size="sm" fs="italic" style={{ wordBreak: 'break-word' }}>
                     &ldquo;{truncate(note.text, EXCERPT_LENGTH)}&rdquo;
                   </Text>
-                  {note.comment && (
-                    <Text size="xs" c="dimmed" mt={2} style={{ wordBreak: 'break-word' }}>
-                      {note.comment}
-                    </Text>
-                  )}
+                </Button>
+                <ActionIcon
+                  data-testid={`note-delete-${note.id}`}
+                  aria-label={`Delete note: ${note.text}`}
+                  onClick={() => handleDelete(note.id)}
+                  variant="subtle"
+                  color="red"
+                  size="sm"
+                >
+                  ✕
+                </ActionIcon>
+              </Group>
+
+              <Group gap={6} wrap="nowrap" px="0.2rem">
+                {NOTE_COLORS.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    data-testid={`note-color-${note.id}-${color}`}
+                    aria-label={interpolate(t.noteColorLabel, { color: t.noteColors[color] ?? color })}
+                    aria-pressed={activeColor === color}
+                    onClick={() => handleColorChange(note.id, color)}
+                    style={{
+                      width: '1.1rem',
+                      height: '1.1rem',
+                      borderRadius: '50%',
+                      cursor: 'pointer',
+                      padding: 0,
+                      backgroundColor: NOTE_HIGHLIGHT_COLORS[color],
+                      border: activeColor === color
+                        ? '2px solid var(--reader-fg, #1a1a1a)'
+                        : '1px solid var(--reader-border, #e0e0e0)',
+                    }}
+                  />
+                ))}
+                <ActionIcon
+                  data-testid={`note-edit-${note.id}`}
+                  aria-label={t.noteEditComment}
+                  onClick={() => (isEditing ? handleCancelEdit() : handleStartEdit(note))}
+                  variant={isEditing ? 'filled' : 'subtle'}
+                  size="sm"
+                  ml="auto"
+                >
+                  ✎
+                </ActionIcon>
+              </Group>
+
+              {isEditing ? (
+                <div style={{ padding: '0.3rem 0.2rem 0' }}>
+                  <Textarea
+                    data-testid={`note-comment-input-${note.id}`}
+                    aria-label={t.noteCommentPlaceholder}
+                    placeholder={t.noteCommentPlaceholder}
+                    value={draftComment}
+                    onChange={(e) => setDraftComment(e.currentTarget.value)}
+                    minRows={2}
+                    maxLength={1000}
+                    style={{
+                      '--input-bg': 'var(--reader-surface, #f5f5f5)',
+                      '--input-color': 'var(--reader-fg, #1a1a1a)',
+                      '--input-bd': 'var(--reader-border, #e0e0e0)',
+                    } as React.CSSProperties}
+                  />
+                  <Group justify="end" gap="xs" mt={4}>
+                    <Button
+                      data-testid={`note-cancel-${note.id}`}
+                      size="xs"
+                      variant="subtle"
+                      onClick={handleCancelEdit}
+                    >
+                      {t.noteCancelEdit}
+                    </Button>
+                    <Button
+                      data-testid={`note-save-${note.id}`}
+                      size="xs"
+                      onClick={() => handleSaveComment(note.id)}
+                    >
+                      {t.noteSaveComment}
+                    </Button>
+                  </Group>
                 </div>
-              </Button>
-              <ActionIcon
-                data-testid={`note-delete-${note.id}`}
-                aria-label={`Delete note: ${note.text}`}
-                onClick={() => handleDelete(note.id)}
-                variant="subtle"
-                color="red"
-                size="sm"
-              >
-                ✕
-              </ActionIcon>
-            </Group>
-          </li>
-        ))}
+              ) : (
+                note.comment && (
+                  <Text
+                    data-testid={`note-comment-${note.id}`}
+                    size="xs"
+                    c="dimmed"
+                    px="0.2rem"
+                    mt={2}
+                    style={{ wordBreak: 'break-word' }}
+                  >
+                    {note.comment}
+                  </Text>
+                )
+              )}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

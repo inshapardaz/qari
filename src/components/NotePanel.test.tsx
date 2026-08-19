@@ -28,6 +28,10 @@ function createMockNoteStore() {
     load: vi.fn().mockResolvedValue([]),
     list: vi.fn().mockResolvedValue([]),
     getNotifications: vi.fn().mockReturnValue([]),
+    updateComment: vi.fn().mockImplementation((id: string, comment: string) =>
+      Promise.resolve({ ...mockNote, id, comment, updatedAt: '2024-02-01T00:00:00Z' })),
+    updateColor: vi.fn().mockImplementation((id: string, color: string) =>
+      Promise.resolve({ ...mockNote, id, color, updatedAt: '2024-02-01T00:00:00Z' })),
   };
 }
 
@@ -87,7 +91,7 @@ describe('NotePanel', () => {
   it('displays existing notes for the current book, with their excerpt and comment', () => {
     renderWithContext(<NotePanel />);
     expect(screen.getByTestId(`note-excerpt-${mockNote.id}`)).toHaveTextContent('a highlighted passage');
-    expect(screen.getByTestId(`note-excerpt-${mockNote.id}`)).toHaveTextContent('my thoughts');
+    expect(screen.getByTestId(`note-comment-${mockNote.id}`)).toHaveTextContent('my thoughts');
   });
 
   it("colors the note excerpt with the reading theme, not Mantine's default button color", () => {
@@ -162,5 +166,66 @@ describe('NotePanel', () => {
     renderWithContext(<NotePanel />);
     expect(screen.getByRole('region', { name: 'Notes' })).toBeInTheDocument();
     expect(screen.getByRole('list', { name: 'Note list' })).toBeInTheDocument();
+  });
+
+  describe('editing a note comment', () => {
+    it('opens the comment editor with the current comment prefilled', () => {
+      renderWithContext(<NotePanel />);
+      fireEvent.click(screen.getByTestId(`note-edit-${mockNote.id}`));
+
+      const input = screen.getByTestId(`note-comment-input-${mockNote.id}`) as HTMLTextAreaElement;
+      expect(input.value).toBe('my thoughts');
+    });
+
+    it('saves an edited comment via noteStore.updateComment and syncs it into state', async () => {
+      const ctx = createMockContext();
+      renderWithContext(<NotePanel />, ctx);
+
+      fireEvent.click(screen.getByTestId(`note-edit-${mockNote.id}`));
+      fireEvent.change(screen.getByTestId(`note-comment-input-${mockNote.id}`), {
+        target: { value: 'a new thought' },
+      });
+      fireEvent.click(screen.getByTestId(`note-save-${mockNote.id}`));
+
+      await waitFor(() => {
+        expect(ctx.noteStore!.updateComment).toHaveBeenCalledWith('note-1', 'a new thought');
+      });
+      expect(ctx.updateNote).toHaveBeenCalledWith(expect.objectContaining({ id: 'note-1', comment: 'a new thought' }));
+    });
+
+    it('discards the draft and closes the editor on cancel', () => {
+      const ctx = createMockContext();
+      renderWithContext(<NotePanel />, ctx);
+
+      fireEvent.click(screen.getByTestId(`note-edit-${mockNote.id}`));
+      fireEvent.change(screen.getByTestId(`note-comment-input-${mockNote.id}`), {
+        target: { value: 'discarded' },
+      });
+      fireEvent.click(screen.getByTestId(`note-cancel-${mockNote.id}`));
+
+      expect(screen.queryByTestId(`note-comment-input-${mockNote.id}`)).not.toBeInTheDocument();
+      expect(ctx.noteStore!.updateComment).not.toHaveBeenCalled();
+      expect(screen.getByTestId(`note-comment-${mockNote.id}`)).toHaveTextContent('my thoughts');
+    });
+  });
+
+  describe('highlight color', () => {
+    it('marks the note\'s current color as pressed among the swatches, defaulting to yellow', () => {
+      renderWithContext(<NotePanel />);
+      expect(screen.getByTestId(`note-color-${mockNote.id}-yellow`)).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByTestId(`note-color-${mockNote.id}-blue`)).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('changes color via noteStore.updateColor and syncs it into state', async () => {
+      const ctx = createMockContext();
+      renderWithContext(<NotePanel />, ctx);
+
+      fireEvent.click(screen.getByTestId(`note-color-${mockNote.id}-blue`));
+
+      await waitFor(() => {
+        expect(ctx.noteStore!.updateColor).toHaveBeenCalledWith('note-1', 'blue');
+      });
+      expect(ctx.updateNote).toHaveBeenCalledWith(expect.objectContaining({ id: 'note-1', color: 'blue' }));
+    });
   });
 });

@@ -1760,7 +1760,7 @@ export const Reader: React.FC<ReaderProps> = ({
     clearHighlights(contentRef.current);
     applyHighlights(
       contentRef.current,
-      chapterNotes.map(n => ({ id: n.id, start: n.startOffset, end: n.endOffset }))
+      chapterNotes.map(n => ({ id: n.id, start: n.startOffset, end: n.endOffset, color: n.color }))
     );
   }, [enableNotes, state.book, state.notes, currentChapterIdx]);
 

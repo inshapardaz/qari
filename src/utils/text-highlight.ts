@@ -10,7 +10,26 @@
  * its layout.
  */
 
+import type { NoteColor } from '../models/note';
+
 const HIGHLIGHT_CLASS = 'qari-note-highlight';
+
+/** The color a note gets when it doesn't specify one (e.g. notes created before `color` existed). */
+export const DEFAULT_NOTE_COLOR: NoteColor = 'yellow';
+
+/**
+ * CSS `background-color` for each note highlight color. Alpha stays low
+ * (0.35-0.4) across the board so highlighted text stays readable against
+ * any of the four reading themes rather than fighting the theme's own
+ * foreground color.
+ */
+export const NOTE_HIGHLIGHT_COLORS: Record<NoteColor, string> = {
+  yellow: 'rgba(255, 202, 40, 0.4)',
+  green: 'rgba(76, 217, 100, 0.35)',
+  blue: 'rgba(64, 156, 255, 0.35)',
+  pink: 'rgba(255, 105, 180, 0.35)',
+  purple: 'rgba(175, 82, 222, 0.35)',
+};
 
 /**
  * Converts a DOM Range boundary (node + offset) into a plain character
@@ -62,15 +81,15 @@ export function clearHighlights(container: HTMLElement): void {
  */
 export function applyHighlights(
   container: HTMLElement,
-  ranges: Array<{ id: string; start: number; end: number }>
+  ranges: Array<{ id: string; start: number; end: number; color?: NoteColor }>
 ): void {
-  for (const { id, start, end } of ranges) {
+  for (const { id, start, end, color } of ranges) {
     if (end <= start) continue;
-    highlightOne(container, id, start, end);
+    highlightOne(container, id, start, end, color ?? DEFAULT_NOTE_COLOR);
   }
 }
 
-function highlightOne(container: HTMLElement, noteId: string, start: number, end: number): void {
+function highlightOne(container: HTMLElement, noteId: string, start: number, end: number, color: NoteColor): void {
   // Collect the text nodes overlapping [start, end) in one pass before
   // mutating anything — mutating mid-walk would invalidate the TreeWalker.
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
@@ -110,7 +129,7 @@ function highlightOne(container: HTMLElement, noteId: string, start: number, end
     // `color: inherit` overrides <mark>'s UA-default black text, which
     // would otherwise fight the current reading theme's foreground color
     // (e.g. white-on-black under the dark/high-contrast themes).
-    mark.style.backgroundColor = 'rgba(255, 202, 40, 0.4)';
+    mark.style.backgroundColor = NOTE_HIGHLIGHT_COLORS[color];
     mark.style.color = 'inherit';
     mark.style.borderRadius = '2px';
     try {

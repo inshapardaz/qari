@@ -6,7 +6,7 @@
  */
 
 import Sqids from 'sqids';
-import { Note } from '../models/note';
+import { Note, NoteColor } from '../models/note';
 import { CustomNoteStoreAdapter } from '../interfaces/note-store';
 import { LocalStorageNoteStore } from './local-storage-note-store';
 
@@ -92,7 +92,8 @@ export class NoteStore {
     startOffset: number,
     endOffset: number,
     text: string,
-    comment?: string
+    comment?: string,
+    color?: NoteColor
   ): Promise<Note> {
     validateComment(comment);
 
@@ -111,6 +112,7 @@ export class NoteStore {
       endOffset,
       text,
       comment,
+      color,
       createdAt: new Date().toISOString(),
     };
 
@@ -144,6 +146,37 @@ export class NoteStore {
     const updatedNote: Note = {
       ...note,
       comment,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (this.adapter) {
+      try {
+        await withTimeout(this.adapter.save(updatedNote), ADAPTER_TIMEOUT_MS);
+      } catch {
+        this.notifications.push({ type: 'warning', message: 'Note sync failed. Saved locally.' });
+        await this.fallback.save(updatedNote);
+      }
+    } else {
+      await this.fallback.save(updatedNote);
+    }
+
+    return updatedNote;
+  }
+
+  /**
+   * Update an existing note's highlight color.
+   */
+  async updateColor(noteId: string, color: NoteColor): Promise<Note> {
+    const allNotes = await this.list();
+    const note = allNotes.find((n) => n.id === noteId);
+
+    if (!note) {
+      throw new Error(`Note with id "${noteId}" not found.`);
+    }
+
+    const updatedNote: Note = {
+      ...note,
+      color,
       updatedAt: new Date().toISOString(),
     };
 

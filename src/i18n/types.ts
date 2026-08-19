@@ -73,6 +73,15 @@ export interface TranslationStrings {
   noteAddMenuItem: string;
   /** Context menu item shown on right-click over an existing note highlight. */
   noteRemoveMenuItem: string;
+  /** Button that reveals the comment editor for a note. */
+  noteEditComment: string;
+  noteCommentPlaceholder: string;
+  noteSaveComment: string;
+  noteCancelEdit: string;
+  /** Accessible label for a note's color-swatch row. Supports {color}. */
+  noteColorLabel: string;
+  /** Display names for each highlight color, keyed by NoteColor. */
+  noteColors: Record<string, string>;
 
   // Search panel
   searchPanelTitle: string;

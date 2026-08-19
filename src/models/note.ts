@@ -4,6 +4,9 @@
  * chapter, captured via text selection.
  */
 
+/** Fixed highlight-color palette for notes — see DEFAULT_NOTE_COLOR/NOTE_HIGHLIGHT_COLORS in text-highlight.ts for the actual CSS values. */
+export type NoteColor = 'yellow' | 'green' | 'blue' | 'pink' | 'purple';
+
 export interface Note {
   id: string; // Sqids-encoded id (see generateId in note-store.ts)
   bookId: string; // Identifies the book
@@ -12,6 +15,8 @@ export interface Note {
   endOffset: number; // Character offset where the highlight ends (exclusive)
   text: string; // The highlighted excerpt, captured at creation time
   comment?: string; // Optional user-provided annotation, 0-1000 chars
+  /** Highlight color. Undefined means the default color (see DEFAULT_NOTE_COLOR) — kept optional so notes persisted before this field existed keep rendering the same way. */
+  color?: NoteColor;
   createdAt: string; // ISO 8601 UTC
-  updatedAt?: string; // ISO 8601 UTC, set when the comment is edited
+  updatedAt?: string; // ISO 8601 UTC, set when the comment or color is edited
 }

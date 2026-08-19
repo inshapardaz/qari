@@ -11,10 +11,12 @@ import { describe, it, expect } from 'vitest';
 import { en, ur, fr, LOCALES } from '../locales';
 import { DEFAULT_TRANSLATIONS } from '../defaults';
 import { URDU_WEB_FONT_OPTIONS } from '../../services/urdu-web-fonts';
+import { NOTE_HIGHLIGHT_COLORS } from '../../utils/text-highlight';
 
 const ALL_LOCALES = { en, ur, fr };
 const CANONICAL_KEYS = Object.keys(en).sort();
 const CANONICAL_FONT_NAME_KEYS = Object.keys(en.fontNames).sort();
+const CANONICAL_NOTE_COLOR_KEYS = Object.keys(en.noteColors).sort();
 
 describe('built-in locales', () => {
   it('DEFAULT_TRANSLATIONS is the English locale', () => {
@@ -33,7 +35,7 @@ describe('built-in locales', () => {
 
       it('has no empty string values', () => {
         for (const [key, value] of Object.entries(locale)) {
-          if (key === 'fontNames' || key === 'uiDirection') continue;
+          if (key === 'fontNames' || key === 'uiDirection' || key === 'noteColors') continue;
           expect(typeof value).toBe('string');
           expect((value as string).length).toBeGreaterThan(0);
         }
@@ -41,6 +43,16 @@ describe('built-in locales', () => {
 
       it('has exactly one fontNames entry per built-in font (3 generic + urdu-web-fonts)', () => {
         expect(Object.keys(locale.fontNames).sort()).toEqual(CANONICAL_FONT_NAME_KEYS);
+      });
+
+      it('has exactly one noteColors entry per NoteColor', () => {
+        expect(Object.keys(locale.noteColors).sort()).toEqual(CANONICAL_NOTE_COLOR_KEYS);
+      });
+
+      it('has a non-empty label for every note color', () => {
+        for (const label of Object.values(locale.noteColors)) {
+          expect(label.length).toBeGreaterThan(0);
+        }
       });
 
       it('has a non-empty label for every font name', () => {
@@ -54,6 +66,10 @@ describe('built-in locales', () => {
   it('fontNames covers every URDU_WEB_FONT_OPTIONS display name plus Serif/Sans/Mono', () => {
     const expectedKeys = ['Serif', 'Sans', 'Mono', ...URDU_WEB_FONT_OPTIONS.map((f) => f.name)].sort();
     expect(CANONICAL_FONT_NAME_KEYS).toEqual(expectedKeys);
+  });
+
+  it('noteColors covers every NoteColor in the highlight palette', () => {
+    expect(CANONICAL_NOTE_COLOR_KEYS).toEqual(Object.keys(NOTE_HIGHLIGHT_COLORS).sort());
   });
 
   it('ur locale is right-to-left', () => {

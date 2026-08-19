@@ -70,6 +70,18 @@ export const ur: TranslationStrings = {
   notesEmpty: 'ابھی کوئی نوٹ نہیں۔ متن منتخب کریں اور شامل کرنے کے لیے دائیں کلک کریں۔',
   noteAddMenuItem: 'نوٹ شامل کریں',
   noteRemoveMenuItem: 'نوٹ حذف کریں',
+  noteEditComment: 'تبصرہ میں ترمیم کریں',
+  noteCommentPlaceholder: 'تبصرہ شامل کریں…',
+  noteSaveComment: 'محفوظ کریں',
+  noteCancelEdit: 'منسوخ کریں',
+  noteColorLabel: 'نمایاں رنگ مقرر کریں: {color}',
+  noteColors: {
+    yellow: 'پیلا',
+    green: 'سبز',
+    blue: 'نیلا',
+    pink: 'گلابی',
+    purple: 'جامنی',
+  },
 
   // Search panel
   searchPanelTitle: 'تلاش',

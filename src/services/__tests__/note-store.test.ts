@@ -84,6 +84,35 @@ describe('NoteStore (localStorage default, no adapter)', () => {
     await expect(store.updateComment('missing-id', 'x')).rejects.toThrow(/not found/);
   });
 
+  it('creates a note with a highlight color', async () => {
+    const store = new NoteStore();
+    const note = await store.create('book-1', 'ch-1', 0, 5, 'hi', undefined, 'green');
+    expect(note.color).toBe('green');
+  });
+
+  it('creates a note without a color', async () => {
+    const store = new NoteStore();
+    const note = await store.create('book-1', 'ch-1', 0, 5, 'hi');
+    expect(note.color).toBeUndefined();
+  });
+
+  it('updates a note color', async () => {
+    const store = new NoteStore();
+    const note = await store.create('book-1', 'ch-1', 0, 5, 'hi');
+    const updated = await store.updateColor(note.id, 'blue');
+
+    expect(updated.color).toBe('blue');
+    expect(updated.updatedAt).toBeTruthy();
+
+    const loaded = await store.load('book-1');
+    expect(loaded[0].color).toBe('blue');
+  });
+
+  it('rejects updating the color of a note that does not exist', async () => {
+    const store = new NoteStore();
+    await expect(store.updateColor('missing-id', 'blue')).rejects.toThrow(/not found/);
+  });
+
   it('deletes a note', async () => {
     const store = new NoteStore();
     const note = await store.create('book-1', 'ch-1', 0, 5, 'hi');

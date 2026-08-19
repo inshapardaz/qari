@@ -70,6 +70,18 @@ export const en: TranslationStrings = {
   notesEmpty: 'No notes yet. Select text and right-click to add one.',
   noteAddMenuItem: 'Add note',
   noteRemoveMenuItem: 'Remove note',
+  noteEditComment: 'Edit comment',
+  noteCommentPlaceholder: 'Add a comment…',
+  noteSaveComment: 'Save',
+  noteCancelEdit: 'Cancel',
+  noteColorLabel: 'Set highlight color: {color}',
+  noteColors: {
+    yellow: 'Yellow',
+    green: 'Green',
+    blue: 'Blue',
+    pink: 'Pink',
+    purple: 'Purple',
+  },
 
   // Search panel
   searchPanelTitle: 'Search',

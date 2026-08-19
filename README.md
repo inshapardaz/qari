@@ -274,7 +274,7 @@ interface Bookmark {
 
 ## Notes
 
-Notes are enabled by default (📝 button in the header). Select text in the reading view and right-click to bring up an "Add note" option — the highlighted excerpt becomes a note immediately, shown with a persistent highlight in the text. Right-clicking directly on an existing highlight (with or without a fresh selection) adds a "Remove note" option to the same menu. If a dictionary is configured (`enableBuiltInDictionary` or `dictionaryProviders`), "Meaning" appears in that same menu too, rather than the two features fighting over the same right-click. Open the notes panel to add/edit a comment on any note, navigate to it, or delete it. Notes storage mirrors bookmark storage: localStorage by default, or a custom adapter.
+Notes are enabled by default (📝 button in the header). Select text in the reading view and right-click to bring up an "Add note" option — the highlighted excerpt becomes a note immediately, shown with a persistent highlight in the text. Right-clicking directly on an existing highlight (with or without a fresh selection) adds a "Remove note" option to the same menu. If a dictionary is configured (`enableBuiltInDictionary` or `dictionaryProviders`), "Meaning" appears in that same menu too, rather than the two features fighting over the same right-click. Open the notes panel to navigate to a note, delete it, add/edit its comment (✎ button, next to the color swatches), or change its highlight color (five built-in colors — yellow, green, blue, pink, purple; yellow is the default for notes that don't set one). Notes storage mirrors bookmark storage: localStorage by default, or a custom adapter.
 
 ### Default — localStorage
 
@@ -328,8 +328,9 @@ interface Note {
   endOffset: number;     // Character offset where the highlight ends (exclusive)
   text: string;          // The highlighted excerpt, captured at creation time
   comment?: string;      // Optional user-provided annotation, 0-1000 chars
+  color?: 'yellow' | 'green' | 'blue' | 'pink' | 'purple'; // Highlight color; undefined means 'yellow'
   createdAt: string;     // ISO 8601 UTC
-  updatedAt?: string;    // ISO 8601 UTC (set when the comment is edited)
+  updatedAt?: string;    // ISO 8601 UTC (set when the comment or color is edited)
 }
 ```
 
