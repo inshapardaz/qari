@@ -54,6 +54,15 @@ export function NoteIcon({ size = '1.1em' }: IconProps) {
   );
 }
 
+export function SearchIcon({ size = '1.1em' }: IconProps) {
+  return (
+    <svg {...defaultProps} width={size} height={size}>
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <line x1="15.3" y1="15.3" x2="21" y2="21" />
+    </svg>
+  );
+}
+
 export function ThemeIcon({ size = '1.1em' }: IconProps) {
   return (
     <svg {...defaultProps} width={size} height={size}>

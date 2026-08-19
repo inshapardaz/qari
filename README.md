@@ -335,6 +335,16 @@ interface Note {
 
 `startOffset`/`endOffset` are measured against the chapter's *rendered* text (not the parsed content AST), so the same offsets keep locating the same characters regardless of font size, margin, column count, or scroll vs. paginated mode.
 
+## Search
+
+In-book search is enabled by default — a 🔍 Search tab in the chapter drawer alongside Chapters/Bookmarks/Notes. Type a query to see every match across the whole book, each shown with its chapter title and a snippet of surrounding text; clicking a result jumps straight to that chapter and page. Search isn't available for PDF sources, since rasterized pages have no extractable text (same limitation as notes/dictionary lookup).
+
+```tsx
+<Reader source={source} enableSearch={false} />
+```
+
+There's no separate search API to call — it's entirely internal to the chapter drawer's Search tab.
+
 ## Reading Progress
 
 There are two independent things called "progress" here: a live callback for driving your own UI (e.g. a progress bar), and persistent tracking that resumes the book where the user left off. You can use either, both, or neither.
@@ -724,6 +734,7 @@ When set to `"auto"`, the reader detects direction by analyzing character freque
 | `translations` | `Partial<TranslationStrings>` | English defaults | UI string overrides for i18n |
 | `direction` | `'ltr' \| 'rtl' \| 'auto'` | `'auto'` | Text direction override |
 | `enableBookmarks` | `boolean` | `true` | Show/hide bookmark panel |
+| `enableSearch` | `boolean` | `true` | Show/hide the chapter drawer's in-book Search tab (not available for PDF sources) |
 | `showCloseButton` | `boolean` | `false` | Show a close button in the header |
 | `bookmarks` | `Bookmark[]` | `undefined` | Controlled bookmarks array |
 | `bookmarkStore` | `BookmarkStoreInterface` | localStorage | Custom bookmark persistence |

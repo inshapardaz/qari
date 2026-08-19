@@ -71,6 +71,13 @@ export const ur: TranslationStrings = {
   noteAddMenuItem: 'نوٹ شامل کریں',
   noteRemoveMenuItem: 'نوٹ حذف کریں',
 
+  // Search panel
+  searchPanelTitle: 'تلاش',
+  searchPlaceholder: 'کتاب میں تلاش کریں…',
+  searchEmpty: 'کتاب میں تلاش کے لیے ٹائپ کریں۔',
+  searchNoResults: '"{query}" کے لیے کوئی نتیجہ نہیں ملا۔',
+  searchResultsCount: '{count} نتائج',
+
   // Chapter index
   chaptersTitle: 'ابواب',
   goToChapter: 'باب پر جائیں: {title}',

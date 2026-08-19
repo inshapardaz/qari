@@ -68,10 +68,11 @@ import { getRangeOffsets, applyHighlights, clearHighlights } from '../utils/text
 
 import { BookmarkPanel } from './BookmarkPanel';
 import { NotePanel } from './NotePanel';
+import { SearchPanel } from './SearchPanel';
 import { DictionaryPopover } from './DictionaryPopover';
 import { FootnotePopover } from './FootnotePopover';
 import { ImageLightbox } from './ImageLightbox';
-import { BookmarkIcon, NoteIcon, ChaptersIcon, ThemeIcon, SinglePageIcon, DoublePageIcon, ScrollIcon, ExitFullscreenIcon, ChevronLeftIcon, ChevronRightIcon } from './icons';
+import { BookmarkIcon, NoteIcon, SearchIcon, ChaptersIcon, ThemeIcon, SinglePageIcon, DoublePageIcon, ScrollIcon, ExitFullscreenIcon, ChevronLeftIcon, ChevronRightIcon } from './icons';
 
 import { TranslationContext, DEFAULT_TRANSLATIONS, useTranslations, interpolate } from '../i18n';
 import type { TranslationStrings } from '../i18n';
@@ -184,6 +185,8 @@ export interface ReaderProps {
   enableBookmarks?: boolean;
   /** Enable or disable the notes feature (select text, right-click to add a note). Defaults to true. */
   enableNotes?: boolean;
+  /** Enable or disable in-book search (chapter drawer's Search tab). Defaults to true. */
+  enableSearch?: boolean;
   /**
    * Blocks copying out of the book content — the copy/cut clipboard events
    * are prevented, regardless of how a copy is triggered (keyboard
@@ -914,6 +917,7 @@ export const Reader: React.FC<ReaderProps> = ({
   enableBuiltInDictionary = false,
   enableBookmarks = true,
   enableNotes = true,
+  enableSearch = true,
   readOnly = false,
   blockDevTools = false,
   enableProgressTracking = true,
@@ -973,7 +977,7 @@ export const Reader: React.FC<ReaderProps> = ({
   const [fontDropdownOpen, setFontDropdownOpen] = useState(false);
   // Which tab of the chapter drawer (see the ☰ button below) is active —
   // chapters is the default, matching it being the first/leftmost tab.
-  const [chapterDrawerTab, setChapterDrawerTab] = useState<'chapters' | 'bookmarks' | 'notes'>('chapters');
+  const [chapterDrawerTab, setChapterDrawerTab] = useState<'chapters' | 'bookmarks' | 'notes' | 'search'>('chapters');
   const [themePanelOpen, setThemePanelOpen] = useState(false);
   const [layoutPanelOpen, setLayoutPanelOpen] = useState(false);
   // Pending note context menu — position, plus whichever of these apply to
@@ -1263,12 +1267,13 @@ export const Reader: React.FC<ReaderProps> = ({
     }
   }, [isMobileViewport, scroll, columns, onSettingsChange]);
 
-  // The chapter drawer's Notes tab is hidden for PDFs (see `notesEnabled`
-  // near the render return) — if a consumer switches sources into a PDF
-  // while that tab is active, fall back to Chapters rather than leaving the
-  // drawer on a tab that no longer has a corresponding Tabs.Tab to select.
+  // The chapter drawer's Notes/Search tabs are hidden for PDFs (see
+  // `notesEnabled`/`searchEnabled` near the render return) — if a consumer
+  // switches sources into a PDF while one of those tabs is active, fall
+  // back to Chapters rather than leaving the drawer on a tab that no longer
+  // has a corresponding Tabs.Tab to select.
   useEffect(() => {
-    if (isPdfBook && chapterDrawerTab === 'notes') {
+    if (isPdfBook && (chapterDrawerTab === 'notes' || chapterDrawerTab === 'search')) {
       setChapterDrawerTab('chapters');
     }
   }, [isPdfBook, chapterDrawerTab]);
@@ -2764,6 +2769,11 @@ export const Reader: React.FC<ReaderProps> = ({
   // empty, non-functional one.
   const notesEnabled = enableNotes && !isPdfBook;
 
+  // Same reasoning as `notesEnabled`: PDF pages have no real text layer, so
+  // there's nothing for `searchBook` to match against — hides the drawer's
+  // Search tab/panel rather than showing one that can never find anything.
+  const searchEnabled = enableSearch && !isPdfBook;
+
   // Overall progress across the whole book
   const overallProgress = (() => {
     if (!state.book || state.book.chapters.length === 0) return 0;
@@ -3061,6 +3071,11 @@ export const Reader: React.FC<ReaderProps> = ({
                               <NoteIcon size="1.2em" />
                             </Tabs.Tab>
                           )}
+                          {searchEnabled && (
+                            <Tabs.Tab value="search" aria-label={t.searchPanelTitle}>
+                              <SearchIcon size="1.2em" />
+                            </Tabs.Tab>
+                          )}
                         </Tabs.List>
 
                         <Tabs.Panel value="chapters" style={{ flex: 1, overflowY: 'auto' }} p="xs">
@@ -3126,6 +3141,19 @@ export const Reader: React.FC<ReaderProps> = ({
                         {notesEnabled && (
                           <Tabs.Panel value="notes" style={{ flex: 1, overflowY: 'auto' }} p="xs">
                             <NotePanel
+                              onNavigate={(chapterIdx, page) => {
+                                setCurrentChapterIdx(chapterIdx);
+                                setCurrentPage(page);
+                                setChapterMenuOpen(false);
+                              }}
+                              onPageChange={onPageChange}
+                            />
+                          </Tabs.Panel>
+                        )}
+
+                        {searchEnabled && (
+                          <Tabs.Panel value="search" style={{ flex: 1, overflowY: 'auto' }} p="xs">
+                            <SearchPanel
                               onNavigate={(chapterIdx, page) => {
                                 setCurrentChapterIdx(chapterIdx);
                                 setCurrentPage(page);

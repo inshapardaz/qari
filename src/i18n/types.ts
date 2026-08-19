@@ -74,6 +74,16 @@ export interface TranslationStrings {
   /** Context menu item shown on right-click over an existing note highlight. */
   noteRemoveMenuItem: string;
 
+  // Search panel
+  searchPanelTitle: string;
+  searchPlaceholder: string;
+  /** Shown before a query has been entered. */
+  searchEmpty: string;
+  /** Shown when a query has been entered but nothing matched. Supports {query}. */
+  searchNoResults: string;
+  /** Match count summary shown above the results list. Supports {count}. */
+  searchResultsCount: string;
+
   // Chapter index
   chaptersTitle: string;
   goToChapter: string; // supports {title}

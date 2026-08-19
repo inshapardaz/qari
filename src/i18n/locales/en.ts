@@ -71,6 +71,13 @@ export const en: TranslationStrings = {
   noteAddMenuItem: 'Add note',
   noteRemoveMenuItem: 'Remove note',
 
+  // Search panel
+  searchPanelTitle: 'Search',
+  searchPlaceholder: 'Search in book…',
+  searchEmpty: 'Type to search the book.',
+  searchNoResults: 'No results for "{query}".',
+  searchResultsCount: '{count} results',
+
   // Chapter index
   chaptersTitle: 'Chapters',
   goToChapter: 'Go to chapter: {title}',

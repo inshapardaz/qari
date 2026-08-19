@@ -43,7 +43,7 @@ function extractInlineText(nodes: InlineNode[]): string {
 /**
  * Recursively extracts all text content from a ContentNode.
  */
-function extractContentNodeText(node: ContentNode): string {
+export function extractContentNodeText(node: ContentNode): string {
   switch (node.type) {
     case 'paragraph':
       return extractInlineText(node.children);
