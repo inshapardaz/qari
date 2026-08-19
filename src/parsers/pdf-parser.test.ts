@@ -147,6 +147,60 @@ describe('PDFParserImpl', () => {
     expect(pdfjsLib.GlobalWorkerOptions.workerSrc).toBe('https://example.com/worker.mjs');
   });
 
+  describe('chapter map (issue #10)', () => {
+    it('titles each page with the chapter it falls under, per the supplied startPage map', async () => {
+      const pdfjsLib = await import('pdfjs-dist');
+      (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+        promise: Promise.resolve(createFakePdfDocument(6)),
+      });
+
+      const book = await new PDFParserImpl().parse(new ArrayBuffer(8), {
+        chapters: [
+          { title: 'Chapter One', startPage: 1 },
+          { title: 'Chapter Two', startPage: 3 },
+          { title: 'Chapter Three', startPage: 5 },
+        ],
+      });
+
+      expect(book.chapters.map(c => c.title)).toEqual([
+        'Chapter One', 'Chapter One',
+        'Chapter Two', 'Chapter Two',
+        'Chapter Three', 'Chapter Three',
+      ]);
+    });
+
+    it('falls back to the default "Page N" title for pages before the first entry\'s startPage', async () => {
+      const pdfjsLib = await import('pdfjs-dist');
+      (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+        promise: Promise.resolve(createFakePdfDocument(3)),
+      });
+
+      const book = await new PDFParserImpl().parse(new ArrayBuffer(8), {
+        chapters: [{ title: 'Chapter One', startPage: 2 }],
+      });
+
+      expect(book.chapters.map(c => c.title)).toEqual(['Page 1', 'Chapter One', 'Chapter One']);
+    });
+
+    it('sorts an out-of-order chapter map by startPage before applying it', async () => {
+      const pdfjsLib = await import('pdfjs-dist');
+      (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+        promise: Promise.resolve(createFakePdfDocument(4)),
+      });
+
+      const book = await new PDFParserImpl().parse(new ArrayBuffer(8), {
+        chapters: [
+          { title: 'Chapter Two', startPage: 3 },
+          { title: 'Chapter One', startPage: 1 },
+        ],
+      });
+
+      expect(book.chapters.map(c => c.title)).toEqual([
+        'Chapter One', 'Chapter One', 'Chapter Two', 'Chapter Two',
+      ]);
+    });
+  });
+
   describe('progressive loading', () => {
     it('only renders the initial page batch eagerly, leaving the rest as pending placeholders', async () => {
       const pdfjsLib = await import('pdfjs-dist');

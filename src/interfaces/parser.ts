@@ -13,6 +13,19 @@ export interface MarkdownParser {
   parse(content: string): Book;
 }
 
+/**
+ * One entry in a caller-supplied PDF chapter map — see
+ * `PDFParseOptions.chapters`. Every page from `startPage` up to (but not
+ * including) the next entry's `startPage` is titled with this entry's
+ * `title`; pages before the first entry's `startPage` keep the default
+ * `Page N` title.
+ */
+export interface PdfChapterMapEntry {
+  title: string;
+  /** 1-based PDF page number this chapter begins on. */
+  startPage: number;
+}
+
 export interface PDFParseOptions {
   /** Rendering scale/DPI multiplier for page rasterization. Defaults to 2. */
   scale?: number;
@@ -22,6 +35,14 @@ export interface PDFParseOptions {
   initialPageCount?: number;
   /** Called each time a page beyond the initial batch finishes rendering in the background (or via `requestPage`). */
   onPageRendered?: (pageNumber: number, node: PdfPageNode) => void;
+  /**
+   * Explicit chapter/page map — PDFs have no table-of-contents of their own
+   * (unlike EPUB's spine), so without this every page ends up as its own
+   * untitled "Page N" chapter. Titles are applied per-page during parsing;
+   * the chapter drawer separately collapses consecutive same-titled pages
+   * into a single navigable entry.
+   */
+  chapters?: PdfChapterMapEntry[];
 }
 
 export interface PDFParser {

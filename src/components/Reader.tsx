@@ -49,6 +49,7 @@ import type {
   ReaderError,
 } from '../models/events';
 import type { DictionaryProvider } from '../interfaces/dictionary';
+import type { PdfChapterMapEntry } from '../interfaces/parser';
 import type { CustomStoreAdapter } from '../interfaces/store-adapter';
 import type { BookmarkStoreInterface, BookmarkChangeEvent } from '../interfaces/bookmark-store';
 import type { CustomNoteStoreAdapter, NoteChangeEvent } from '../interfaces/note-store';
@@ -164,6 +165,14 @@ export interface ReaderProps {
    * when loading a `{ type: 'pdf' }` source.
    */
   pdfWorkerSrc?: string;
+  /**
+   * Explicit chapter/page map for PDFs — unlike EPUB's spine, a PDF carries
+   * no table-of-contents of its own, so without this every page shows up as
+   * its own untitled "Page N" entry in the chapter drawer. Only relevant
+   * when loading a `{ type: 'pdf' }` source; see README's PDF Support
+   * section.
+   */
+  pdfChapters?: PdfChapterMapEntry[];
   zoom?: number;
   direction?: 'ltr' | 'rtl' | 'auto';
   dictionaryProviders?: DictionaryProvider[];
@@ -897,6 +906,7 @@ export const Reader: React.FC<ReaderProps> = ({
   columns = 1,
   scroll = false,
   pdfWorkerSrc,
+  pdfChapters,
   zoom = 100,
   direction = 'auto',
   dictionaryProviders,
@@ -1817,6 +1827,7 @@ export const Reader: React.FC<ReaderProps> = ({
           pendingPdfPageUpdatesRef.current.clear();
           book = await parser.parse(data, {
             workerSrc: pdfWorkerSrc,
+            chapters: pdfChapters,
             onPageRendered: (pageNumber, node) => {
               setState(prev => {
                 if (!prev.book) {
@@ -2039,7 +2050,7 @@ export const Reader: React.FC<ReaderProps> = ({
         onError(readerError);
       }
     }
-  }, [direction, onReady, onError, bookmarksProp, pdfWorkerSrc, enableProgressTracking, bookInfo]);
+  }, [direction, onReady, onError, bookmarksProp, pdfWorkerSrc, pdfChapters, enableProgressTracking, bookInfo]);
 
   useEffect(() => {
     loadBook(source);
@@ -2647,6 +2658,31 @@ export const Reader: React.FC<ReaderProps> = ({
   }), [state, addBookmark, removeBookmark, updateBookmarkInState, addNote, removeNote, updateNoteInState]);
 
   // ---------------------------------------------------------------------------
+  // Chapter drawer list (deduplicated)
+  //
+  // `state.book.chapters` is one entry per underlying page for PDFs (see the
+  // file-level architecture note on PDF parsing) — with an explicit
+  // `pdfChapters` map (or any book whose real chapters happen to run
+  // consecutively under the same title), that would otherwise flood the
+  // drawer with the same title repeated once per page. This collapses each
+  // run of consecutive same-titled chapters into a single entry that jumps
+  // to the run's first chapter/page, without touching the underlying
+  // one-chapter-per-page data model the rest of pagination/bookmarks/
+  // progress tracking depends on. For EPUB/Markdown books, consecutive
+  // chapters essentially never share a title, so this is a no-op there.
+  const chapterMenuEntries = useMemo(() => {
+    const chapters = state.book?.chapters ?? [];
+    const entries: { id: string; title: string; chapterIdx: number }[] = [];
+    chapters.forEach((ch, idx) => {
+      const prev = entries[entries.length - 1];
+      if (!prev || prev.title !== ch.title) {
+        entries.push({ id: ch.id, title: ch.title, chapterIdx: idx });
+      }
+    });
+    return entries;
+  }, [state.book]);
+
+  // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
   if (state.loading) {
@@ -3028,40 +3064,50 @@ export const Reader: React.FC<ReaderProps> = ({
                         </Tabs.List>
 
                         <Tabs.Panel value="chapters" style={{ flex: 1, overflowY: 'auto' }} p="xs">
-                          {state.book?.chapters.map((ch, idx) => (
-                            <button
-                              key={ch.id}
-                              type="button"
-                              onClick={() => {
-                                setCurrentChapterIdx(idx);
-                                setCurrentPage(0);
-                                setChapterMenuOpen(false);
-                              }}
-                              style={{
-                                display: 'block',
-                                width: '100%',
-                                textAlign: state.direction === 'rtl' ? 'right' : 'left',
-                                padding: '0.5rem 0.75rem',
-                                marginBottom: 2,
-                                border: 'none',
-                                borderRadius: 'var(--mantine-radius-sm)',
-                                cursor: 'pointer',
-                                fontWeight: idx === currentChapterIdx ? 700 : 400,
-                                // The active chapter's highlight used Mantine's
-                                // primary/brand color — jarring against a
-                                // non-default reading theme. `--reader-accent`
-                                // is the same theme's own highlight color
-                                // (set by ThemeEngine), and `--reader-bg`
-                                // reads reliably on top of it across all four
-                                // built-in themes (including high-contrast's
-                                // black-on-yellow).
-                                backgroundColor: idx === currentChapterIdx ? 'var(--reader-accent, #0071e3)' : 'transparent',
-                                color: idx === currentChapterIdx ? 'var(--reader-bg, #ffffff)' : 'var(--reader-fg, #1a1a1a)',
-                              }}
-                            >
-                              {ch.title}
-                            </button>
-                          ))}
+                          {chapterMenuEntries.map((entry, i) => {
+                            // This entry is active whenever currentChapterIdx
+                            // falls anywhere within its run of underlying
+                            // chapters — i.e. from this entry's chapterIdx up
+                            // to (not including) the next entry's, or the end
+                            // of the book for the last entry. Matters for PDFs
+                            // where one entry can span many page-chapters.
+                            const nextChapterIdx = chapterMenuEntries[i + 1]?.chapterIdx ?? Infinity;
+                            const active = currentChapterIdx >= entry.chapterIdx && currentChapterIdx < nextChapterIdx;
+                            return (
+                              <button
+                                key={entry.id}
+                                type="button"
+                                onClick={() => {
+                                  setCurrentChapterIdx(entry.chapterIdx);
+                                  setCurrentPage(0);
+                                  setChapterMenuOpen(false);
+                                }}
+                                style={{
+                                  display: 'block',
+                                  width: '100%',
+                                  textAlign: state.direction === 'rtl' ? 'right' : 'left',
+                                  padding: '0.5rem 0.75rem',
+                                  marginBottom: 2,
+                                  border: 'none',
+                                  borderRadius: 'var(--mantine-radius-sm)',
+                                  cursor: 'pointer',
+                                  fontWeight: active ? 700 : 400,
+                                  // The active chapter's highlight used Mantine's
+                                  // primary/brand color — jarring against a
+                                  // non-default reading theme. `--reader-accent`
+                                  // is the same theme's own highlight color
+                                  // (set by ThemeEngine), and `--reader-bg`
+                                  // reads reliably on top of it across all four
+                                  // built-in themes (including high-contrast's
+                                  // black-on-yellow).
+                                  backgroundColor: active ? 'var(--reader-accent, #0071e3)' : 'transparent',
+                                  color: active ? 'var(--reader-bg, #ffffff)' : 'var(--reader-fg, #1a1a1a)',
+                                }}
+                              >
+                                {entry.title}
+                              </button>
+                            );
+                          })}
                         </Tabs.Panel>
 
                         {enableBookmarks && (

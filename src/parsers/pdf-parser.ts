@@ -28,7 +28,7 @@
  */
 
 import type { Book, Chapter, PdfPageNode } from '../models/book';
-import type { PDFParseOptions, PDFParser } from '../interfaces/parser';
+import type { PDFParseOptions, PDFParser, PdfChapterMapEntry } from '../interfaces/parser';
 import type * as PdfjsLib from 'pdfjs-dist';
 
 /** Must match the installed `pdfjs-dist` dependency version exactly — PDF.js
@@ -98,13 +98,18 @@ export class PDFParserImpl implements PDFParser {
 
     const initialPageCount = Math.min(options.initialPageCount ?? DEFAULT_INITIAL_PAGE_COUNT, pdf.numPages);
     const chapters: Chapter[] = [];
+    // Ascending by startPage regardless of input order, so a caller-supplied
+    // map doesn't have to be pre-sorted for `titleForPage` below to work.
+    const chapterMap = options.chapters
+      ? [...options.chapters].sort((a, b) => a.startPage - b.startPage)
+      : undefined;
 
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
       const node =
         pageNumber <= initialPageCount
           ? await this.renderPage(pageNumber)
           : await this.createPlaceholder(pageNumber);
-      chapters.push(makeChapter(pageNumber, node));
+      chapters.push(makeChapter(pageNumber, node, titleForPage(chapterMap, pageNumber)));
     }
 
     void this.renderRemainingInBackground(initialPageCount + 1, pdf.numPages);
@@ -163,13 +168,29 @@ export class PDFParserImpl implements PDFParser {
   }
 }
 
-function makeChapter(pageNumber: number, node: PdfPageNode): Chapter {
+function makeChapter(pageNumber: number, node: PdfPageNode, chapterTitle?: string): Chapter {
   return {
     id: `page-${pageNumber}`,
-    title: `Page ${pageNumber}`,
+    title: chapterTitle ?? `Page ${pageNumber}`,
     order: pageNumber - 1,
     content: [node],
   };
+}
+
+/**
+ * Finds the title of the last chapter-map entry whose `startPage` is at or
+ * before `pageNumber` — i.e. the chapter this page falls within. Pages
+ * before the first entry's `startPage` (front matter, cover, etc.) get no
+ * title here and fall back to `makeChapter`'s default.
+ */
+function titleForPage(chapterMap: PdfChapterMapEntry[] | undefined, pageNumber: number): string | undefined {
+  if (!chapterMap) return undefined;
+  let title: string | undefined;
+  for (const entry of chapterMap) {
+    if (entry.startPage > pageNumber) break;
+    title = entry.title;
+  }
+  return title;
 }
 
 async function renderPageToDataUrl(

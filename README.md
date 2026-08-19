@@ -177,6 +177,21 @@ PDF rendering uses a Web Worker (via `pdfjs-dist`, loaded lazily so it doesn't a
 />
 ```
 
+Unlike EPUB (which has a real spine/table of contents), a PDF carries no chapter information of its own — without more, every page shows up in the chapter drawer as its own untitled "Page N" entry. Pass `pdfChapters` to map real chapter titles onto page ranges instead:
+
+```tsx
+<Reader
+  source={{ type: 'pdf', data: pdfArrayBuffer }}
+  pdfChapters={[
+    { title: 'Foreword', startPage: 1 },
+    { title: 'Chapter 1: The Beginning', startPage: 5 },
+    { title: 'Chapter 2: The Middle', startPage: 32 },
+  ]}
+/>
+```
+
+Each entry's `title` applies to every page from its `startPage` up to (not including) the next entry's `startPage`; pages before the first entry's `startPage` keep the default "Page N" title. The chapter drawer collapses each run of same-titled pages into a single entry that jumps to the chapter's first page — internally, pagination/bookmarks/progress tracking are unaffected and still work per-page. Use `bookInfo` (see below) alongside this to also set the book's title/author/language, since PDFs don't reliably carry that either.
+
 ## Bookmark Storage
 
 Bookmarks are enabled by default. The reader provides a built-in bookmark panel (accessible via the 🔖 button in the header) that lets users create, rename, navigate to, and delete bookmarks. Naming a bookmark is optional — leaving the name field blank auto-names it from the current position (e.g. "Chapter 3, Page 4"); typing a name overrides that.
@@ -704,6 +719,7 @@ When set to `"auto"`, the reader detects direction by analyzing character freque
 | `columns` | `1 \| 2` | `1` | Number of text columns (ignored when `scroll` is true) |
 | `scroll` | `boolean` | `false` | Continuous vertical scroll within the chapter instead of paginated columns |
 | `pdfWorkerSrc` | `string` | jsDelivr CDN URL | Override the PDF.js worker script URL (only relevant for `{ type: 'pdf' }` sources) |
+| `pdfChapters` | `PdfChapterMapEntry[]` | `undefined` | Chapter/page map for PDFs — `{ title, startPage }[]` — since a PDF has no table of contents of its own (only relevant for `{ type: 'pdf' }` sources; see PDF Support above) |
 | `zoom` | `number` | `100` | Zoom level (50-300, snaps to 10%) |
 | `translations` | `Partial<TranslationStrings>` | English defaults | UI string overrides for i18n |
 | `direction` | `'ltr' \| 'rtl' \| 'auto'` | `'auto'` | Text direction override |

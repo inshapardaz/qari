@@ -2,7 +2,7 @@
  * Service interfaces for the Universal Ebook Reader.
  */
 
-export type { EPUBParser, MarkdownParser, PrettyPrinter } from './parser';
+export type { EPUBParser, MarkdownParser, PrettyPrinter, PdfChapterMapEntry } from './parser';
 export type { DictionaryProvider, DictionaryResult, Definition, SpellCheckResult } from './dictionary';
 export type { CustomStoreAdapter } from './store-adapter';
 export type {
