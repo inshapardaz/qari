@@ -89,6 +89,7 @@ interface ViewSettings {
   margin: number;
   columns: 1 | 2;
   scroll: boolean;
+  showPageDivider: boolean;
 }
 
 const DEFAULT_SETTINGS: ViewSettings = {
@@ -102,6 +103,7 @@ const DEFAULT_SETTINGS: ViewSettings = {
   margin: 32,
   columns: 1,
   scroll: false,
+  showPageDivider: true,
 };
 
 function loadSettings(): ViewSettings {
@@ -127,6 +129,7 @@ function loadSettings(): ViewSettings {
         ? parsed.margin : DEFAULT_SETTINGS.margin,
       columns: [1, 2].includes(parsed.columns) ? parsed.columns : DEFAULT_SETTINGS.columns,
       scroll: typeof parsed.scroll === 'boolean' ? parsed.scroll : DEFAULT_SETTINGS.scroll,
+      showPageDivider: typeof parsed.showPageDivider === 'boolean' ? parsed.showPageDivider : DEFAULT_SETTINGS.showPageDivider,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -229,7 +232,7 @@ function App() {
     setSettings(prev => ({ ...prev, [key]: value }));
   }, []);
 
-  const { theme, fontFamily, fontSize, justify, lineSpacing, letterSpacing, wordSpacing, margin, columns, scroll } = settings;
+  const { theme, fontFamily, fontSize, justify, lineSpacing, letterSpacing, wordSpacing, margin, columns, scroll, showPageDivider } = settings;
 
   const [progress, setProgress] = useState<{
     currentPage: number;
@@ -661,6 +664,7 @@ function App() {
           margin={margin}
           columns={columns}
           scroll={scroll}
+          showPageDivider={showPageDivider}
           translations={LOCALES[language]}
           pdfChapters={source.type === 'pdf' ? pdfChapters : undefined}
           onPageChange={(e) => console.log('Page change:', e)}
@@ -679,6 +683,7 @@ function App() {
             if (s.margin !== undefined) updateSetting('margin', s.margin);
             if (s.columns !== undefined) updateSetting('columns', s.columns);
             if (s.scroll !== undefined) updateSetting('scroll', s.scroll);
+            if (s.showPageDivider !== undefined) updateSetting('showPageDivider', s.showPageDivider);
           }}
           onProgressChange={setProgress}
           onProgressSave={() => setLastProgressSave(new Date().toLocaleTimeString())}

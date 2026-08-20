@@ -44,6 +44,7 @@ export const ur: TranslationStrings = {
   settingsLayoutSingle: 'ایک کالم',
   settingsLayoutDouble: 'دو کالم',
   settingsLayoutScroll: 'اسکرول',
+  settingsLayoutShowDivider: 'صفحہ تقسیم کار دکھائیں',
   settingsMore: 'مزید ترتیبات',
   settingsPreviewText: 'یہ ایک نمونہ متن ہے جو آپ کی ترتیبات کا پیش نظارہ دکھاتا ہے۔',
   settingsApply: 'لاگو کریں',

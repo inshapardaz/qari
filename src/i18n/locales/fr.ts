@@ -44,6 +44,7 @@ export const fr: TranslationStrings = {
   settingsLayoutSingle: 'Colonne unique',
   settingsLayoutDouble: 'Deux colonnes',
   settingsLayoutScroll: 'Défilement',
+  settingsLayoutShowDivider: 'Afficher le séparateur de pages',
   settingsMore: 'Plus de réglages',
   settingsPreviewText: 'Le renard brun rapide saute par-dessus le chien paresseux. Cet aperçu montre à quoi ressembleront vos paramètres de lecture.',
   settingsApply: 'Appliquer',

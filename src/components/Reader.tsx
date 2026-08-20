@@ -114,6 +114,8 @@ export interface ReaderSettings {
   columns?: 1 | 2;
   /** Continuous vertical scroll within the current chapter, instead of paginated columns. Defaults to false. */
   scroll?: boolean;
+  /** Show a book-spine-style divider between the two pages in two-column (`columns: 2`) mode. Defaults to true. */
+  showPageDivider?: boolean;
 }
 
 export interface FontOption {
@@ -159,6 +161,8 @@ export interface ReaderProps {
   columns?: 1 | 2;
   /** Continuous vertical scroll within the current chapter, instead of paginated columns. Defaults to false. */
   scroll?: boolean;
+  /** Show a book-spine-style divider between the two pages in two-column (`columns: 2`) mode. Defaults to true. */
+  showPageDivider?: boolean;
   /**
    * Override the PDF.js worker script URL used to render PDF pages.
    * Defaults to a version-pinned jsDelivr CDN URL; set this if you need to
@@ -607,6 +611,36 @@ const MANTINE_PRIMARY_COLOR_STYLE = {
   '--mantine-primary-color-contrast': 'var(--reader-bg, #ffffff)',
 } as React.CSSProperties;
 
+// A CSS-only stand-in for the shadow a physical book's paper casts into its
+// own center gutter where the two facing pages meet — used in two-column
+// mode (see `showPageDivider`, `layout-panel-show-divider`) instead of a
+// plain 1px rule, which reads as a UI separator rather than a page edge.
+// Built from `var(--reader-fg)` via `color-mix()` (the same technique
+// `MANTINE_PRIMARY_COLOR_STYLE` above uses for its `-light` variants)
+// rather than a fixed black: a fixed black shadow all but disappears
+// against the near-black backgrounds of the dark/quiet/high-contrast
+// themes, whereas mixing against the theme's own foreground keeps the
+// gutter visible (as a faint tonal band, not literally a shadow) against
+// every theme's own background without needing a per-theme special case.
+const PAGE_DIVIDER_STYLE = {
+  position: 'absolute',
+  top: 0,
+  bottom: 0,
+  left: '50%',
+  transform: 'translateX(-50%)',
+  width: '48px',
+  pointerEvents: 'none',
+  background: [
+    'linear-gradient(to right',
+    'transparent 0%',
+    'color-mix(in srgb, var(--reader-fg, #1a1a1a) 10%, transparent) 38%',
+    'color-mix(in srgb, var(--reader-fg, #1a1a1a) 30%, transparent) 48%',
+    'color-mix(in srgb, var(--reader-fg, #1a1a1a) 30%, transparent) 52%',
+    'color-mix(in srgb, var(--reader-fg, #1a1a1a) 10%, transparent) 62%',
+    'transparent 100%)',
+  ].join(', '),
+} as React.CSSProperties;
+
 const POPOVER_THEME_STYLE = {
   '--mantine-color-body': 'var(--reader-bg, #ffffff)',
   '--mantine-color-text': 'var(--reader-fg, #1a1a1a)',
@@ -948,6 +982,7 @@ export const Reader: React.FC<ReaderProps> = ({
   margin = 32,
   columns = 1,
   scroll = false,
+  showPageDivider = true,
   pdfWorkerSrc,
   pdfChapters,
   zoom = 100,
@@ -3482,6 +3517,22 @@ export const Reader: React.FC<ReaderProps> = ({
                           </button>
                         ))}
                       </div>
+                      {/* Only meaningful in two-column mode — hidden along
+                          with the 'double' option itself on narrow/mobile
+                          viewports (see above) rather than shown-but-inert. */}
+                      {!isMobileViewport && (
+                        <Switch
+                          mt="sm"
+                          size="sm"
+                          data-testid="layout-panel-show-divider"
+                          checked={showPageDivider}
+                          onChange={(e) => { if (onSettingsChange) onSettingsChange({ showPageDivider: e.currentTarget.checked }); }}
+                          label={t.settingsLayoutShowDivider}
+                          aria-label={t.settingsLayoutShowDivider}
+                          labelPosition="left"
+                          styles={{ body: { justifyContent: 'space-between' }, label: { fontSize: 'var(--mantine-font-size-xs)', fontWeight: 600 } }}
+                        />
+                      )}
                     </Popover.Dropdown>
                   </Popover>
 
@@ -3955,8 +4006,10 @@ export const Reader: React.FC<ReaderProps> = ({
                         maxWidth: `${pageBoxMaxWidth}px`,
                         height: '100%',
                         margin: '0 auto',
+                        position: 'relative',
                       }}
                     >
+                      {pdfSpread && showPageDivider && <div data-testid="page-divider" style={PAGE_DIVIDER_STYLE} />}
                       <div
                         ref={contentRef}
                         className="ebook-reader__pdf-spread"
@@ -4070,6 +4123,7 @@ export const Reader: React.FC<ReaderProps> = ({
                       height: '100%',
                       margin: '0 auto',
                       overflow: 'hidden',
+                      position: 'relative',
                     }}
                   >
                     <div
@@ -4121,6 +4175,16 @@ export const Reader: React.FC<ReaderProps> = ({
                         <ContentNodeRenderer key={`${currentChapterIdx}-${ni}`} node={node} onImageClick={(src, alt) => setLightboxImage({ src, alt })} onFootnoteClick={handleFootnoteClick} onLinkClick={handleLinkClick} />
                       ))}
                     </div>
+                    {/* A sibling of `contentRef` above, not a child of it —
+                        the page-turn `translateX` (see `pagePitch`) must not
+                        carry the divider along with the page content, since
+                        the physical book-spine gutter it represents sits at
+                        a fixed point in the reading area regardless of which
+                        page is currently under it. Rendered after (so
+                        painted on top of) `contentRef` rather than before,
+                        so the shadow reads as sitting on top of the pages,
+                        the way an actual gutter shadow does. */}
+                    {!scroll && effectiveColumns === 2 && showPageDivider && <div data-testid="page-divider" style={PAGE_DIVIDER_STYLE} />}
                   </div>
                 )}
               </div>

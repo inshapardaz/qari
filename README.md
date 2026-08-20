@@ -472,6 +472,7 @@ The layout picker has three options: a single-column paginated view (turned via 
   margin={32}              // px, 0-100 (left/right content padding)
   columns={1}              // 1 or 2 column layout (ignored when scroll is true)
   scroll={false}           // true for continuous vertical scroll instead of paginated columns
+  showPageDivider={true}   // book-spine-style shadow between the two pages in columns=2 mode
 />
 ```
 
@@ -738,6 +739,7 @@ When set to `"auto"`, the reader detects direction by analyzing character freque
 | `margin` | `number` | `32` | Content margin in pixels (0-100) |
 | `columns` | `1 \| 2` | `1` | Number of text columns (ignored when `scroll` is true) |
 | `scroll` | `boolean` | `false` | Continuous vertical scroll within the chapter instead of paginated columns |
+| `showPageDivider` | `boolean` | `true` | Show a book-spine-style shadow divider between the two pages in `columns={2}` mode. Toggleable by the user from the Layout dropdown's own checkbox |
 | `pdfWorkerSrc` | `string` | jsDelivr CDN URL | Override the PDF.js worker script URL (only relevant for `{ type: 'pdf' }` sources) |
 | `pdfChapters` | `PdfChapterMapEntry[]` | `undefined` | Chapter/page map for PDFs — `{ title, startPage }[]` — since a PDF has no table of contents of its own (only relevant for `{ type: 'pdf' }` sources; see PDF Support above) |
 | `zoom` | `number` | `100` | Zoom level (50-300, snaps to 10%) |

@@ -43,6 +43,7 @@ export interface TranslationStrings {
   settingsLayoutSingle: string;
   settingsLayoutDouble: string;
   settingsLayoutScroll: string;
+  settingsLayoutShowDivider: string;
   settingsMore: string;
   settingsPreviewText: string;
   settingsApply: string;

@@ -44,6 +44,7 @@ export const en: TranslationStrings = {
   settingsLayoutSingle: 'Single column',
   settingsLayoutDouble: 'Two columns',
   settingsLayoutScroll: 'Scroll',
+  settingsLayoutShowDivider: 'Show page divider',
   settingsMore: 'More settings',
   settingsPreviewText: 'The quick brown fox jumps over the lazy dog. This preview shows how your reading settings will look.',
   settingsApply: 'Apply',
