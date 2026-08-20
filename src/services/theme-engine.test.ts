@@ -76,6 +76,20 @@ describe('ThemeEngine', () => {
       engine.setTheme('calm');
       expect(engine.getPreferences().theme).toBe('calm');
     });
+
+    // Regression test: setTheme is reachable from a host app's fully-controlled prop (see
+    // Reader.tsx), not just this engine's own internal persisted storage - a caller can pass a
+    // theme name renamed/removed between qari versions (e.g. the old "sepia", now "calm") without
+    // going through loadPersistedPreferences' own migration at all. This used to throw
+    // (THEMES[theme].background on undefined), crashing the whole <Reader> since nothing wraps it
+    // in an error boundary.
+    it('should fall back to light instead of throwing on an unrecognized theme name', () => {
+      // @ts-expect-error - deliberately an invalid ThemeName, simulating a stale runtime value
+      // from an older qari version (e.g. a persisted "sepia") or a non-TS caller.
+      expect(() => engine.setTheme('sepia')).not.toThrow();
+      expect(engine.getPreferences().theme).toBe('light');
+      expect(rootElement.style.getPropertyValue('--reader-bg')).toBe(THEMES.light.background);
+    });
   });
 
   describe('setFont', () => {
@@ -100,6 +114,12 @@ describe('ThemeEngine', () => {
     it('should update preferences when font changes', () => {
       engine.setFont('monospace');
       expect(engine.getPreferences().fontFamily).toBe('monospace');
+    });
+
+    it('should fall back to serif instead of throwing on an unrecognized font family', () => {
+      // @ts-expect-error - deliberately an invalid FontFamily.
+      expect(() => engine.setFont('comic-sans')).not.toThrow();
+      expect(engine.getPreferences().fontFamily).toBe('serif');
     });
   });
 

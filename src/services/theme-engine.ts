@@ -160,13 +160,29 @@ export class ThemeEngine implements IThemeEngine {
   }
 
   setTheme(theme: ThemeName): void {
-    this.preferences.theme = theme;
-    this.applyThemeColors(theme);
+    // theme is a fully-controlled value a host app can persist and feed back in on its own (see
+    // Reader.tsx's theme prop) - unlike loadPersistedPreferences below, nothing here guarantees
+    // it's still one of THEMES' current keys. A theme renamed/removed between qari versions (e.g.
+    // sepia -> calm) would otherwise crash applyThemeColors on THEMES[theme].background with no
+    // recovery, taking down the whole <Reader> (no error boundary wraps it) - fall back instead.
+    const safeTheme = VALID_THEMES.includes(theme) ? theme : 'light';
+    if (safeTheme !== theme) {
+      console.warn(`[qari] Unknown theme "${theme}" - falling back to "${safeTheme}". This usually means a theme name was renamed/removed between qari versions and the caller is still passing an old persisted value.`);
+    }
+    this.preferences.theme = safeTheme;
+    this.applyThemeColors(safeTheme);
   }
 
   setFont(family: FontFamily): void {
-    this.preferences.fontFamily = family;
-    this.applyFontFamily(family);
+    // Same reasoning as setTheme above - family is caller-controlled, not just internally
+    // persisted, so an unrecognized value must degrade gracefully rather than write an invalid
+    // CSS custom property.
+    const safeFamily = VALID_FONTS.includes(family) ? family : 'serif';
+    if (safeFamily !== family) {
+      console.warn(`[qari] Unknown font family "${family}" - falling back to "${safeFamily}".`);
+    }
+    this.preferences.fontFamily = safeFamily;
+    this.applyFontFamily(safeFamily);
   }
 
   setFontSize(size: number): void {
@@ -223,7 +239,12 @@ export class ThemeEngine implements IThemeEngine {
   }
 
   private applyThemeColors(theme: ThemeName): void {
-    const colors = THEMES[theme];
+    // Belt-and-suspenders alongside setTheme's own guard above: THEMES[theme] must never be
+    // undefined here, since every caller (setTheme, applyAllProperties off a validated
+    // this.preferences.theme) is already supposed to hand this a real key - but a raw lookup
+    // crashing the whole reader on any future caller that skips that validation is a far worse
+    // failure mode than silently rendering the light theme's colors.
+    const colors = THEMES[theme] ?? THEMES.light;
     this.rootElement.style.setProperty('--reader-bg', colors.background);
     this.rootElement.style.setProperty('--reader-fg', colors.foreground);
     this.rootElement.style.setProperty('--reader-accent', colors.accent);
