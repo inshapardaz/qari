@@ -31,6 +31,9 @@ export const NOTE_HIGHLIGHT_COLORS: Record<NoteColor, string> = {
   purple: 'rgba(175, 82, 222, 0.35)',
 };
 
+/** Canonical display order for the highlight color picker (note context menu, NotePanel). */
+export const NOTE_COLOR_ORDER: NoteColor[] = ['yellow', 'green', 'blue', 'pink', 'purple'];
+
 /**
  * Converts a DOM Range boundary (node + offset) into a plain character
  * offset relative to the start of `container`'s text content. Works for

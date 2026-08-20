@@ -107,6 +107,34 @@ describe('NotePanel', () => {
     expect(excerptBtn.style.getPropertyValue('--button-hover')).toBe('var(--reader-surface, #f5f5f5)');
   });
 
+  it("colors the edit (comment) button with the reading theme, not Mantine's default primary color", () => {
+    // Same regression as the excerpt button above, for the ✎ edit toggle:
+    // a "filled"/"subtle" ActionIcon otherwise falls back to Mantine's own
+    // primary/brand color and dimmed gray rather than the reading theme.
+    renderWithContext(<NotePanel />);
+    const editBtn = screen.getByTestId(`note-edit-${mockNote.id}`);
+    expect(editBtn).toHaveStyle({ color: 'var(--reader-fg, #1a1a1a)' });
+
+    fireEvent.click(editBtn);
+    expect(editBtn).toHaveStyle({
+      backgroundColor: 'var(--reader-fg, #1a1a1a)',
+      color: 'var(--reader-bg, #ffffff)',
+    });
+  });
+
+  it("colors the comment editor's Save/Cancel buttons with the reading theme, not Mantine's default primary blue", () => {
+    renderWithContext(<NotePanel />);
+    fireEvent.click(screen.getByTestId(`note-edit-${mockNote.id}`));
+
+    expect(screen.getByTestId(`note-save-${mockNote.id}`)).toHaveStyle({
+      backgroundColor: 'var(--reader-accent, #0071e3)',
+      color: 'var(--reader-bg, #ffffff)',
+    });
+    expect(screen.getByTestId(`note-cancel-${mockNote.id}`)).toHaveStyle({
+      color: 'var(--reader-fg, #1a1a1a)',
+    });
+  });
+
   it('shows empty message when no notes exist', () => {
     const ctx = createMockContext({
       state: { ...createMockContext().state, notes: [] },

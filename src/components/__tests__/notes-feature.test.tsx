@@ -17,6 +17,15 @@ function createMarkdownSource(): ReaderSource {
   };
 }
 
+/**
+ * Clicks a highlight-color circle in the "Add note" context menu row —
+ * that's what actually creates the note now (see issue: color circles in
+ * the context menu), replacing the old single "Add note" menu item.
+ */
+function clickAddNote(color: 'yellow' | 'green' | 'blue' | 'pink' | 'purple' = 'yellow') {
+  fireEvent.click(screen.getByTestId(`note-add-color-${color}`));
+}
+
 /** Selects `text` within `container` by locating it in the first text node that contains it. */
 function selectText(container: HTMLElement, text: string) {
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
@@ -70,13 +79,32 @@ describe('Notes feature', () => {
     const menuItem = await screen.findByTestId('note-context-menu');
     expect(menuItem).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('Add note'));
+    clickAddNote();
 
     // The note should now be visually highlighted in the content.
     await waitFor(() => {
       const mark = content.querySelector('mark.qari-note-highlight');
       expect(mark).not.toBeNull();
       expect(mark!.textContent).toBe('wonderful world');
+    });
+  });
+
+  it('creates the note with whichever color circle was clicked', async () => {
+    render(<Reader source={createMarkdownSource()} />);
+    await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
+
+    const content = document.querySelector('.ebook-reader__columns') as HTMLElement;
+    selectText(content, 'wonderful world');
+    fireEvent.contextMenu(content);
+    await screen.findByTestId('note-context-menu');
+
+    clickAddNote('blue');
+
+    await waitFor(() => {
+      const mark = content.querySelector('mark.qari-note-highlight') as HTMLElement | null;
+      expect(mark).not.toBeNull();
+      // rgba(64, 156, 255, 0.35) — see NOTE_HIGHLIGHT_COLORS.blue in text-highlight.ts.
+      expect(mark!.style.backgroundColor).toBe('rgba(64, 156, 255, 0.35)');
     });
   });
 
@@ -88,7 +116,7 @@ describe('Notes feature', () => {
     selectText(content, 'wonderful world');
     fireEvent.contextMenu(content);
     await screen.findByTestId('note-context-menu');
-    fireEvent.click(screen.getByText('Add note'));
+    clickAddNote();
 
     const mark = await waitFor(() => {
       const el = content.querySelector('mark.qari-note-highlight');
@@ -119,7 +147,7 @@ describe('Notes feature', () => {
     selectText(content, 'wonderful');
     fireEvent.contextMenu(content);
     await screen.findByTestId('note-context-menu');
-    fireEvent.click(screen.getByText('Add note'));
+    clickAddNote();
 
     const mark = await waitFor(() => {
       const el = content.querySelector('mark.qari-note-highlight');
@@ -131,7 +159,12 @@ describe('Notes feature', () => {
     fireEvent.contextMenu(mark);
 
     const menu = await screen.findByTestId('note-context-menu');
-    expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Add note', 'Remove note']);
+    // "Add note" is a label over a row of color-circle buttons, not itself
+    // a menuitem (see clickAddNote's comment) — "Remove note" is still a
+    // plain Menu.Item, so it's the only one that shows up as a menuitem.
+    expect(within(menu).getByText('Add note')).toBeInTheDocument();
+    expect(within(menu).getByTestId('note-add-color-yellow')).toBeInTheDocument();
+    expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Remove note']);
   });
 
   it('positions the context menu relative to the reader root, not raw viewport coordinates', async () => {
@@ -177,7 +210,7 @@ describe('Notes feature', () => {
     selectText(content, 'Hello');
     fireEvent.contextMenu(content);
     await screen.findByTestId('note-context-menu');
-    fireEvent.click(screen.getByText('Add note'));
+    clickAddNote();
 
     await waitFor(() => {
       expect(content.querySelector('mark.qari-note-highlight')).not.toBeNull();
@@ -205,8 +238,10 @@ describe('Notes feature', () => {
     fireEvent.contextMenu(content);
 
     const menu = await screen.findByTestId('note-context-menu');
+    expect(within(menu).getByText('Add note')).toBeInTheDocument();
+    expect(within(menu).getByTestId('note-add-color-yellow')).toBeInTheDocument();
     const items = within(menu).getAllByRole('menuitem');
-    expect(items.map(item => item.textContent)).toEqual(['Add note', 'Meaning']);
+    expect(items.map(item => item.textContent)).toEqual(['Meaning']);
   });
 
   it('triggers a dictionary lookup when "Meaning" is clicked, and closes the menu', async () => {
@@ -246,7 +281,9 @@ describe('Notes feature', () => {
     fireEvent.contextMenu(content);
 
     const menu = await screen.findByTestId('note-context-menu');
-    expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Add note']);
+    expect(within(menu).getByText('Add note')).toBeInTheDocument();
+    expect(within(menu).queryByText('Meaning')).not.toBeInTheDocument();
+    expect(within(menu).queryAllByRole('menuitem')).toHaveLength(0);
   });
 
   it('does not show the Notes tab or accept right-click note creation when enableNotes is false', async () => {
@@ -272,7 +309,7 @@ describe('Notes feature', () => {
     selectText(content, 'wonderful');
     fireEvent.contextMenu(content);
     await screen.findByTestId('note-context-menu');
-    fireEvent.click(screen.getByText('Add note'));
+    clickAddNote();
 
     await waitFor(() => {
       expect(content.querySelector('mark.qari-note-highlight')).not.toBeNull();

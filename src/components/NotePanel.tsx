@@ -12,7 +12,7 @@ import { Button, ActionIcon, Alert, Title, Group, Text, Textarea } from '@mantin
 import { useReaderContext } from './Reader';
 import { useTranslations, interpolate } from '../i18n';
 import { getChapterCharCount } from '../services/chapter-navigator';
-import { NOTE_HIGHLIGHT_COLORS, DEFAULT_NOTE_COLOR } from '../utils/text-highlight';
+import { NOTE_HIGHLIGHT_COLORS, DEFAULT_NOTE_COLOR, NOTE_COLOR_ORDER } from '../utils/text-highlight';
 import type { Note, NoteColor } from '../models/note';
 import type { PageChangeEvent } from '../models/events';
 
@@ -37,7 +37,6 @@ export interface NotePanelProps {
 
 const DEFAULT_CHARS_PER_PAGE = 1500;
 const EXCERPT_LENGTH = 140;
-const NOTE_COLORS: NoteColor[] = ['yellow', 'green', 'blue', 'pink', 'purple'];
 
 function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
@@ -251,7 +250,7 @@ export const NotePanel: React.FC<NotePanelProps> = ({
               </Group>
 
               <Group gap={6} wrap="nowrap" px="0.2rem">
-                {NOTE_COLORS.map((color) => (
+                {NOTE_COLOR_ORDER.map((color) => (
                   <button
                     key={color}
                     type="button"
@@ -275,10 +274,19 @@ export const NotePanel: React.FC<NotePanelProps> = ({
                 <ActionIcon
                   data-testid={`note-edit-${note.id}`}
                   aria-label={t.noteEditComment}
+                  aria-pressed={isEditing}
                   onClick={() => (isEditing ? handleCancelEdit() : handleStartEdit(note))}
                   variant={isEditing ? 'filled' : 'subtle'}
                   size="sm"
                   ml="auto"
+                  // Same theme-following override the header's toggle
+                  // buttons (theme/layout/settings) use — without it, a
+                  // "filled"/"subtle" ActionIcon falls back to Mantine's own
+                  // primary/brand color and dimmed gray, clashing with the
+                  // reading theme the rest of this panel follows.
+                  style={isEditing
+                    ? { backgroundColor: 'var(--reader-fg, #1a1a1a)', color: 'var(--reader-bg, #ffffff)' }
+                    : { color: 'var(--reader-fg, #1a1a1a)' }}
                 >
                   ✎
                 </ActionIcon>
@@ -306,6 +314,14 @@ export const NotePanel: React.FC<NotePanelProps> = ({
                       size="xs"
                       variant="subtle"
                       onClick={handleCancelEdit}
+                      // Same theme-following override as the excerpt/result
+                      // buttons elsewhere in this panel — a "subtle" Button
+                      // otherwise takes its color from Mantine's own
+                      // primary/brand color, not the reading theme.
+                      style={{
+                        color: 'var(--reader-fg, #1a1a1a)',
+                        '--button-hover': 'var(--reader-surface, #f5f5f5)',
+                      } as React.CSSProperties}
                     >
                       {t.noteCancelEdit}
                     </Button>
@@ -313,6 +329,16 @@ export const NotePanel: React.FC<NotePanelProps> = ({
                       data-testid={`note-save-${note.id}`}
                       size="xs"
                       onClick={() => handleSaveComment(note.id)}
+                      // Default "filled" variant otherwise renders Mantine's
+                      // own primary/brand blue — `--reader-accent` is the
+                      // reading theme's own highlight color (set by
+                      // ThemeEngine), and `--reader-bg` reads reliably on
+                      // top of it across all four built-in themes (same
+                      // pairing used for the active-chapter highlight).
+                      style={{
+                        backgroundColor: 'var(--reader-accent, #0071e3)',
+                        color: 'var(--reader-bg, #ffffff)',
+                      }}
                     >
                       {t.noteSaveComment}
                     </Button>

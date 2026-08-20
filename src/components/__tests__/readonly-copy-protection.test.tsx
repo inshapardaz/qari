@@ -103,9 +103,12 @@ describe('readOnly copy protection', () => {
     // The same selection cannot be copied out...
     expect(fireEvent.copy(content)).toBe(false);
 
-    // ...but can still be turned into a note.
+    // ...but can still be turned into a note. "Add note" is a label over a
+    // row of color-circle buttons now, not itself a clickable item — see
+    // notes-feature.test.tsx's clickAddNote helper for the same pattern.
     fireEvent.contextMenu(content);
-    fireEvent.click(await screen.findByText('Add note'));
+    await screen.findByText('Add note');
+    fireEvent.click(screen.getByTestId('note-add-color-yellow'));
 
     await waitFor(() => {
       const mark = content.querySelector('mark.qari-note-highlight');

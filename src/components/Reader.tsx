@@ -39,7 +39,7 @@ import { DEFAULT_MANTINE_THEME } from '../theme/mantine-theme';
 
 import type { Book, BookMetadata, ContentNode, InlineNode, FootnoteRefSpan, PdfPageNode } from '../models/book';
 import type { Bookmark } from '../models/bookmark';
-import type { Note } from '../models/note';
+import type { Note, NoteColor } from '../models/note';
 import type { ReadingProgressRecord } from '../models/progress';
 import type { ReaderState, ThemeName, FontFamily } from '../models/reader-state';
 import type {
@@ -64,7 +64,7 @@ import { NoteStore } from '../services/note-store';
 import { ProgressStore } from '../services/progress-store';
 import { ChapterNavigator, getChapterCharCount } from '../services/chapter-navigator';
 import { URDU_WEB_FONT_OPTIONS, injectUrduWebFontsCss } from '../services/urdu-web-fonts';
-import { getRangeOffsets, applyHighlights, clearHighlights, findTextRange } from '../utils/text-highlight';
+import { getRangeOffsets, applyHighlights, clearHighlights, findTextRange, NOTE_COLOR_ORDER, NOTE_HIGHLIGHT_COLORS } from '../utils/text-highlight';
 
 import { BookmarkPanel } from './BookmarkPanel';
 import { NotePanel } from './NotePanel';
@@ -1708,7 +1708,7 @@ export const Reader: React.FC<ReaderProps> = ({
     setPendingNote({ x, y, selection: selectionInfo, noteId });
   }, [enableNotes]);
 
-  const handleCreateNoteFromSelection = useCallback(async () => {
+  const handleCreateNoteFromSelection = useCallback(async (color?: NoteColor) => {
     const pending = pendingNote?.selection;
     setPendingNote(null);
     if (!pending || !noteStoreRef.current || !state.book) return;
@@ -1730,7 +1730,9 @@ export const Reader: React.FC<ReaderProps> = ({
         chapterId,
         pending.start,
         pending.end,
-        pending.text
+        pending.text,
+        undefined,
+        color
       );
       addNote(note);
     } catch {
@@ -4074,6 +4076,18 @@ export const Reader: React.FC<ReaderProps> = ({
                   portalProps={{ target: mantinePortalTarget }}
                   position="bottom-start"
                   shadow="md"
+                  // Otherwise defaults to Mantine's own forced light/dark
+                  // colorScheme (see the reader root's own comment on this)
+                  // rather than the reading theme — same fix as the
+                  // theme/layout/settings popovers' own POPOVER_THEME_STYLE,
+                  // plus an explicit `--menu-item-hover` override since that
+                  // variable isn't one `--mantine-color-body`/`-text` cover.
+                  styles={{
+                    dropdown: {
+                      ...POPOVER_THEME_STYLE,
+                      '--menu-item-hover': 'var(--reader-surface, #f5f5f5)',
+                    } as React.CSSProperties,
+                  }}
                 >
                   <Menu.Target>
                     <div
@@ -4090,9 +4104,31 @@ export const Reader: React.FC<ReaderProps> = ({
                   </Menu.Target>
                   <Menu.Dropdown data-testid="note-context-menu">
                     {pendingNote?.selection && (
-                      <Menu.Item onClick={handleCreateNoteFromSelection}>
-                        {t.noteAddMenuItem}
-                      </Menu.Item>
+                      <div style={{ padding: '0.35rem 0.6rem' }}>
+                        <Text size="xs" c="dimmed" mb={4}>
+                          {t.noteAddMenuItem}
+                        </Text>
+                        <div dir={t.uiDirection} style={{ display: 'flex', gap: '0.5rem' }}>
+                          {NOTE_COLOR_ORDER.map((color) => (
+                            <button
+                              key={color}
+                              type="button"
+                              data-testid={`note-add-color-${color}`}
+                              aria-label={interpolate(t.noteColorLabel, { color: t.noteColors[color] ?? color })}
+                              onClick={() => handleCreateNoteFromSelection(color)}
+                              style={{
+                                width: '1.35rem',
+                                height: '1.35rem',
+                                borderRadius: '50%',
+                                cursor: 'pointer',
+                                padding: 0,
+                                backgroundColor: NOTE_HIGHLIGHT_COLORS[color],
+                                border: '1px solid var(--reader-border, #e0e0e0)',
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </div>
                     )}
                     {pendingNote?.noteId && (
                       <Menu.Item color="red" onClick={handleRemoveNoteFromMenu}>
