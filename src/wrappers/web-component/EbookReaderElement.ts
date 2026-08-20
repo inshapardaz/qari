@@ -30,7 +30,7 @@ import type {
 // Validation helpers
 // ---------------------------------------------------------------------------
 
-const VALID_THEMES: ThemeName[] = ['light', 'dark', 'sepia', 'high-contrast'];
+const VALID_THEMES: ThemeName[] = ['light', 'dark', 'calm', 'quiet', 'paper', 'focus', 'high-contrast'];
 const VALID_FONT_FAMILIES: FontFamily[] = ['serif', 'sans-serif', 'monospace', 'nastaliq'];
 const VALID_DIRECTIONS = ['ltr', 'rtl', 'auto'] as const;
 

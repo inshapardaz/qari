@@ -7,9 +7,10 @@ import type { ThemeName, FontFamily, ReadingPreferences } from '../../interfaces
  * Property 4: Reading Preferences Round-Trip
  *
  * For any valid combination of reading preferences (theme from the set
- * {light, dark, sepia, high-contrast}, font family from {serif, sans-serif, monospace, nastaliq},
- * font size from 12–48 in 2px steps), persisting to local storage and loading back
- * SHALL produce an identical preferences object.
+ * {light, dark, calm, quiet, paper, focus, high-contrast}, font family from
+ * {serif, sans-serif, monospace, nastaliq}, font size from 12–48 in 2px
+ * steps), persisting to local storage and loading back SHALL produce an
+ * identical preferences object.
  *
  * **Validates: Requirements 3.6**
  */
@@ -17,7 +18,10 @@ import type { ThemeName, FontFamily, ReadingPreferences } from '../../interfaces
 const themeArb: fc.Arbitrary<ThemeName> = fc.constantFrom(
   'light',
   'dark',
-  'sepia',
+  'calm',
+  'quiet',
+  'paper',
+  'focus',
   'high-contrast'
 );
 

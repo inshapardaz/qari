@@ -26,7 +26,7 @@ import { clampZoom } from '../../components/Reader';
 // ---------------------------------------------------------------------------
 
 // Valid values as defined in both wrappers
-const VALID_THEMES: ThemeName[] = ['light', 'dark', 'sepia', 'high-contrast'];
+const VALID_THEMES: ThemeName[] = ['light', 'dark', 'calm', 'quiet', 'paper', 'focus', 'high-contrast'];
 const VALID_FONT_FAMILIES: FontFamily[] = ['serif', 'sans-serif', 'monospace', 'nastaliq'];
 const VALID_DIRECTIONS: Array<'ltr' | 'rtl' | 'auto'> = ['ltr', 'rtl', 'auto'];
 
@@ -38,7 +38,10 @@ function vueValidateTheme(theme: unknown): boolean {
   return (
     theme === 'light' ||
     theme === 'dark' ||
-    theme === 'sepia' ||
+    theme === 'calm' ||
+    theme === 'quiet' ||
+    theme === 'paper' ||
+    theme === 'focus' ||
     theme === 'high-contrast'
   );
 }

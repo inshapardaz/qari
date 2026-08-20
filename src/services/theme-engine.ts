@@ -18,13 +18,25 @@ const MAX_FONT_SIZE = 48;
 const FONT_SIZE_STEP = 2;
 
 /**
- * Four built-in themes. light/dark/sepia are tuned after the reading themes
- * of leading e-reader apps (Apple Books, Kindle): soft near-black text
- * rather than pure black on the light theme, a warm parchment sepia, and a
- * true-black dark theme with off-white (not pure white) text to cut glare.
- * high-contrast is a distinct accessibility theme, not an aesthetic one —
- * it meets WCAG AAA ≥ 7:1 contrast (black bg + white text = 21:1) and keeps
- * that guarantee regardless of the other three themes' tuning.
+ * Seven built-in themes, tuned after the reading themes of leading e-reader
+ * apps — light/dark/calm/quiet/paper/focus specifically mirror the Apple
+ * Books appearance picker's own six (Books' "Original" is this file's
+ * `light`; its "Bold" is a font-weight variant, not a color theme, so it
+ * has no equivalent here): soft near-black text rather than pure black on
+ * light, a warm parchment tone for calm (formerly named "sepia" — same
+ * colors, renamed to match Books' own naming), a true-black dark theme with
+ * off-white (not pure white) text to cut glare, a softer charcoal-on-gray
+ * quiet theme as a lower-contrast alternative to dark, a cool light gray
+ * paper theme as an alternative to stark white, and a warm off-white focus
+ * theme between paper and calm in tone. high-contrast is a distinct
+ * accessibility theme, not an aesthetic one — it meets WCAG AAA ≥ 7:1
+ * contrast (black bg + white text = 21:1) and keeps that guarantee
+ * regardless of the other themes' tuning.
+ *
+ * `secondary` is each theme's own muted/dimmed text tone (subtitles, author
+ * names, captions) — every value here clears WCAG AA's 4.5:1 text-contrast
+ * minimum against that theme's own `background`, high-contrast comfortably
+ * clearing far more than that in keeping with its own guarantee above.
  */
 export const THEMES: Record<ThemeName, ThemeColors> = {
   light: {
@@ -33,6 +45,7 @@ export const THEMES: Record<ThemeName, ThemeColors> = {
     accent: '#0071e3',
     surface: '#f5f5f7',
     border: '#d2d2d7',
+    secondary: '#6e6e73',
   },
   dark: {
     background: '#000000',
@@ -40,13 +53,39 @@ export const THEMES: Record<ThemeName, ThemeColors> = {
     accent: '#4da3ff',
     surface: '#1c1c1e',
     border: '#38383a',
+    secondary: '#98989d',
   },
-  sepia: {
+  calm: {
     background: '#f6ecd8',
     foreground: '#5b4636',
     accent: '#8b5e34',
     surface: '#efe1c6',
     border: '#ddcba6',
+    secondary: '#7a6754',
+  },
+  quiet: {
+    background: '#3a3a3c',
+    foreground: '#c7c7cc',
+    accent: '#5e9eff',
+    surface: '#48484a',
+    border: '#5a5a5c',
+    secondary: '#a5a5aa',
+  },
+  paper: {
+    background: '#e9e9e7',
+    foreground: '#1c1c1e',
+    accent: '#0071e3',
+    surface: '#dcdcda',
+    border: '#c7c7c5',
+    secondary: '#636368',
+  },
+  focus: {
+    background: '#faf6ef',
+    foreground: '#1c1c1e',
+    accent: '#a67c3d',
+    surface: '#f1ebe0',
+    border: '#e3dccc',
+    secondary: '#6e6e73',
   },
   'high-contrast': {
     background: '#000000',
@@ -54,6 +93,7 @@ export const THEMES: Record<ThemeName, ThemeColors> = {
     accent: '#ffff00',
     surface: '#1a1a1a',
     border: '#ffffff',
+    secondary: '#c9c9c9',
   },
 };
 
@@ -128,6 +168,13 @@ export class ThemeEngine implements IThemeEngine {
         return null;
       }
       const parsed = JSON.parse(raw);
+      // A preference persisted before the sepia->calm rename would otherwise
+      // just fail validation below and silently fall back to the 'light'
+      // default — migrate it forward instead so a returning reader keeps
+      // whichever theme they'd actually picked.
+      if (parsed && typeof parsed === 'object' && parsed.theme === 'sepia') {
+        parsed.theme = 'calm';
+      }
       if (!isValidPreferences(parsed)) {
         return null;
       }
@@ -156,6 +203,7 @@ export class ThemeEngine implements IThemeEngine {
     this.rootElement.style.setProperty('--reader-accent', colors.accent);
     this.rootElement.style.setProperty('--reader-surface', colors.surface);
     this.rootElement.style.setProperty('--reader-border', colors.border);
+    this.rootElement.style.setProperty('--reader-secondary', colors.secondary);
   }
 
   private applyFontFamily(family: FontFamily): void {
@@ -169,7 +217,7 @@ export class ThemeEngine implements IThemeEngine {
 
 // --- Validation helpers ---
 
-const VALID_THEMES: ThemeName[] = ['light', 'dark', 'sepia', 'high-contrast'];
+const VALID_THEMES: ThemeName[] = ['light', 'dark', 'calm', 'quiet', 'paper', 'focus', 'high-contrast'];
 const VALID_FONTS: FontFamily[] = ['serif', 'sans-serif', 'monospace', 'nastaliq'];
 
 function isValidPreferences(value: unknown): value is ReadingPreferences {

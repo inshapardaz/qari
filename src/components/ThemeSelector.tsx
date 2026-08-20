@@ -33,7 +33,10 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({ onChange }) => {
   const THEMES: { value: ThemeName; label: string }[] = [
     { value: 'light', label: t.themeLight },
     { value: 'dark', label: t.themeDark },
-    { value: 'sepia', label: t.themeSepia },
+    { value: 'calm', label: t.themeCalm },
+    { value: 'quiet', label: t.themeQuiet },
+    { value: 'paper', label: t.themePaper },
+    { value: 'focus', label: t.themeFocus },
     { value: 'high-contrast', label: t.themeHighContrast },
   ];
 

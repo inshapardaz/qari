@@ -26,7 +26,10 @@ export interface TranslationStrings {
   settingsTheme: string;
   themeLight: string;
   themeDark: string;
-  themeSepia: string;
+  themeCalm: string;
+  themeQuiet: string;
+  themePaper: string;
+  themeFocus: string;
   themeHighContrast: string;
   settingsFontFamily: string;
   settingsFontSize: string; // supports {size}

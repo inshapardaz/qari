@@ -90,7 +90,7 @@ describe('BookmarkPanel', () => {
   it("colors the bookmark name with the reading theme, not Mantine's default button color", () => {
     // Regression test: a "subtle"-variant Button's text/hover otherwise come
     // from Mantine's primary/brand color, not the reading theme — jarring
-    // against a non-default reading theme (e.g. bright blue text on a sepia
+    // against a non-default reading theme (e.g. bright blue text on a calm
     // background). `--reader-fg`/`--reader-surface` are set by ThemeEngine
     // on the reader root, an ancestor of this panel in the real component
     // tree.

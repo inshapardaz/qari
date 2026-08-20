@@ -26,6 +26,7 @@ describe('ThemeEngine', () => {
     it('should apply default CSS custom properties on construction', () => {
       expect(rootElement.style.getPropertyValue('--reader-bg')).toBe(THEMES.light.background);
       expect(rootElement.style.getPropertyValue('--reader-fg')).toBe(THEMES.light.foreground);
+      expect(rootElement.style.getPropertyValue('--reader-secondary')).toBe(THEMES.light.secondary);
       expect(rootElement.style.getPropertyValue('--reader-font-size')).toBe('16px');
     });
   });
@@ -38,12 +39,31 @@ describe('ThemeEngine', () => {
       expect(rootElement.style.getPropertyValue('--reader-accent')).toBe(THEMES.dark.accent);
       expect(rootElement.style.getPropertyValue('--reader-surface')).toBe(THEMES.dark.surface);
       expect(rootElement.style.getPropertyValue('--reader-border')).toBe(THEMES.dark.border);
+      expect(rootElement.style.getPropertyValue('--reader-secondary')).toBe(THEMES.dark.secondary);
     });
 
-    it('should apply sepia theme colors', () => {
-      engine.setTheme('sepia');
-      expect(rootElement.style.getPropertyValue('--reader-bg')).toBe(THEMES.sepia.background);
-      expect(rootElement.style.getPropertyValue('--reader-fg')).toBe(THEMES.sepia.foreground);
+    it('should apply calm theme colors', () => {
+      engine.setTheme('calm');
+      expect(rootElement.style.getPropertyValue('--reader-bg')).toBe(THEMES.calm.background);
+      expect(rootElement.style.getPropertyValue('--reader-fg')).toBe(THEMES.calm.foreground);
+    });
+
+    it('should apply quiet theme colors', () => {
+      engine.setTheme('quiet');
+      expect(rootElement.style.getPropertyValue('--reader-bg')).toBe(THEMES.quiet.background);
+      expect(rootElement.style.getPropertyValue('--reader-fg')).toBe(THEMES.quiet.foreground);
+    });
+
+    it('should apply paper theme colors', () => {
+      engine.setTheme('paper');
+      expect(rootElement.style.getPropertyValue('--reader-bg')).toBe(THEMES.paper.background);
+      expect(rootElement.style.getPropertyValue('--reader-fg')).toBe(THEMES.paper.foreground);
+    });
+
+    it('should apply focus theme colors', () => {
+      engine.setTheme('focus');
+      expect(rootElement.style.getPropertyValue('--reader-bg')).toBe(THEMES.focus.background);
+      expect(rootElement.style.getPropertyValue('--reader-fg')).toBe(THEMES.focus.foreground);
     });
 
     it('should apply high-contrast theme colors', () => {
@@ -53,8 +73,8 @@ describe('ThemeEngine', () => {
     });
 
     it('should update preferences when theme changes', () => {
-      engine.setTheme('sepia');
-      expect(engine.getPreferences().theme).toBe('sepia');
+      engine.setTheme('calm');
+      expect(engine.getPreferences().theme).toBe('calm');
     });
   });
 
@@ -148,10 +168,19 @@ describe('ThemeEngine', () => {
     it('should load persisted preferences', () => {
       localStorage.setItem(
         'ebook-reader-preferences',
+        JSON.stringify({ theme: 'calm', fontFamily: 'sans-serif', fontSize: 20 })
+      );
+      const loaded = engine.loadPersistedPreferences();
+      expect(loaded).toEqual({ theme: 'calm', fontFamily: 'sans-serif', fontSize: 20 });
+    });
+
+    it("should migrate a 'sepia' theme persisted before the calm rename to 'calm'", () => {
+      localStorage.setItem(
+        'ebook-reader-preferences',
         JSON.stringify({ theme: 'sepia', fontFamily: 'sans-serif', fontSize: 20 })
       );
       const loaded = engine.loadPersistedPreferences();
-      expect(loaded).toEqual({ theme: 'sepia', fontFamily: 'sans-serif', fontSize: 20 });
+      expect(loaded).toEqual({ theme: 'calm', fontFamily: 'sans-serif', fontSize: 20 });
     });
 
     it('should return null when nothing is stored', () => {
@@ -226,6 +255,29 @@ describe('ThemeEngine', () => {
     });
   });
 
+  describe('secondary (dimmed) text contrast', () => {
+    // WCAG relative-luminance formula (sRGB), used to compute each theme's
+    // actual secondary-vs-background contrast ratio rather than eyeballing it.
+    function relativeLuminance(hex: string): number {
+      const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+      const linearize = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+      const [lr, lg, lb] = [r, g, b].map(linearize);
+      return 0.2126 * lr + 0.7152 * lg + 0.0722 * lb;
+    }
+    function contrastRatio(hexA: string, hexB: string): number {
+      const [la, lb] = [relativeLuminance(hexA), relativeLuminance(hexB)].sort((a, b) => b - a);
+      return (la + 0.05) / (lb + 0.05);
+    }
+
+    it.each(['light', 'dark', 'calm', 'quiet', 'paper', 'focus', 'high-contrast'] as const)(
+      "%s theme's secondary color clears WCAG AA's 4.5:1 minimum against its own background",
+      (theme) => {
+        const { background, secondary } = THEMES[theme];
+        expect(contrastRatio(background, secondary)).toBeGreaterThanOrEqual(4.5);
+      }
+    );
+  });
+
   describe('theme application performance', () => {
     it('should apply theme within 100ms', () => {
       const start = performance.now();
@@ -237,11 +289,14 @@ describe('ThemeEngine', () => {
       expect(rootElement.style.getPropertyValue('--reader-fg')).toBe(THEMES.dark.foreground);
     });
 
-    it('should apply all four themes within 100ms each', () => {
-      const themes: Array<'light' | 'dark' | 'sepia' | 'high-contrast'> = [
+    it('should apply all seven themes within 100ms each', () => {
+      const themes: Array<'light' | 'dark' | 'calm' | 'quiet' | 'paper' | 'focus' | 'high-contrast'> = [
         'light',
         'dark',
-        'sepia',
+        'calm',
+        'quiet',
+        'paper',
+        'focus',
         'high-contrast',
       ];
       for (const theme of themes) {

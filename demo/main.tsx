@@ -79,7 +79,7 @@ function CollapsiblePanel({
 const SETTINGS_KEY = 'qari-demo-settings';
 
 interface ViewSettings {
-  theme: 'light' | 'dark' | 'sepia' | 'high-contrast';
+  theme: 'light' | 'dark' | 'calm' | 'quiet' | 'paper' | 'focus' | 'high-contrast';
   fontFamily: string;
   fontSize: number;
   justify: boolean;
@@ -110,7 +110,7 @@ function loadSettings(): ViewSettings {
     if (!raw) return DEFAULT_SETTINGS;
     const parsed = JSON.parse(raw);
     return {
-      theme: ['light', 'dark', 'sepia', 'high-contrast'].includes(parsed.theme)
+      theme: ['light', 'dark', 'calm', 'quiet', 'paper', 'focus', 'high-contrast'].includes(parsed.theme)
         ? parsed.theme : DEFAULT_SETTINGS.theme,
       fontFamily: typeof parsed.fontFamily === 'string' && parsed.fontFamily.length > 0
         ? parsed.fontFamily : DEFAULT_SETTINGS.fontFamily,

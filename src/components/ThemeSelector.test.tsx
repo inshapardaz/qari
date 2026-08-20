@@ -72,11 +72,14 @@ function renderWithContext(ui: React.ReactElement, context?: ReaderContextValue)
 }
 
 describe('ThemeSelector', () => {
-  it('renders theme options for all four themes', () => {
+  it('renders theme options for all seven themes', () => {
     renderWithContext(<ThemeSelector />);
     expect(screen.getByRole('radio', { name: 'Light' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Dark' })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: 'Sepia' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Calm' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Quiet' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Paper' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Focus' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'HC' })).toBeInTheDocument();
   });
 
@@ -129,7 +132,7 @@ describe('ThemeSelector', () => {
   it('persists preferences on change', () => {
     const ctx = createMockContext();
     renderWithContext(<ThemeSelector />, ctx);
-    fireEvent.click(screen.getByRole('radio', { name: 'Sepia' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Calm' }));
     expect(ctx.themeEngine!.persistPreferences).toHaveBeenCalled();
   });
 

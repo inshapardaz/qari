@@ -74,7 +74,10 @@ describe('ThemeSelector translation integration', () => {
       ...DEFAULT_TRANSLATIONS,
       themeLight: 'Clair',
       themeDark: 'Sombre',
-      themeSepia: 'Sépia',
+      themeCalm: 'Calme',
+      themeQuiet: 'Silencieux',
+      themePaper: 'Papier',
+      themeFocus: 'Concentration',
       themeHighContrast: 'Contraste',
     };
 
@@ -82,7 +85,10 @@ describe('ThemeSelector translation integration', () => {
 
     expect(screen.getByRole('radio', { name: 'Clair' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Sombre' })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: 'Sépia' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Calme' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Silencieux' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Papier' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Concentration' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Contraste' })).toBeInTheDocument();
   });
 

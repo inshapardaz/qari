@@ -113,7 +113,7 @@ describe('Reader with a PDF source', () => {
     });
   });
 
-  it.each(['dark', 'high-contrast'] as const)('inverts the PDF page image colors under the %s theme', async (theme) => {
+  it.each(['dark', 'quiet', 'high-contrast'] as const)('inverts the PDF page image colors under the %s theme', async (theme) => {
     const pdfjsLib = await import('pdfjs-dist');
     (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
       promise: Promise.resolve(createFakePdfDocument(1)),
@@ -126,7 +126,7 @@ describe('Reader with a PDF source', () => {
     expect(page.querySelector('img')).toHaveStyle({ filter: 'invert(1) hue-rotate(180deg)' });
   });
 
-  it.each(['light', 'sepia'] as const)('does not invert the PDF page image colors under the %s theme', async (theme) => {
+  it.each(['light', 'calm', 'paper', 'focus'] as const)('does not invert the PDF page image colors under the %s theme', async (theme) => {
     const pdfjsLib = await import('pdfjs-dist');
     (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
       promise: Promise.resolve(createFakePdfDocument(1)),

@@ -333,7 +333,7 @@ export const NotePanel: React.FC<NotePanelProps> = ({
                       // own primary/brand blue — `--reader-accent` is the
                       // reading theme's own highlight color (set by
                       // ThemeEngine), and `--reader-bg` reads reliably on
-                      // top of it across all four built-in themes (same
+                      // top of it across all seven built-in themes (same
                       // pairing used for the active-chapter highlight).
                       style={{
                         backgroundColor: 'var(--reader-accent, #0071e3)',

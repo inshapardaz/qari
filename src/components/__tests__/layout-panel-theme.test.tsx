@@ -27,7 +27,7 @@ async function openLayoutPanel() {
 
 describe('Layout panel theming', () => {
   it('gives every option button an explicit color following the reading theme', async () => {
-    render(<Reader source={createMarkdownSource()} theme="sepia" />);
+    render(<Reader source={createMarkdownSource()} theme="calm" />);
     const panel = await openLayoutPanel();
 
     const buttons = panel.querySelectorAll('button');

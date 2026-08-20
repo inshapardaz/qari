@@ -575,7 +575,7 @@ const CODE_BLOCK_WRAP_STYLE = 'white-space:pre-wrap;word-break:break-word;overfl
 // `--mantine-color-white`/`--mantine-color-gray-2` (or the `-dark-6`/`-4`
 // equivalents) picked by the ancestor `[data-mantine-color-scheme]`
 // attribute — a binary light/dark switch that never consults
-// `--mantine-color-body` at all, so sepia/high-contrast still rendered as
+// `--mantine-color-body` at all, so calm/high-contrast still rendered as
 // plain Mantine white/black. Explicit inline `backgroundColor`/`color` (and
 // `--popover-border-color`, the one custom property this component's
 // border rule *does* read) override that directly, the same way
@@ -585,9 +585,21 @@ const POPOVER_THEME_STYLE = {
   '--mantine-color-text': 'var(--reader-fg, #1a1a1a)',
   '--mantine-color-default-border': 'var(--reader-border, #e0e0e0)',
   '--popover-border-color': 'var(--reader-border, #e0e0e0)',
+  // `c="dimmed"` Text (captions, subtitles) otherwise reads Mantine's own
+  // `--mantine-color-dimmed`, which — unlike the background/border tokens
+  // above — Mantine's stylesheet *does* reference by name rather than
+  // hardcoding, so this one override is enough; it's still repeated at
+  // every scope boundary alongside the others here for the same reason.
+  '--mantine-color-dimmed': 'var(--reader-secondary, #6e6e73)',
   backgroundColor: 'var(--reader-bg, #ffffff)',
   color: 'var(--reader-fg, #1a1a1a)',
 } as React.CSSProperties;
+
+// Display order for the theme-swatch grid — light/quiet/paper as the first
+// row and calm/focus alongside our own dark/high-contrast as the second,
+// matching Apple Books' own 3-column appearance grid (its "Bold" has no
+// equivalent here — see THEMES' own comment in theme-engine.ts for why).
+const THEME_ORDER: ThemeName[] = ['light', 'quiet', 'paper', 'calm', 'focus', 'dark', 'high-contrast'];
 
 // ---------------------------------------------------------------------------
 // HTML serializer for measurement (simple, no React rendering needed)
@@ -1128,15 +1140,17 @@ export const Reader: React.FC<ReaderProps> = ({
   // `forceColorScheme`, our nested provider would silently pick up whatever
   // colorScheme the host app's provider last set there, so the reader's UI
   // chrome (buttons, menus, popovers) would follow the host app's theme
-  // instead of the reader theme the user actually picked (light/sepia read
-  // as Mantine "light"; dark/high-contrast read as Mantine "dark").
-  const mantineColorScheme: 'light' | 'dark' = theme === 'dark' || theme === 'high-contrast' ? 'dark' : 'light';
+  // instead of the reader theme the user actually picked (light/calm/paper/
+  // focus read as Mantine "light"; dark/quiet/high-contrast read as
+  // Mantine "dark").
+  const isDarkBackgroundTheme = theme === 'dark' || theme === 'quiet' || theme === 'high-contrast';
+  const mantineColorScheme: 'light' | 'dark' = isDarkBackgroundTheme ? 'dark' : 'light';
   // PDF pages are baked-in raster images (white paper, dark ink) — the
   // reading theme otherwise only ever recolors the reader's own CSS custom
   // properties, which a pre-rendered image can't respond to, so a bright
-  // white page would glare against the dark/high-contrast themes without
-  // this (see its use in the `pdf-page` case of `ContentNodeRenderer`).
-  const invertPdfPageColors = theme === 'dark' || theme === 'high-contrast';
+  // white page would glare against the dark-background themes without this
+  // (see its use in the `pdf-page` case of `ContentNodeRenderer`).
+  const invertPdfPageColors = isDarkBackgroundTheme;
   // Mantine's default `getRootElement` is `document.documentElement` — with
   // `forceColorScheme` alone, the reader would still write its own
   // colorScheme onto that same shared `<html>` element, clobbering whatever
@@ -2654,6 +2668,18 @@ export const Reader: React.FC<ReaderProps> = ({
 
   const t = resolvedTranslations;
 
+  // Display name for each built-in theme, keyed for the theme-swatch grid
+  // below — a lookup instead of a nested ternary now that there are 7.
+  const themeLabels: Record<ThemeName, string> = {
+    light: t.themeLight,
+    dark: t.themeDark,
+    calm: t.themeCalm,
+    quiet: t.themeQuiet,
+    paper: t.themePaper,
+    focus: t.themeFocus,
+    'high-contrast': t.themeHighContrast,
+  };
+
   // The header's Bookmarks button bookmarks/unbookmarks the current page
   // directly rather than opening a picker — it toggles a bookmark using the
   // same bookId/chapterId/(page * charsPerPage) convention BookmarkPanel's
@@ -2907,13 +2933,19 @@ export const Reader: React.FC<ReaderProps> = ({
         // chapter drawer) inherits these variables via normal CSS custom
         // property cascade. Without this, Mantine's own forced light/dark
         // `colorScheme` (see `mantineColorScheme` above) is a binary
-        // palette that can't represent sepia or high-contrast — sepia would
+        // palette that can't represent calm or high-contrast — calm would
         // render as generic Mantine light (white, not parchment) and
         // high-contrast as generic Mantine dark (dark gray, not true
         // black/white).
         '--mantine-color-body': 'var(--reader-bg, #ffffff)',
         '--mantine-color-text': 'var(--reader-fg, #1a1a1a)',
         '--mantine-color-default-border': 'var(--reader-border, #e0e0e0)',
+        // `c="dimmed"` Text (chapter subtitles, author names, captions)
+        // otherwise reads Mantine's own `--mantine-color-dimmed`, which is
+        // just a plain gray keyed off the binary light/dark colorScheme —
+        // never the reading theme, so calm/high-contrast secondary text
+        // looked identical to plain Mantine gray regardless of theme.
+        '--mantine-color-dimmed': 'var(--reader-secondary, #6e6e73)',
         // This is the color inherited by descendants that don't set their
         // own (chapter/bookmarks/theme/layout/settings menus and popovers),
         // and those are UI chrome, not book content. The header and footer
@@ -3041,8 +3073,8 @@ export const Reader: React.FC<ReaderProps> = ({
                   {/* Overridden here rather than left to Mantine's own
                       forced light/dark colorScheme (see `mantineColorScheme`
                       above): that only gives Mantine components a binary
-                      light/dark palette, which can't represent sepia or
-                      high-contrast — sepia would render as generic Mantine
+                      light/dark palette, which can't represent calm or
+                      high-contrast — calm would render as generic Mantine
                       light (white, not parchment) and high-contrast as
                       generic Mantine dark (dark gray, not true black/white).
                       Re-pointing Mantine's own CSS variables at the exact
@@ -3057,6 +3089,7 @@ export const Reader: React.FC<ReaderProps> = ({
                       '--mantine-color-body': 'var(--reader-bg, #ffffff)',
                       '--mantine-color-text': 'var(--reader-fg, #1a1a1a)',
                       '--mantine-color-default-border': 'var(--reader-border, #e0e0e0)',
+                      '--mantine-color-dimmed': 'var(--reader-secondary, #6e6e73)',
                       backgroundColor: 'var(--reader-bg, #ffffff)',
                       color: 'var(--reader-fg, #1a1a1a)',
                     } as React.CSSProperties}
@@ -3177,9 +3210,9 @@ export const Reader: React.FC<ReaderProps> = ({
                                   // non-default reading theme. `--reader-accent`
                                   // is the same theme's own highlight color
                                   // (set by ThemeEngine), and `--reader-bg`
-                                  // reads reliably on top of it across all four
-                                  // built-in themes (including high-contrast's
-                                  // black-on-yellow).
+                                  // reads reliably on top of it across all
+                                  // seven built-in themes (including
+                                  // high-contrast's black-on-yellow).
                                   backgroundColor: active ? 'var(--reader-accent, #0071e3)' : 'transparent',
                                   color: active ? 'var(--reader-bg, #ffffff)' : 'var(--reader-fg, #1a1a1a)',
                                 }}
@@ -3293,10 +3326,17 @@ export const Reader: React.FC<ReaderProps> = ({
                       </ActionIcon>
                     </Popover.Target>
                     <Popover.Dropdown data-testid="theme-panel" p="sm" style={POPOVER_THEME_STYLE}>
-                      <div dir={t.uiDirection} style={{ display: 'flex', gap: '0.75rem' }}>
-                        {(['light', 'dark', 'sepia', 'high-contrast'] as ThemeName[]).map(thm => {
+                      {/* 3-per-row grid (matches Apple Books' own appearance
+                          grid) rather than a single row — 7 themes' worth of
+                          swatches would either overflow or wrap raggedly in
+                          a plain flex row. */}
+                      <div
+                        dir={t.uiDirection}
+                        style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}
+                      >
+                        {THEME_ORDER.map(thm => {
                           const active = theme === thm;
-                          const label = thm === 'light' ? t.themeLight : thm === 'dark' ? t.themeDark : thm === 'sepia' ? t.themeSepia : t.themeHighContrast;
+                          const label = themeLabels[thm];
                           return (
                             <div key={thm} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem' }}>
                               <button

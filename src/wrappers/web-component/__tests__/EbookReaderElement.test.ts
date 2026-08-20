@@ -132,7 +132,7 @@ describe('EbookReaderElement', () => {
       element.source = { type: 'markdown', content: '# Test' };
       const renderCallCount = mockRoot.render.mock.calls.length;
 
-      element.setAttribute('theme', 'sepia');
+      element.setAttribute('theme', 'calm');
 
       // Should have triggered another render
       expect(mockRoot.render.mock.calls.length).toBeGreaterThan(renderCallCount);

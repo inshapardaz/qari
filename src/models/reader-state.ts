@@ -13,7 +13,7 @@ export interface ReadingPreferences {
   fontSize: number; // 12-48
 }
 
-export type ThemeName = 'light' | 'dark' | 'sepia' | 'high-contrast';
+export type ThemeName = 'light' | 'dark' | 'calm' | 'quiet' | 'paper' | 'focus' | 'high-contrast';
 export type FontFamily = 'serif' | 'sans-serif' | 'monospace' | 'nastaliq';
 
 export interface ReaderState {

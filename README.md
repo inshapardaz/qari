@@ -7,7 +7,7 @@ A framework-agnostic ebook reading component built with React at its core, expos
 ## Features
 
 - Read EPUB files, Markdown documents, or fetch content from URLs
-- Four built-in themes: light, dark, sepia, high-contrast (WCAG AAA)
+- Seven built-in themes: light, dark, calm, quiet, paper, focus, high-contrast (WCAG AAA)
 - Font family and size controls (serif, sans-serif, monospace, Nastaliq)
 - Zoom from 50% to 300% with pinch-to-zoom support
 - Chapter navigation with progress tracking
@@ -117,7 +117,7 @@ import { Reader } from 'qari/components/Reader';
 <template>
   <EbookReader
     :source="{ type: 'url', url: 'https://example.com/book.epub' }"
-    theme="sepia"
+    theme="calm"
     @page-change="handlePageChange"
   />
 </template>
@@ -440,16 +440,21 @@ If the saved `chapterId` no longer matches any chapter in the book (e.g. the sou
 
 ### Themes
 
-Four built-in themes are available:
+Seven built-in themes are available — light/dark/calm/quiet/paper/focus mirror the Apple Books appearance picker's own six (Books' "Original" is this library's `light`; its "Bold" is a font-weight variant, not a color theme, so it has no equivalent here):
 
 ```tsx
-<Reader source={source} theme="light" />      // White background, dark text
-<Reader source={source} theme="dark" />       // Dark background, light text
-<Reader source={source} theme="sepia" />      // Warm paper-like tones
+<Reader source={source} theme="light" />         // White background, dark text
+<Reader source={source} theme="dark" />          // True-black background, off-white text
+<Reader source={source} theme="calm" />          // Warm parchment/paper-like tones (formerly named "sepia")
+<Reader source={source} theme="quiet" />         // Softer charcoal background, muted light text
+<Reader source={source} theme="paper" />         // Cool light gray background, dark text
+<Reader source={source} theme="focus" />         // Warm off-white background, dark text
 <Reader source={source} theme="high-contrast" /> // WCAG AAA compliant
 ```
 
-The reader also exposes in-app controls as popovers anchored to their own title-bar buttons, each opening on whichever side of the header that button sits on. Theme (🎨) and layout (an icon that tracks whichever layout is currently active) each get their own button; the settings button (**Aa**) covers font size, typeface, and justification up front, with line height, letter/word spacing, and margin behind a "More settings" toggle. Restore-to-defaults is a small icon button in the settings panel's top bar. Every control applies immediately: there's no Apply/Cancel step, and `onSettingsChange` fires as soon as a control is touched. The `light`/`dark`/`sepia` reading themes are tuned after the reading themes of leading e-reader apps (Apple Books, Kindle); `high-contrast` remains a distinct WCAG AAA accessibility theme (≥7:1 contrast) rather than an aesthetic one.
+The reader also exposes in-app controls as popovers anchored to their own title-bar buttons, each opening on whichever side of the header that button sits on. Theme (🎨) and layout (an icon that tracks whichever layout is currently active) each get their own button; the settings button (**Aa**) covers font size, typeface, and justification up front, with line height, letter/word spacing, and margin behind a "More settings" toggle. Restore-to-defaults is a small icon button in the settings panel's top bar. Every control applies immediately: there's no Apply/Cancel step, and `onSettingsChange` fires as soon as a control is touched. The `light`/`dark`/`calm`/`quiet`/`paper`/`focus` reading themes are tuned after the reading themes of leading e-reader apps (Apple Books, Kindle); `high-contrast` remains a distinct WCAG AAA accessibility theme (≥7:1 contrast) rather than an aesthetic one.
+
+> **Migrating from before this rename:** the `sepia` theme was renamed to `calm` (same colors) when `quiet`/`paper`/`focus` were added — update any `theme="sepia"` prop to `theme="calm"`. A previously *persisted* `sepia` preference (from the in-app theme popover) migrates to `calm` automatically the next time it's loaded, no action needed there.
 
 The layout picker has three options: a single-column paginated view (turned via the page-edge hover arrows or arrow keys), also capped at a comfortable reading width and centered; a two-column paginated view, which spans the full available width; and a third **scroll** view (`scroll={true}`) that renders the current chapter as one continuously scrollable flow, likewise capped and centered. There are no pages in scroll mode, so the page counter doesn't apply and the page-edge hover arrows become chapter navigation instead — "Next"/"Previous" move to the next/previous chapter (resetting scroll position to the top) rather than turning a page.
 
@@ -563,7 +568,7 @@ The reader also scopes its Mantine CSS variables to its own root element (rather
 
 ### Chrome colorScheme follows the reader theme, not your app's
 
-Theme *tokens* (colors, radius, fonts) inherit from an ancestor `MantineProvider` as described above, but light/dark **colorScheme** is deliberately not inherited. The reader forces its chrome's colorScheme from its own `theme` prop (`light`/`sepia` → Mantine `light`; `dark`/`high-contrast` → Mantine `dark`), scoped to its own root element — so switching your app's own dark-mode toggle won't flip the reader's buttons and menus out of sync with the reading theme the user picked inside the reader, and the reader won't overwrite your app's own colorScheme in the other direction either.
+Theme *tokens* (colors, radius, fonts) inherit from an ancestor `MantineProvider` as described above, but light/dark **colorScheme** is deliberately not inherited. The reader forces its chrome's colorScheme from its own `theme` prop (`light`/`calm`/`paper`/`focus` → Mantine `light`; `dark`/`quiet`/`high-contrast` → Mantine `dark`), scoped to its own root element — so switching your app's own dark-mode toggle won't flip the reader's buttons and menus out of sync with the reading theme the user picked inside the reader, and the reader won't overwrite your app's own colorScheme in the other direction either.
 
 Pinch-to-zoom is supported on touch devices and snaps to the nearest 10% increment.
 
@@ -719,7 +724,7 @@ When set to `"auto"`, the reader detects direction by analyzing character freque
 |------|------|---------|-------------|
 | `source` | `ReaderSource` | (required) | Book content — EPUB buffer, URL, or Markdown string |
 | `bookInfo` | `Partial<BookMetadata>` | `undefined` | Book info (title, author, publisher, cover, etc.) overrides, merged over — and taking priority over — whatever was parsed from `source` |
-| `theme` | `'light' \| 'dark' \| 'sepia' \| 'high-contrast'` | `'light'` | Color theme |
+| `theme` | `'light' \| 'dark' \| 'calm' \| 'quiet' \| 'paper' \| 'focus' \| 'high-contrast'` | `'light'` | Color theme |
 | `fontFamily` | `string` | `'serif'` | Font family name |
 | `fontSize` | `number` | `16` | Font size in pixels |
 | `justify` | `boolean` | `true` | Text justification |

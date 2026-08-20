@@ -58,7 +58,10 @@ function isValidTheme(theme: unknown): theme is ThemeName {
   return (
     theme === 'light' ||
     theme === 'dark' ||
-    theme === 'sepia' ||
+    theme === 'calm' ||
+    theme === 'quiet' ||
+    theme === 'paper' ||
+    theme === 'focus' ||
     theme === 'high-contrast'
   );
 }
@@ -147,7 +150,7 @@ export const EbookReader = defineComponent({
       if (!isValidTheme(props.theme)) {
         return {
           code: 'PROP_VALIDATION_ERROR',
-          message: `Prop "theme" has invalid value "${props.theme}". Expected one of: light, dark, sepia, high-contrast`,
+          message: `Prop "theme" has invalid value "${props.theme}". Expected one of: light, dark, calm, quiet, paper, focus, high-contrast`,
         };
       }
 
