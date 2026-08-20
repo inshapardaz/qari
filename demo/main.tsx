@@ -103,7 +103,7 @@ const DEFAULT_SETTINGS: ViewSettings = {
   margin: 32,
   columns: 1,
   scroll: false,
-  showPageDivider: true,
+  showPageDivider: false,
 };
 
 function loadSettings(): ViewSettings {

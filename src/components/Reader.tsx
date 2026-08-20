@@ -114,7 +114,7 @@ export interface ReaderSettings {
   columns?: 1 | 2;
   /** Continuous vertical scroll within the current chapter, instead of paginated columns. Defaults to false. */
   scroll?: boolean;
-  /** Show a book-spine-style divider between the two pages in two-column (`columns: 2`) mode. Defaults to true. */
+  /** Show a book-spine-style divider between the two pages in two-column (`columns: 2`) mode. Defaults to false. */
   showPageDivider?: boolean;
 }
 
@@ -161,7 +161,7 @@ export interface ReaderProps {
   columns?: 1 | 2;
   /** Continuous vertical scroll within the current chapter, instead of paginated columns. Defaults to false. */
   scroll?: boolean;
-  /** Show a book-spine-style divider between the two pages in two-column (`columns: 2`) mode. Defaults to true. */
+  /** Show a book-spine-style divider between the two pages in two-column (`columns: 2`) mode. Defaults to false. */
   showPageDivider?: boolean;
   /**
    * Override the PDF.js worker script URL used to render PDF pages.
@@ -628,15 +628,14 @@ const PAGE_DIVIDER_STYLE = {
   bottom: 0,
   left: '50%',
   transform: 'translateX(-50%)',
-  width: '48px',
+  width: '22px',
   pointerEvents: 'none',
   background: [
     'linear-gradient(to right',
     'transparent 0%',
-    'color-mix(in srgb, var(--reader-fg, #1a1a1a) 10%, transparent) 38%',
-    'color-mix(in srgb, var(--reader-fg, #1a1a1a) 30%, transparent) 48%',
-    'color-mix(in srgb, var(--reader-fg, #1a1a1a) 30%, transparent) 52%',
-    'color-mix(in srgb, var(--reader-fg, #1a1a1a) 10%, transparent) 62%',
+    'color-mix(in srgb, var(--reader-fg, #1a1a1a) 5%, transparent) 35%',
+    'color-mix(in srgb, var(--reader-fg, #1a1a1a) 14%, transparent) 50%',
+    'color-mix(in srgb, var(--reader-fg, #1a1a1a) 5%, transparent) 65%',
     'transparent 100%)',
   ].join(', '),
 } as React.CSSProperties;
@@ -982,7 +981,7 @@ export const Reader: React.FC<ReaderProps> = ({
   margin = 32,
   columns = 1,
   scroll = false,
-  showPageDivider = true,
+  showPageDivider = false,
   pdfWorkerSrc,
   pdfChapters,
   zoom = 100,
@@ -1183,6 +1182,11 @@ export const Reader: React.FC<ReaderProps> = ({
   const effectiveColumns = isMobileViewport ? 1 : columns;
   const pdfSpread = effectiveColumns === 2 && isPdfBook;
   const spreadStart = pdfSpread ? currentChapterIdx - (currentChapterIdx % 2) : currentChapterIdx;
+  // A trailing odd-numbered last page renders as a lone page within an
+  // otherwise two-up spread (see the `pdfSpread` map below) — visually a
+  // single page, so the divider (like `isTrailingLoneColumnPage` for text
+  // content) shouldn't draw a seam next to a blank column.
+  const pdfSpreadHasBothPages = pdfSpread && !!state.book?.chapters[spreadStart] && !!state.book?.chapters[spreadStart + 1];
 
   // ---------------------------------------------------------------------------
   // Mantine theming — merge the built-in default with the consumer's
@@ -3517,10 +3521,13 @@ export const Reader: React.FC<ReaderProps> = ({
                           </button>
                         ))}
                       </div>
-                      {/* Only meaningful in two-column mode — hidden along
-                          with the 'double' option itself on narrow/mobile
-                          viewports (see above) rather than shown-but-inert. */}
-                      {!isMobileViewport && (
+                      {/* Only meaningful — and only shown — while two-column
+                          mode is the *active* layout, not merely available
+                          as an option: offering a page-divider toggle while
+                          reading single-column or scroll (where there's no
+                          second page for it to sit between) reads as a
+                          control for a divider that doesn't exist. */}
+                      {!scroll && effectiveColumns === 2 && (
                         <Switch
                           mt="sm"
                           size="sm"
@@ -4009,7 +4016,7 @@ export const Reader: React.FC<ReaderProps> = ({
                         position: 'relative',
                       }}
                     >
-                      {pdfSpread && showPageDivider && <div data-testid="page-divider" style={PAGE_DIVIDER_STYLE} />}
+                      {pdfSpreadHasBothPages && showPageDivider && <div data-testid="page-divider" style={PAGE_DIVIDER_STYLE} />}
                       <div
                         ref={contentRef}
                         className="ebook-reader__pdf-spread"
@@ -4184,7 +4191,7 @@ export const Reader: React.FC<ReaderProps> = ({
                         painted on top of) `contentRef` rather than before,
                         so the shadow reads as sitting on top of the pages,
                         the way an actual gutter shadow does. */}
-                    {!scroll && effectiveColumns === 2 && showPageDivider && <div data-testid="page-divider" style={PAGE_DIVIDER_STYLE} />}
+                    {!scroll && effectiveColumns === 2 && !isTrailingLoneColumnPage && showPageDivider && <div data-testid="page-divider" style={PAGE_DIVIDER_STYLE} />}
                   </div>
                 )}
               </div>
