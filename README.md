@@ -570,6 +570,10 @@ The reader also scopes its Mantine CSS variables to its own root element (rather
 
 Theme *tokens* (colors, radius, fonts) inherit from an ancestor `MantineProvider` as described above, but light/dark **colorScheme** is deliberately not inherited. The reader forces its chrome's colorScheme from its own `theme` prop (`light`/`calm`/`paper`/`focus` → Mantine `light`; `dark`/`quiet`/`high-contrast` → Mantine `dark`), scoped to its own root element — so switching your app's own dark-mode toggle won't flip the reader's buttons and menus out of sync with the reading theme the user picked inside the reader, and the reader won't overwrite your app's own colorScheme in the other direction either.
 
+Mantine's own "primary" color (`--mantine-primary-color-*` — the fill Switch/Slider/Select and similar controls use unless they're given an explicit `color` prop) is likewise re-pointed at the active reading theme's own accent color rather than `mantineTheme.primaryColor`, so a Switch or Slider inside the reader always matches whichever of the seven built-in themes is currently selected instead of showing a fixed color that clashes with it.
+
+The browser's own native text-selection highlight follows the reading theme too — selecting book content (or any text inside the reader) uses the active theme's accent color instead of the browser's default blue, since none of the CSS custom property overrides above touch the `::selection` pseudo-element on their own.
+
 Pinch-to-zoom is supported on touch devices and snaps to the nearest 10% increment.
 
 ### Listening for Settings Changes

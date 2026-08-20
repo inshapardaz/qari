@@ -5,10 +5,14 @@
  * represent calm or high-contrast, so both rendered as generic Mantine
  * light/dark instead of their actual reading-theme colors. Drawer.Content
  * now re-points Mantine's own `--mantine-color-body`/`--mantine-color-text`/
- * `--mantine-color-default-border` variables at the exact `--reader-*`
- * colors ThemeEngine sets for the active theme, so the whole drawer
- * (including nested Mantine controls in BookmarkPanel/NotePanel) inherits
- * them like Mantine's own dark-mode override does.
+ * `--mantine-color-default-border`/`--mantine-color-dimmed`/
+ * `--mantine-primary-color-*` variables at the exact `--reader-*` colors
+ * ThemeEngine sets for the active theme, so the whole drawer (including
+ * nested Mantine controls in BookmarkPanel/NotePanel/SearchPanel — Switch,
+ * Slider, Select, etc.) inherits them like Mantine's own dark-mode override
+ * works, instead of falling back to Mantine's own defaults (plain gray text,
+ * plain blue "primary" controls) for anything not manually given an
+ * explicit `color` prop.
  */
 
 import React from 'react';
@@ -69,5 +73,33 @@ describe('Chapter drawer theming', () => {
     // per theme — the actual color swap happens at ThemeEngine's level
     // (which sets `--reader-bg` etc. on the reader root), not here.
     expect(panel.style.getPropertyValue('--mantine-color-body')).toBe('var(--reader-bg, #ffffff)');
+  });
+
+  it.each(['light', 'dark', 'calm', 'quiet', 'paper', 'focus', 'high-contrast'] as const)(
+    "re-points Mantine's own --mantine-primary-color-* variables at the %s theme's own accent, not Mantine's default blue",
+    async (theme) => {
+      // Regression: Mantine controls that don't take an explicit `color`
+      // prop (the settings panel's Justify Switch and its four Sliders, the
+      // font Select's active-option highlight, etc.) fall back to
+      // `--mantine-primary-color-*`, Mantine's own default blue "primary"
+      // palette — previously never redirected at the reading theme's own
+      // accent, so those controls showed plain Mantine blue under every
+      // theme except where the theme's own accent (light's `#0071e3`) or
+      // background (contrast text) happened to coincidentally look similar.
+      render(<Reader source={createMarkdownSource()} theme={theme} />);
+      const panel = await openDrawer();
+
+      expect(panel.style.getPropertyValue('--mantine-primary-color-filled')).toBe('var(--reader-accent, #0071e3)');
+      expect(panel.style.getPropertyValue('--mantine-primary-color-filled-hover')).toBe('var(--reader-accent, #0071e3)');
+      expect(panel.style.getPropertyValue('--mantine-primary-color-light-color')).toBe('var(--reader-accent, #0071e3)');
+      expect(panel.style.getPropertyValue('--mantine-primary-color-contrast')).toBe('var(--reader-bg, #ffffff)');
+    }
+  );
+
+  it('re-points --mantine-primary-color-filled at the reader root too, so every unstyled Mantine control inherits it by default', async () => {
+    render(<Reader source={createMarkdownSource()} theme="focus" />);
+    const root = await screen.findByTestId('reader-content');
+
+    expect(root.style.getPropertyValue('--mantine-primary-color-filled')).toBe('var(--reader-accent, #0071e3)');
   });
 });

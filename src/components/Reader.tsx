@@ -580,6 +580,33 @@ const CODE_BLOCK_WRAP_STYLE = 'white-space:pre-wrap;word-break:break-word;overfl
 // `--popover-border-color`, the one custom property this component's
 // border rule *does* read) override that directly, the same way
 // Drawer.Content's own inline style already does for the chapter drawer.
+// Every Mantine control that doesn't take an explicit `color` prop (Switch,
+// Slider, Select/Combobox's active-option highlight, Progress, etc.) falls
+// back to these — Mantine's own default blue "primary" palette — unless
+// they're redirected at the reading theme's own accent. Without this,
+// anything not manually threaded through a `color` prop (the settings
+// panel's Justify Switch and its four Sliders, for instance) shows plain
+// Mantine blue regardless of theme, the same class of bug `--mantine-color-*`
+// above fixes for background/text/dimmed. `-filled`/`-filled-hover` are the
+// solid backgrounds "filled"-variant controls (a checked Switch's track, a
+// filled Button) use; `-contrast` is the text/icon color placed *on top* of
+// that fill, so it's `--reader-bg` rather than a fixed white — the same
+// accent/bg pairing already proven legible across all seven themes by the
+// active-chapter highlight elsewhere in this file (including
+// high-contrast's black-on-yellow, which plain white text would fail on).
+// `-light`/`-light-hover` (a translucent tint, for hover backgrounds and
+// "light"-variant controls) are mixed against `transparent` rather than a
+// solid reader color so they composite correctly over whatever they're
+// actually painted on top of, not just `--reader-bg` itself.
+const MANTINE_PRIMARY_COLOR_STYLE = {
+  '--mantine-primary-color-filled': 'var(--reader-accent, #0071e3)',
+  '--mantine-primary-color-filled-hover': 'var(--reader-accent, #0071e3)',
+  '--mantine-primary-color-light': 'color-mix(in srgb, var(--reader-accent, #0071e3) 15%, transparent)',
+  '--mantine-primary-color-light-hover': 'color-mix(in srgb, var(--reader-accent, #0071e3) 25%, transparent)',
+  '--mantine-primary-color-light-color': 'var(--reader-accent, #0071e3)',
+  '--mantine-primary-color-contrast': 'var(--reader-bg, #ffffff)',
+} as React.CSSProperties;
+
 const POPOVER_THEME_STYLE = {
   '--mantine-color-body': 'var(--reader-bg, #ffffff)',
   '--mantine-color-text': 'var(--reader-fg, #1a1a1a)',
@@ -591,6 +618,7 @@ const POPOVER_THEME_STYLE = {
   // hardcoding, so this one override is enough; it's still repeated at
   // every scope boundary alongside the others here for the same reason.
   '--mantine-color-dimmed': 'var(--reader-secondary, #6e6e73)',
+  ...MANTINE_PRIMARY_COLOR_STYLE,
   backgroundColor: 'var(--reader-bg, #ffffff)',
   color: 'var(--reader-fg, #1a1a1a)',
 } as React.CSSProperties;
@@ -2946,6 +2974,10 @@ export const Reader: React.FC<ReaderProps> = ({
         // never the reading theme, so calm/high-contrast secondary text
         // looked identical to plain Mantine gray regardless of theme.
         '--mantine-color-dimmed': 'var(--reader-secondary, #6e6e73)',
+        // Same reasoning, for any Mantine control (Switch, Slider,
+        // Select/Combobox highlight, etc.) that doesn't take an explicit
+        // `color` prop — see MANTINE_PRIMARY_COLOR_STYLE's own comment.
+        ...MANTINE_PRIMARY_COLOR_STYLE,
         // This is the color inherited by descendants that don't set their
         // own (chapter/bookmarks/theme/layout/settings menus and popovers),
         // and those are UI chrome, not book content. The header and footer
@@ -2986,6 +3018,22 @@ export const Reader: React.FC<ReaderProps> = ({
           : {}),
       } as React.CSSProperties}
     >
+      {/* The browser's own native text-selection highlight (selecting book
+          content, a button label, anything) is entirely separate from every
+          `--mantine-*`/`--reader-*` custom-property override above — none
+          of those touch `::selection` at all, so without this it stayed
+          the browser's default blue regardless of reading theme. Only a
+          real stylesheet rule (not an inline style) can target a
+          pseudo-element, hence the `<style>` tag rather than another entry
+          in this div's own `style` prop. Scoped by the `.ebook-reader`
+          class rather than `mantineScopeId`: `var(--reader-accent)` already
+          resolves independently per reader instance via normal CSS custom
+          property inheritance, so a shared class selector is exactly as
+          safe as a uniquely-scoped one here, without the extra complexity
+          of interpolating an ID into a selector string. Same
+          accent/bg pairing as the active-chapter highlight elsewhere in
+          this file — proven legible across all seven built-in themes. */}
+      <style>{'.ebook-reader ::selection { background-color: var(--reader-accent, #0071e3); color: var(--reader-bg, #ffffff); }'}</style>
       <DirectionProvider initialDirection={t.uiDirection} detectDirection={false} key={t.uiDirection}>
         <MantineProvider
           theme={resolvedMantineTheme}
@@ -3090,6 +3138,7 @@ export const Reader: React.FC<ReaderProps> = ({
                       '--mantine-color-text': 'var(--reader-fg, #1a1a1a)',
                       '--mantine-color-default-border': 'var(--reader-border, #e0e0e0)',
                       '--mantine-color-dimmed': 'var(--reader-secondary, #6e6e73)',
+                      ...MANTINE_PRIMARY_COLOR_STYLE,
                       backgroundColor: 'var(--reader-bg, #ffffff)',
                       color: 'var(--reader-fg, #1a1a1a)',
                     } as React.CSSProperties}

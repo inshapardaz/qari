@@ -37,6 +37,18 @@ const FONT_SIZE_STEP = 2;
  * names, captions) — every value here clears WCAG AA's 4.5:1 text-contrast
  * minimum against that theme's own `background`, high-contrast comfortably
  * clearing far more than that in keeping with its own guarantee above.
+ *
+ * `accent` is each theme's own highlight color (active-chapter background,
+ * the chapter drawer's Tabs underline, Mantine's own "primary" controls —
+ * see `--reader-accent` and `MANTINE_PRIMARY_COLOR_STYLE` in Reader.tsx).
+ * dark/quiet/paper/focus deliberately set it to the *same* value as their
+ * own `foreground` rather than a distinct hue — matching the header's own
+ * "selected" toggle-button state (`backgroundColor: var(--reader-fg)`), so
+ * a chapter-list selection or a Tabs underline in one of these themes
+ * reads as the exact same "selected" color the header's own toggle buttons
+ * already use there, instead of an unrelated accent hue that only agrees
+ * with `foreground` by coincidence (or not at all). light/calm/
+ * high-contrast keep a genuinely distinct accent hue instead.
  */
 export const THEMES: Record<ThemeName, ThemeColors> = {
   light: {
@@ -50,7 +62,11 @@ export const THEMES: Record<ThemeName, ThemeColors> = {
   dark: {
     background: '#000000',
     foreground: '#d6d6d6',
-    accent: '#4da3ff',
+    // Same reasoning as paper's own accent below — matches the header's
+    // "selected" toggle-button state (backgroundColor: var(--reader-fg)),
+    // rather than a separate highlight hue unrelated to the rest of the
+    // theme's neutral black/off-white palette.
+    accent: '#d6d6d6',
     surface: '#1c1c1e',
     border: '#38383a',
     secondary: '#98989d',
@@ -66,7 +82,9 @@ export const THEMES: Record<ThemeName, ThemeColors> = {
   quiet: {
     background: '#3a3a3c',
     foreground: '#c7c7cc',
-    accent: '#5e9eff',
+    // Same reasoning as dark/paper's own accent — matches the header's
+    // "selected" toggle-button state rather than a separate highlight hue.
+    accent: '#c7c7cc',
     surface: '#48484a',
     border: '#5a5a5c',
     secondary: '#a5a5aa',
@@ -74,7 +92,12 @@ export const THEMES: Record<ThemeName, ThemeColors> = {
   paper: {
     background: '#e9e9e7',
     foreground: '#1c1c1e',
-    accent: '#0071e3',
+    // Deliberately the same as `foreground`, not a distinct highlight hue
+    // like the other themes' accents — matches the header's own "selected"
+    // toggle-button state (backgroundColor: var(--reader-fg)), so Paper's
+    // neutral, monochrome look (see the Apple Books reference this theme
+    // was modeled on) doesn't get an incongruous blue accent bolted onto it.
+    accent: '#1c1c1e',
     surface: '#dcdcda',
     border: '#c7c7c5',
     secondary: '#636368',
@@ -82,7 +105,10 @@ export const THEMES: Record<ThemeName, ThemeColors> = {
   focus: {
     background: '#faf6ef',
     foreground: '#1c1c1e',
-    accent: '#a67c3d',
+    // Same reasoning as dark/quiet/paper's own accent — matches the
+    // header's "selected" toggle-button state rather than a separate
+    // highlight hue the rest of the theme's palette doesn't otherwise use.
+    accent: '#1c1c1e',
     surface: '#f1ebe0',
     border: '#e3dccc',
     secondary: '#6e6e73',
