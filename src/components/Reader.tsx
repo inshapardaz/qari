@@ -673,7 +673,14 @@ function contentNodeToHtml(node: ContentNode): string {
     case 'heading':
       return `<h${node.level}>${inlineNodesToHtml(node.children)}</h${node.level}>`;
     case 'image':
-      return `<img src="${node.src}" alt="${node.alt || ''}" style="max-width:100%;max-height:calc(100vh - 120px);width:100%;height:auto;object-fit:contain" />`;
+      // `break-inside:avoid`, matching the real render's `<figure>` (see
+      // ContentNodeRenderer's 'image' case) — without it, an oversized
+      // image here would be allowed to visually split across the column
+      // boundary during measurement even though the real render (which
+      // does force the whole image into the next column) never would,
+      // undercounting the page/column total this feeds into
+      // `pagesPerChapter`/`trailingLoneColumn`.
+      return `<div style="break-inside:avoid"><img src="${node.src}" alt="${node.alt || ''}" style="max-width:100%;max-height:var(--reader-page-content-height, calc(100vh - 120px));width:100%;height:auto;object-fit:contain" /></div>`;
     case 'pdf-page':
       return node.pending
         ? ''
@@ -823,7 +830,7 @@ const ContentNodeRenderer: React.FC<{ node: ContentNode; onImageClick?: (src: st
             onError={(e) => console.warn(`[qari] Image failed to load: "${node.src?.substring(0, 80)}"`, e)}
             style={{
               maxWidth: '100%',
-              maxHeight: 'calc(100vh - 120px)',
+              maxHeight: 'var(--reader-page-content-height, calc(100vh - 120px))',
               width: '100%',
               height: 'auto',
               display: 'block',
@@ -1016,6 +1023,16 @@ export const Reader: React.FC<ReaderProps> = ({
 }) => {
   const [state, setState] = useState<ReaderState>(createInitialState);
   const [currentChapterIdx, setCurrentChapterIdx] = useState(0);
+  // Mirrors `currentChapterIdx` for the background bulk measurement pass
+  // (see `measureAllChapters`) to read without needing it in that effect's
+  // own dependency array — it runs across the whole book and can still be
+  // finishing minutes after the user has navigated elsewhere, so it needs
+  // whichever chapter is *actually* open at the moment it commits its
+  // results, not whichever one was open when it started.
+  const currentChapterIdxRef = useRef(currentChapterIdx);
+  useEffect(() => {
+    currentChapterIdxRef.current = currentChapterIdx;
+  }, [currentChapterIdx]);
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1); // pages in current chapter
   const [pagesPerChapter, setPagesPerChapter] = useState<number[]>([]); // cached page counts per chapter
@@ -2229,7 +2246,36 @@ export const Reader: React.FC<ReaderProps> = ({
       updated[currentChapterIdx] = computed;
       return updated;
     });
-  }, [currentChapterIdx, scroll, margin, isPdfBook]);
+    // Keep `trailingLoneColumn[currentChapterIdx]` in sync here too, not
+    // just in the background bulk `measureAllChapters` pass — that pass
+    // measures a *separate* offscreen element, which is subject to the
+    // exact same async-web-font-loading race `recalcPages` itself was
+    // fixed for (see the `document.fonts` 'loadingdone' effect above): if
+    // it last ran before a newly-selected font (e.g. Adobe Arabic, Dehalvi
+    // Khush Khat) finished downloading, its `trailingLoneColumn` entry for
+    // this chapter is stale, computed against fallback-font metrics. A
+    // stale *true* here applies `trailingLoneColumnShift` to a spread that
+    // isn't actually a lone-populated-column, shifting it half a
+    // column-pitch sideways for no reason — which straddles two adjacent
+    // real spreads at once, showing slivers of three columns (the two
+    // real ones plus a fragment of a neighboring page) with the outer two
+    // clipped by the page box's edges. Recomputing it from this same live,
+    // already-real-DOM `scrollWidth`/`effectiveColumns` — the same values
+    // `pagesPerChapter` above was just corrected from — keeps the shift
+    // decision consistent with whatever chapter is actually on screen,
+    // regardless of what the offscreen pass has or hasn't caught up to.
+    if (effectiveColumns === 2) {
+      const colWidth = (containerWidth - margin * 2 - 64) / 2;
+      const colPitch = colWidth + 64;
+      const isTrailingLone = Math.max(1, Math.round(scrollWidth / colPitch)) % 2 === 1;
+      setTrailingLoneColumn(prev => {
+        if (prev[currentChapterIdx] === isTrailingLone) return prev;
+        const updated = [...prev];
+        updated[currentChapterIdx] = isTrailingLone;
+        return updated;
+      });
+    }
+  }, [currentChapterIdx, scroll, margin, isPdfBook, effectiveColumns]);
 
   // Recalculate on chapter change, font/zoom change, or window resize
   useEffect(() => {
@@ -2253,6 +2299,57 @@ export const Reader: React.FC<ReaderProps> = ({
     const handleResize = () => recalcPages();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, [recalcPages]);
+
+  // Web fonts (in particular the Urdu/Arabic Nastaliq family — see
+  // `injectUrduWebFontsCss`) load asynchronously from a remote CDN, well
+  // after this component's own effects first run. The browser renders with
+  // a fallback font and *silently reflows* once the real font's glyph data
+  // arrives — a native reflow that fires none of our own effects, so
+  // `contentRef.current.scrollWidth` is already correct afterward but
+  // `totalPages` (computed from whatever scrollWidth existed at the time
+  // `recalcPages` last ran) stays stuck at the pre-reflow, fallback-font-
+  // metrics count — typically an undercount, since Nastaliq's calligraphic
+  // glyphs generally need more vertical space per line than a generic serif
+  // fallback. That leaves a chapter's true trailing content permanently
+  // unreachable via next-page/next-chapter navigation even though it's
+  // still in the DOM (issue: last page of a chapter appearing to cut
+  // content off). Re-running `recalcPages` once a font finishes loading
+  // re-reads the now-reflowed real geometry and corrects `totalPages` —
+  // the same "something changed, re-measure the current view" pattern the
+  // window-resize listener right above already uses.
+  //
+  // Deliberately *not* also re-running the background bulk
+  // `measureAllChapters` pass here (an earlier version of this fix did, via
+  // a generation counter in its dependency array): 'loadingdone' can fire
+  // more than once per book (e.g. separate regular/bold weight requests),
+  // and re-running that separate, independently-measured pass on every
+  // firing risked landing it on its own transient pre-settle reading and
+  // overwriting a chapter's already-correct count with a wrong one —
+  // manifesting as `goToNextPage` walking through several genuinely blank
+  // pages before finally reaching the real chapter boundary. `recalcPages`
+  // itself is already re-run on every chapter change regardless (see its
+  // own dependency array below), so a chapter the background pass slightly
+  // under/over-counts still self-corrects the moment it's actually opened.
+  useEffect(() => {
+    if (typeof document === 'undefined' || !document.fonts) return;
+    // Small delay to let the font-swap reflow fully settle before
+    // measuring — mirrors the identical settle delay used after content
+    // render elsewhere in this file (`setTimeout(recalcPages, 50)`).
+    // Tracked so the effect's own cleanup can cancel a still-pending timer
+    // (component unmount, or 'loadingdone' firing again before the first
+    // timer has run) instead of calling `recalcPages` on stale/unmounted
+    // state.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const handleFontsLoaded = () => {
+      clearTimeout(timer);
+      timer = setTimeout(recalcPages, 50);
+    };
+    document.fonts.addEventListener('loadingdone', handleFontsLoaded);
+    return () => {
+      document.fonts.removeEventListener('loadingdone', handleFontsLoaded);
+      clearTimeout(timer);
+    };
   }, [recalcPages]);
 
   // ---------------------------------------------------------------------------
@@ -2365,8 +2462,19 @@ export const Reader: React.FC<ReaderProps> = ({
 
       if (!cancelled) {
         measurer.innerHTML = '';
-        setPagesPerChapter(counts);
-        setTrailingLoneColumn(trailingLone);
+        // Never let this background pass overwrite whichever chapter is
+        // *actually* on screen right now — that one's already been (and
+        // keeps being, via `recalcPages`) measured directly from its own
+        // live, real-DOM render, which is strictly more trustworthy than
+        // this pass's separate offscreen copy. Without this, a long bulk
+        // pass across a large book (this can still be running well after
+        // the user has settled on a chapter) landing on a stale, e.g.
+        // web-font-not-loaded-yet reading for that one chapter would
+        // clobber `recalcPages`'s already-correct values right back to a
+        // wrong one — see `live-trailing-lone-column-sync.test.tsx`.
+        const liveIdx = currentChapterIdxRef.current;
+        setPagesPerChapter(prev => counts.map((c, i) => (i === liveIdx && prev[i] !== undefined ? prev[i] : c)));
+        setTrailingLoneColumn(prev => trailingLone.map((t, i) => (i === liveIdx && prev[i] !== undefined ? prev[i] : t)));
       }
     }
 
@@ -2374,7 +2482,7 @@ export const Reader: React.FC<ReaderProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [state.book, effectiveColumns, margin, scroll, fontSize, lineSpacing, letterSpacing, wordSpacing]);
+  }, [state.book, effectiveColumns, margin, scroll, fontSize, lineSpacing, letterSpacing, wordSpacing, selectedFontFamily]);
 
   // ---------------------------------------------------------------------------
   // Render a pending PDF page on demand if the reader navigates to it before
@@ -2966,6 +3074,37 @@ export const Reader: React.FC<ReaderProps> = ({
     ? (((pageBoxRef.current.clientWidth - margin * 2 - 64) / 2) + 64) / 2
     : 0;
 
+  // Caps in-content images (see the 'image' cases in `contentNodeToHtml`
+  // and `ContentNodeRenderer`) at the real available height of one
+  // column/page in paginated (non-scroll) mode, instead of the
+  // viewport-relative `calc(100vh - 120px)` fallback those use — which has
+  // no idea how tall the reader's own rendered box actually is (it can be
+  // far shorter than the browser viewport when embedded non-fullscreen)
+  // and doesn't account for the 2×2rem the content div's own top/bottom
+  // padding already spends. Without this, a cover/title image taller than
+  // one column's real available height doesn't fit, and multi-column
+  // layout's `break-inside: avoid` (see the image's own `<figure>`) bumps
+  // the *whole* image into the next column instead of shrinking to fit —
+  // an EPUB title page rendering as the spread's second page (right side
+  // in LTR, left in RTL) rather than its first. `- 64` mirrors the same
+  // `2rem` top/bottom padding assumed as a literal 64px elsewhere in this
+  // file's own pagination geometry (see `colWidth`/`pagePitch`), rather
+  // than reading the host page's actual root font-size. Undefined (falls
+  // back to the calc) in scroll mode, where content height is
+  // unconstrained by design, and before the page box has been measured.
+  // 64px is the content div's own 2×2rem top/bottom padding; the further
+  // 40px covers the image's own wrapping `<figure>` margin (2×1rem — see
+  // its 'image' case) plus a little rounding slack. A max-height that lands
+  // exactly on the column's true available height is one sub-pixel
+  // rounding error away from still overflowing it by a hair — enough for
+  // `break-inside: avoid` to bump the image into the next column regardless,
+  // which is the exact bug this budget exists to prevent, so it
+  // deliberately errs on the side of leaving a little blank space at the
+  // bottom of the column rather than cutting it too close.
+  const pageContentHeight = !scroll && pageBoxRef.current
+    ? pageBoxRef.current.clientHeight - 64 - 40
+    : undefined;
+
   return (
     <div
       ref={rootRef}
@@ -3017,6 +3156,11 @@ export const Reader: React.FC<ReaderProps> = ({
         // Select/Combobox highlight, etc.) that doesn't take an explicit
         // `color` prop — see MANTINE_PRIMARY_COLOR_STYLE's own comment.
         ...MANTINE_PRIMARY_COLOR_STYLE,
+        // See `pageContentHeight`'s own comment — read by the in-content
+        // image styles (both the real render and the offscreen page-count
+        // measurer, which inherits it too since it's mounted under this
+        // same root) in place of a viewport-relative guess.
+        ...(pageContentHeight !== undefined ? { '--reader-page-content-height': `${pageContentHeight}px` } : {}),
         // This is the color inherited by descendants that don't set their
         // own (chapter/bookmarks/theme/layout/settings menus and popovers),
         // and those are UI chrome, not book content. The header and footer

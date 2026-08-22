@@ -60,6 +60,20 @@ if (typeof URL.revokeObjectURL !== 'function') {
   URL.revokeObjectURL = () => {};
 }
 
+// document.fonts (FontFaceSet) polyfill for jsdom (not implemented by
+// default — document.fonts is undefined there). Just enough of an
+// EventTarget for Reader.tsx's 'loadingdone' listener (see the
+// `fontLoadGeneration` effect) to attach/detach without throwing and for
+// tests to synthesize a font-load-completed event.
+if (typeof document !== 'undefined' && !document.fonts) {
+  const target = new EventTarget();
+  Object.defineProperty(document, 'fonts', {
+    value: target,
+    writable: true,
+    configurable: true,
+  });
+}
+
 // localStorage polyfill for jsdom (not available by default in newer Node.js versions)
 if (typeof globalThis.localStorage === 'undefined') {
   const store: Record<string, string> = {};
