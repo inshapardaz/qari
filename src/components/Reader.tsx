@@ -1035,6 +1035,23 @@ export const Reader: React.FC<ReaderProps> = ({
   }, [currentChapterIdx]);
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1); // pages in current chapter
+  // Set by goToPrevPage when it moves to the previous chapter and wants to
+  // land on that chapter's *last* page. `totalPages` at that moment still
+  // describes the chapter being left — recalcPages hasn't measured the new
+  // chapter's real page count yet, and won't until its effect runs later in
+  // this same commit (setState calls made by an earlier effect aren't
+  // visible to a later effect's closure within the same flush). Rather than
+  // let the generic clamp effect below act on that stale `totalPages` (it
+  // would land on a wrong page, worse the more the two chapters' page
+  // counts differ), recalcPages consumes this flag itself once it has the
+  // *real* count for the chapter now on screen — and keeps re-consuming it
+  // on every subsequent recalcPages call (the 50ms DOM-settle pass, a font
+  // `loadingdone` re-measure, ...) for as long as it stays set, since the
+  // *first* measurement after a chapter switch can itself be a pre-settle
+  // undercount. Every other place that sets currentPage/currentChapterIdx
+  // for a different reason clears this flag first, so a stale pending flag
+  // never hijacks unrelated navigation.
+  const goToLastPageRef = useRef(false);
   const [pagesPerChapter, setPagesPerChapter] = useState<number[]>([]); // cached page counts per chapter
   // Whether a chapter's *last* page, in two-column mode, only has content in
   // the first of its two columns (the second sits empty) — see where this is
@@ -2228,6 +2245,9 @@ export const Reader: React.FC<ReaderProps> = ({
         updated[currentChapterIdx] = 1;
         return updated;
       });
+      if (goToLastPageRef.current) {
+        setCurrentPage(0);
+      }
       return;
     }
     if (!contentRef.current || !pageBoxRef.current) return;
@@ -2238,8 +2258,47 @@ export const Reader: React.FC<ReaderProps> = ({
     // `scrollWidth / containerWidth` — the 64px inter-column gap and the
     // margin-as-padding both throw off the naive per-page pixel distance.
     const pagePitch = containerWidth - margin * 2 + 64;
-    const computed = Math.max(1, Math.round(scrollWidth / pagePitch));
+
+    let computed: number;
+    let isTrailingLone = false;
+    if (effectiveColumns === 2) {
+      // Derive both the spread count and the trailing-lone-column parity
+      // from a single rounding of the *column* count, rather than two
+      // independent roundings of `scrollWidth` (one by `pagePitch`, one by
+      // `colPitch`). Algebraically `pagePitch` is exactly `2 * colPitch`,
+      // but real, sub-pixel-noisy `scrollWidth` measurements can make the
+      // two roundings disagree — and they disagree worst exactly when the
+      // true column count is odd (the trailing-lone-column case): halving
+      // an odd count lands precisely on `Math.round`'s 0.5 boundary, where
+      // a fraction of a pixel of noise flips it, while the whole-count
+      // rounding stays nowhere near its own boundary and is robust to the
+      // same noise. That produced issue #14 (last page of certain books
+      // misaligned) and issue #16 (two-column layout collapsing to one
+      // column, with the divider misapplied, at certain widths).
+      const colWidth = (containerWidth - margin * 2 - 64) / 2;
+      const colPitch = colWidth + 64;
+      const totalColumns = Math.max(1, Math.round(scrollWidth / colPitch));
+      computed = Math.ceil(totalColumns / 2);
+      isTrailingLone = totalColumns % 2 === 1;
+    } else {
+      computed = Math.max(1, Math.round(scrollWidth / pagePitch));
+    }
+
     setTotalPages(computed);
+    if (goToLastPageRef.current) {
+      // Deliberately *not* cleared here: this is the immediate,
+      // pre-DOM-settle measurement (see the 50ms-delayed effect below and
+      // the font `loadingdone` listener further down) and can undercount —
+      // the true page count sometimes only emerges once those later,
+      // authoritative re-measurements of this same chapter run. Re-applying
+      // `computed - 1` on every recalcPages call while this flag is set
+      // keeps `currentPage` tracking whatever the *latest* measurement says
+      // the last page is, instead of freezing on a possibly-too-low first
+      // guess. The flag is cleared by any other navigation that sets
+      // currentPage/currentChapterIdx for a different reason (see its
+      // declaration) — never here.
+      setCurrentPage(computed - 1);
+    }
     // Update cached pages for current chapter
     setPagesPerChapter(prev => {
       const updated = [...prev];
@@ -2253,21 +2312,13 @@ export const Reader: React.FC<ReaderProps> = ({
     // fixed for (see the `document.fonts` 'loadingdone' effect above): if
     // it last ran before a newly-selected font (e.g. Adobe Arabic, Dehalvi
     // Khush Khat) finished downloading, its `trailingLoneColumn` entry for
-    // this chapter is stale, computed against fallback-font metrics. A
-    // stale *true* here applies `trailingLoneColumnShift` to a spread that
-    // isn't actually a lone-populated-column, shifting it half a
-    // column-pitch sideways for no reason — which straddles two adjacent
-    // real spreads at once, showing slivers of three columns (the two
-    // real ones plus a fragment of a neighboring page) with the outer two
-    // clipped by the page box's edges. Recomputing it from this same live,
-    // already-real-DOM `scrollWidth`/`effectiveColumns` — the same values
-    // `pagesPerChapter` above was just corrected from — keeps the shift
-    // decision consistent with whatever chapter is actually on screen,
-    // regardless of what the offscreen pass has or hasn't caught up to.
+    // this chapter is stale, computed against fallback-font metrics.
+    // Recomputing it from this same live, already-real-DOM
+    // `scrollWidth`/`effectiveColumns` — the same values `pagesPerChapter`
+    // above was just corrected from — keeps the shift decision consistent
+    // with whatever chapter is actually on screen, regardless of what the
+    // offscreen pass has or hasn't caught up to.
     if (effectiveColumns === 2) {
-      const colWidth = (containerWidth - margin * 2 - 64) / 2;
-      const colPitch = colWidth + 64;
-      const isTrailingLone = Math.max(1, Math.round(scrollWidth / colPitch)) % 2 === 1;
       setTrailingLoneColumn(prev => {
         if (prev[currentChapterIdx] === isTrailingLone) return prev;
         const updated = [...prev];
@@ -2444,15 +2495,22 @@ export const Reader: React.FC<ReaderProps> = ({
             html += contentNodeToHtml(node);
           }
           measurer.innerHTML = html;
-          const pages = Math.max(1, Math.round(measurer.scrollWidth / pagePitch));
+          // Same single-rounding fix as `recalcPages` (see its own comment):
+          // deriving `pages` and the trailing-lone-column parity from two
+          // independent roundings of `scrollWidth` let them disagree at
+          // certain widths (issues #14/#16) — deriving both from one
+          // rounding of the column count can't.
+          let pages: number;
+          let isTrailingLone = false;
+          if (effectiveColumns === 2) {
+            const totalColumns = Math.max(1, Math.round(measurer.scrollWidth / colPitch));
+            pages = Math.ceil(totalColumns / 2);
+            isTrailingLone = totalColumns % 2 === 1;
+          } else {
+            pages = Math.max(1, Math.round(measurer.scrollWidth / pagePitch));
+          }
           counts.push(pages);
-          // In two-column mode, a chapter whose content ends partway through
-          // a spread's first column leaves the second column of that last
-          // spread empty — an odd total column count is exactly that case.
-          trailingLone.push(
-            effectiveColumns === 2
-            && Math.max(1, Math.round(measurer.scrollWidth / colPitch)) % 2 === 1
-          );
+          trailingLone.push(isTrailingLone);
         }
 
         if (i % CHAPTERS_PER_MEASURE_BATCH === CHAPTERS_PER_MEASURE_BATCH - 1) {
@@ -2537,6 +2595,9 @@ export const Reader: React.FC<ReaderProps> = ({
   // Page navigation
   // ---------------------------------------------------------------------------
   const goToNextPage = useCallback(() => {
+    // Any forward navigation supersedes a still-pending "land on the
+    // previous chapter's last page" request from goToPrevPage.
+    goToLastPageRef.current = false;
     // A PDF spread shows two chapters (pages) at once — see `spreadStart` —
     // so turning the page steps by two chapters instead of one, landing on
     // the start of the next pair, regardless of `totalPages` (always 1 per
@@ -2578,6 +2639,9 @@ export const Reader: React.FC<ReaderProps> = ({
   }, [pdfSpread, spreadStart, currentPage, totalPages, currentChapterIdx, state.book, onPageChange]);
 
   const goToPrevPage = useCallback(() => {
+    // Cleared unconditionally up front; the one branch below that wants to
+    // land on the previous chapter's last page re-sets it immediately after.
+    goToLastPageRef.current = false;
     if (pdfSpread) {
       if (spreadStart - 2 >= 0) {
         const prevChapter = spreadStart - 2;
@@ -2602,8 +2666,10 @@ export const Reader: React.FC<ReaderProps> = ({
     } else if (currentChapterIdx > 0) {
       // Move to previous chapter (last page)
       const prevChapter = currentChapterIdx - 1;
+      goToLastPageRef.current = true;
       setCurrentChapterIdx(prevChapter);
-      // Will go to last page after recalc — set to a high number, clamped on next render
+      // Placeholder until recalcPages measures the new chapter and sets the
+      // real last page via goToLastPageRef (see its own declaration).
       setCurrentPage(9999);
       if (onPageChange) {
         onPageChange({
@@ -2615,12 +2681,18 @@ export const Reader: React.FC<ReaderProps> = ({
     }
   }, [pdfSpread, spreadStart, currentPage, currentChapterIdx, totalPages, onPageChange]);
 
-  // Clamp currentPage when totalPages changes (e.g., navigating to previous chapter's last page)
+  // Clamp currentPage when totalPages changes (e.g., font-size change shrinking
+  // the current chapter's page count below where the reader currently is).
+  // Skipped while `goToLastPageRef` is pending: that transition owns
+  // `currentPage` itself (see its declaration) using the freshly-measured
+  // total for the *new* chapter, not whatever stale `totalPages` this effect
+  // would otherwise see left over from the chapter just departed.
   useEffect(() => {
+    if (goToLastPageRef.current) return;
     if (currentPage >= totalPages && totalPages > 0) {
       setCurrentPage(totalPages - 1);
     }
-  }, [totalPages, currentPage]);
+  }, [totalPages, currentPage, currentChapterIdx]);
 
   // ---------------------------------------------------------------------------
   // Swipe (touch) page navigation. Mirrors the ArrowLeft/ArrowRight keyboard
@@ -3423,6 +3495,7 @@ export const Reader: React.FC<ReaderProps> = ({
                                 key={entry.id}
                                 type="button"
                                 onClick={() => {
+                                  goToLastPageRef.current = false;
                                   setCurrentChapterIdx(entry.chapterIdx);
                                   setCurrentPage(0);
                                   setChapterMenuOpen(false);
@@ -3459,6 +3532,7 @@ export const Reader: React.FC<ReaderProps> = ({
                           <Tabs.Panel value="bookmarks" style={{ flex: 1, overflowY: 'auto' }} p="xs">
                             <BookmarkPanel
                               onNavigate={(chapterIdx, page) => {
+                                goToLastPageRef.current = false;
                                 setCurrentChapterIdx(chapterIdx);
                                 setCurrentPage(page);
                                 setChapterMenuOpen(false);
@@ -3472,6 +3546,7 @@ export const Reader: React.FC<ReaderProps> = ({
                           <Tabs.Panel value="notes" style={{ flex: 1, overflowY: 'auto' }} p="xs">
                             <NotePanel
                               onNavigate={(chapterIdx, page) => {
+                                goToLastPageRef.current = false;
                                 setCurrentChapterIdx(chapterIdx);
                                 setCurrentPage(page);
                                 setChapterMenuOpen(false);
@@ -3487,6 +3562,7 @@ export const Reader: React.FC<ReaderProps> = ({
                               query={searchQuery}
                               onQueryChange={setSearchQuery}
                               onNavigate={(chapterIdx, page) => {
+                                goToLastPageRef.current = false;
                                 setCurrentChapterIdx(chapterIdx);
                                 setCurrentPage(page);
                                 setChapterMenuOpen(false);
