@@ -79,6 +79,8 @@ import type { TranslationStrings } from '../i18n';
 
 import { HunspellProvider } from '../services/hunspell-provider';
 import type { HunspellDictionaryConfig } from '../services/hunspell-provider';
+import { StarDictProvider } from '../services/stardict-provider';
+import type { StarDictDictionaryConfig } from '../services/stardict-provider';
 import { FreeDictionaryProvider } from '../services/free-dictionary-provider';
 import { WiktionaryProvider } from '../services/wiktionary-provider';
 import { useSelectionHandler } from '../hooks/useSelectionHandler';
@@ -183,6 +185,8 @@ export interface ReaderProps {
   dictionaryProviders?: DictionaryProvider[];
   /** Hunspell dictionary configurations for local/offline spell checking */
   hunspellDictionaries?: HunspellDictionaryConfig[];
+  /** StarDict dictionary configurations for local/offline definitions (also covers GoldenDict-distributed dictionaries, which typically ship in StarDict format) */
+  stardictDictionaries?: StarDictDictionaryConfig[];
   /** Enable built-in online dictionary providers (FreeDictionary + Wiktionary). Defaults to false. */
   enableBuiltInDictionary?: boolean;
   /** Enable or disable the bookmarks feature. Defaults to true. */
@@ -995,6 +999,7 @@ export const Reader: React.FC<ReaderProps> = ({
   direction = 'auto',
   dictionaryProviders,
   hunspellDictionaries,
+  stardictDictionaries,
   enableBuiltInDictionary = false,
   enableBookmarks = true,
   enableNotes = true,
@@ -1517,12 +1522,33 @@ export const Reader: React.FC<ReaderProps> = ({
   // ---------------------------------------------------------------------------
   useEffect(() => {
     // Re-create dictionary service with new providers in priority order:
-    // 1. Hunspell providers (local)
-    // 2. User-supplied dictionaryProviders
-    // 3. Built-in online providers (when enableBuiltInDictionary is true)
+    // 1. StarDict providers (local, real offline definitions)
+    // 2. Hunspell providers (local, spell-check only)
+    // 3. User-supplied dictionaryProviders
+    // 4. Built-in online providers (when enableBuiltInDictionary is true)
     const service = new DictionaryService();
 
-    // 1. Register Hunspell providers for each config
+    // 1. Register StarDict providers for each config
+    if (stardictDictionaries) {
+      for (const config of stardictDictionaries) {
+        try {
+          const stardictProvider = new StarDictProvider({
+            language: config.language,
+            ifo: config.ifo,
+            idx: config.idx,
+            dict: config.dict,
+            ifoUrl: config.ifoUrl,
+            idxUrl: config.idxUrl,
+            dictUrl: config.dictUrl,
+          });
+          service.registerProvider(stardictProvider, 'local');
+        } catch {
+          // Initialization failure for this config — skip it
+        }
+      }
+    }
+
+    // 2. Register Hunspell providers for each config
     if (hunspellDictionaries) {
       for (const config of hunspellDictionaries) {
         try {
@@ -1540,14 +1566,14 @@ export const Reader: React.FC<ReaderProps> = ({
       }
     }
 
-    // 2. Register user-supplied providers
+    // 3. Register user-supplied providers
     if (dictionaryProviders) {
       for (const provider of dictionaryProviders) {
         service.registerProvider(provider);
       }
     }
 
-    // 3. Register built-in online providers when enabled
+    // 4. Register built-in online providers when enabled
     if (enableBuiltInDictionary) {
       const freeDictProvider = new FreeDictionaryProvider();
       service.registerProvider(freeDictProvider, 'online');
@@ -1559,7 +1585,7 @@ export const Reader: React.FC<ReaderProps> = ({
     }
 
     dictionaryServiceRef.current = service;
-  }, [dictionaryProviders, hunspellDictionaries, enableBuiltInDictionary]);
+  }, [dictionaryProviders, hunspellDictionaries, stardictDictionaries, enableBuiltInDictionary]);
 
   // ---------------------------------------------------------------------------
   // Determine whether any providers are registered (for selection handler)
@@ -1568,9 +1594,10 @@ export const Reader: React.FC<ReaderProps> = ({
     return !!(
       (dictionaryProviders && dictionaryProviders.length > 0) ||
       (hunspellDictionaries && hunspellDictionaries.length > 0) ||
+      (stardictDictionaries && stardictDictionaries.length > 0) ||
       enableBuiltInDictionary
     );
-  }, [dictionaryProviders, hunspellDictionaries, enableBuiltInDictionary]);
+  }, [dictionaryProviders, hunspellDictionaries, stardictDictionaries, enableBuiltInDictionary]);
 
   // ---------------------------------------------------------------------------
   // Selection handler hook — bridges user text interactions with dictionary lookups

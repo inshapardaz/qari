@@ -756,6 +756,7 @@ When set to `"auto"`, the reader detects direction by analyzing character freque
 | `fontOptions` | `FontOption[]` | Serif, Sans, Mono + urdu-web-fonts | Custom font selector options |
 | `mantineTheme` | `MantineThemeOverride` | `undefined` | Overrides for the UI chrome's Mantine theme (deep-merged with defaults) |
 | `enableBuiltInDictionary` | `boolean` | `false` | Enable online dictionary lookup |
+| `stardictDictionaries` | `StarDictDictionaryConfig[]` | `undefined` | Offline StarDict/GoldenDict dictionaries |
 | `hunspellDictionaries` | `HunspellDictionaryConfig[]` | `undefined` | Offline Hunspell dictionaries |
 | `dictionaryProviders` | `DictionaryProvider[]` | `undefined` | Custom dictionary providers |
 | `onReady` | `(event) => void` | — | Book loaded callback |
@@ -827,6 +828,39 @@ const dicBuffer = await fetch('/dictionaries/en.dic').then(r => r.arrayBuffer())
 
 When Hunspell detects a misspelled word, the popover shows spelling suggestions. Clicking a suggestion triggers a new lookup for that word.
 
+### Offline Definitions with StarDict / GoldenDict Dictionaries
+
+For real offline definitions (not just spell-check), provide a [StarDict](https://en.wikipedia.org/wiki/StarDict)-format dictionary — the `.ifo`/`.idx`/`.dict` (or gzip-compressed `.dict.dz`) file triplet used by the StarDict and [GoldenDict](https://github.com/goldendict/goldendict) applications, and the format most GoldenDict-distributed dictionaries ship in:
+
+```tsx
+import { Reader } from 'qari/components/Reader';
+
+// Option A: Pre-loaded buffers (immediate, no network)
+const ifo = await fetch('/dictionaries/en-en.ifo').then(r => r.text());
+const idx = await fetch('/dictionaries/en-en.idx').then(r => r.arrayBuffer());
+const dict = await fetch('/dictionaries/en-en.dict.dz').then(r => r.arrayBuffer());
+
+<Reader
+  source={source}
+  stardictDictionaries={[{ language: 'en', ifo, idx, dict }]}
+/>
+
+// Option B: URLs (fetched and cached on first load)
+<Reader
+  source={source}
+  stardictDictionaries={[
+    {
+      language: 'en',
+      ifoUrl: '/dictionaries/en-en.ifo',
+      idxUrl: '/dictionaries/en-en.idx',
+      dictUrl: '/dictionaries/en-en.dict.dz',
+    },
+  ]}
+/>
+```
+
+The `.dict`/`.dict.dz` file is decompressed automatically when gzip-compressed — no separate configuration needed. HTML/Pango/XDXF-formatted entries are reduced to plain text for display.
+
 ### Custom Dictionary Providers
 
 Build your own provider by implementing the `DictionaryProvider` interface:
@@ -865,21 +899,23 @@ const myProvider: DictionaryProvider = {
 
 When multiple provider sources are configured, lookups follow this priority:
 
-1. **Hunspell providers** (local/offline) — checked first, instant response
-2. **User-supplied `dictionaryProviders`** — your custom providers
-3. **Built-in online providers** — Free Dictionary API + Wiktionary
+1. **StarDict providers** (local/offline) — checked first, real offline definitions
+2. **Hunspell providers** (local/offline) — checked next, instant spell-check response
+3. **User-supplied `dictionaryProviders`** — your custom providers
+4. **Built-in online providers** — Free Dictionary API + Wiktionary
 
 ```tsx
-// All three combined — Hunspell checked first, then custom, then built-in
+// All combined — StarDict checked first, then Hunspell, then custom, then built-in
 <Reader
   source={source}
+  stardictDictionaries={[{ language: 'en', ifoUrl: '/en.ifo', idxUrl: '/en.idx', dictUrl: '/en.dict.dz' }]}
   hunspellDictionaries={[{ language: 'en', affUrl: '/en.aff', dicUrl: '/en.dic' }]}
   dictionaryProviders={[myCustomProvider]}
   enableBuiltInDictionary={true}
 />
 ```
 
-If a local Hunspell provider confirms the word is spelled correctly but has no semantic definition, the reader automatically queries the next online provider and merges the results (showing both the "correctly spelled" indicator and the full definition).
+If a local Hunspell provider confirms the word is spelled correctly but has no semantic definition, the reader automatically queries the next online provider and merges the results (showing both the "correctly spelled" indicator and the full definition). Only one local provider is consulted per language — if both a StarDict and a Hunspell dictionary are configured for the same language, register just the one you want to be authoritative for that language.
 
 ### Disabling Dictionary
 
@@ -895,8 +931,25 @@ When none of the dictionary props are set, dictionary functionality is completel
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `enableBuiltInDictionary` | `boolean` | `false` | Enable Free Dictionary + Wiktionary providers |
+| `stardictDictionaries` | `StarDictDictionaryConfig[]` | `undefined` | Array of StarDict/GoldenDict dictionary configs for offline definitions |
 | `hunspellDictionaries` | `HunspellDictionaryConfig[]` | `undefined` | Array of Hunspell dictionary configs for offline spell-check |
 | `dictionaryProviders` | `DictionaryProvider[]` | `undefined` | Custom provider implementations |
+
+#### `StarDictDictionaryConfig`
+
+```ts
+interface StarDictDictionaryConfig {
+  language: string;                 // ISO 639-1 code (e.g., 'en', 'fr')
+  ifo?: ArrayBuffer | Uint8Array | string;  // Pre-loaded .ifo content
+  idx?: ArrayBuffer | Uint8Array;   // Pre-loaded .idx content
+  dict?: ArrayBuffer | Uint8Array;  // Pre-loaded .dict/.dict.dz content
+  ifoUrl?: string;                  // URL to fetch .ifo file
+  idxUrl?: string;                  // URL to fetch .idx file
+  dictUrl?: string;                 // URL to fetch .dict/.dict.dz file
+}
+```
+
+Provide either `ifo`+`idx`+`dict` (buffer mode, immediate) or `ifoUrl`+`idxUrl`+`dictUrl` (URL mode, async fetch). A gzip-compressed `.dict.dz` file is decompressed automatically.
 
 #### `HunspellDictionaryConfig`
 
