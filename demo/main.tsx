@@ -6,6 +6,7 @@ import { Reader } from '../src/components/Reader';
 import { LOCALES } from '../src/i18n';
 import type { LocaleCode } from '../src/i18n';
 import type { PdfChapterMapEntry } from '../src/interfaces/parser';
+import type { StarDictDictionaryConfig } from '../src/services/stardict-provider';
 
 type SourceType = 'markdown' | 'epub' | 'pdf' | 'url';
 
@@ -201,6 +202,13 @@ function App() {
   const [enableSearch, setEnableSearch] = useState(true);
   const [enableProgressTracking, setEnableProgressTracking] = useState(true);
   const [enableBuiltInDictionary, setEnableBuiltInDictionary] = useState(true);
+  // StarDict/GoldenDict offline dictionary (.ifo/.idx/.dict[.dz]) — loaded as
+  // a set of local files, since that's how these dictionaries are normally
+  // distributed. `stardictLanguage` tags which book language it applies to.
+  const [stardictLanguage, setStardictLanguage] = useState('en');
+  const [stardictConfig, setStardictConfig] = useState<StarDictDictionaryConfig | null>(null);
+  const [stardictLabel, setStardictLabel] = useState('No StarDict dictionary loaded');
+  const stardictFileInputRef = useRef<HTMLInputElement>(null);
   const [readOnly, setReadOnly] = useState(false);
   const [blockDevTools, setBlockDevTools] = useState(false);
   const [direction, setDirection] = useState<'auto' | 'ltr' | 'rtl'>('auto');
@@ -290,6 +298,44 @@ function App() {
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+  };
+
+  const handleStardictFilesSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+
+    let ifo: string | undefined;
+    let idx: ArrayBuffer | undefined;
+    let dict: ArrayBuffer | undefined;
+    let dictName = '';
+
+    for (const file of files) {
+      const name = file.name.toLowerCase();
+      if (name.endsWith('.ifo')) {
+        ifo = await file.text();
+      } else if (name.endsWith('.idx')) {
+        idx = await file.arrayBuffer();
+      } else if (name.endsWith('.dict') || name.endsWith('.dict.dz') || name.endsWith('.dz')) {
+        dict = await file.arrayBuffer();
+        dictName = file.name;
+      }
+    }
+
+    if (ifo && idx && dict) {
+      setStardictConfig({ language: stardictLanguage, ifo, idx, dict });
+      setStardictLabel(`Loaded: ${dictName} (${stardictLanguage})`);
+    } else {
+      setStardictLabel('Incomplete set — select the matching .ifo + .idx + .dict(.dz) files together');
+    }
+
+    if (stardictFileInputRef.current) {
+      stardictFileInputRef.current.value = '';
+    }
+  };
+
+  const handleClearStardict = () => {
+    setStardictConfig(null);
+    setStardictLabel('No StarDict dictionary loaded');
   };
 
   const handleLoadSample = () => {
@@ -492,6 +538,55 @@ function App() {
             enableBuiltInDictionary
           </label>
 
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: '#555' }}>
+              stardictDictionaries — language
+            </label>
+            <input
+              type="text"
+              value={stardictLanguage}
+              onChange={(e) => setStardictLanguage(e.target.value)}
+              style={{
+                padding: '0.5rem',
+                border: '1px solid #ccc',
+                borderRadius: '4px',
+                fontSize: '0.9rem',
+                width: '70px',
+              }}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: '#555' }}>
+              Load StarDict/GoldenDict files (.ifo + .idx + .dict[.dz])
+            </label>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <input
+                ref={stardictFileInputRef}
+                type="file"
+                accept=".ifo,.idx,.dict,.dz"
+                multiple
+                onChange={handleStardictFilesSelect}
+                style={{ fontSize: '0.9rem' }}
+              />
+              {stardictConfig && (
+                <button
+                  onClick={handleClearStardict}
+                  style={{
+                    padding: '0.4rem 0.75rem',
+                    background: '#f3f4f6',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem' }}>
             <input
               type="checkbox"
@@ -611,6 +706,7 @@ function App() {
         <p style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#888' }}>
           bookInfo overrides show up in the reader's chapter menu (☰) — see the book title/author there.
           {source.type === 'pdf' && ' pdfChapters titles the matching page ranges there too, instead of "Page N".'}
+          {' '}StarDict: <strong>{stardictLabel}</strong> — right-click a word in a matching-language book to look it up offline.
         </p>
 
         {closeMessage && (
@@ -656,6 +752,7 @@ function App() {
           enableSearch={enableSearch}
           enableProgressTracking={enableProgressTracking}
           enableBuiltInDictionary={enableBuiltInDictionary}
+          stardictDictionaries={stardictConfig ? [stardictConfig] : undefined}
           readOnly={readOnly}
           blockDevTools={blockDevTools}
           showCloseButton={showCloseButton}
