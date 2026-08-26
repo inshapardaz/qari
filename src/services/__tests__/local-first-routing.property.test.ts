@@ -238,7 +238,7 @@ describe('Feature: language-dictionaries, Property 6: Local-first provider routi
           };
 
           const localProvider = createMockProvider(
-            'hunspell-local',
+            'local-spellcheck',
             [language],
             'local',
             localResult

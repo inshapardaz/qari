@@ -1,9 +1,9 @@
 /**
  * Property 5: Provider registration order and priority
  *
- * For any combination of Hunspell dictionary configs, user-supplied providers,
+ * For any combination of local dictionary providers, user-supplied providers,
  * and built-in flag, the DictionaryService SHALL register providers in the order:
- * Hunspell providers first, then user-supplied providers, then built-in online providers.
+ * local providers first, then user-supplied providers, then built-in online providers.
  * When multiple providers support the same language, lookups SHALL always be routed
  * to the first provider in registration order that supports the requested language.
  *
@@ -127,20 +127,20 @@ describe('Feature: language-dictionaries, Property 5: Provider registration orde
     );
   });
 
-  it('registration order respects Hunspell → user-supplied → built-in online sequence', async () => {
+  it('registration order respects local → user-supplied → built-in online sequence', async () => {
     await fc.assert(
       fc.asyncProperty(
         languageArb,
         fc.integer({ min: 1, max: 3 }),
         fc.integer({ min: 1, max: 3 }),
         fc.integer({ min: 1, max: 3 }),
-        async (language, numHunspell, numUser, numBuiltIn) => {
+        async (language, numLocal, numUser, numBuiltIn) => {
           const service = new DictionaryService();
 
           // Simulate registration order as described in design:
-          // Hunspell (local) → user-supplied (online) → built-in online
-          const hunspellProviders = Array.from({ length: numHunspell }, (_, i) =>
-            createMockProvider(`hunspell-${i}`, [language], 'local')
+          // local providers → user-supplied (online) → built-in online
+          const localProviders = Array.from({ length: numLocal }, (_, i) =>
+            createMockProvider(`local-${i}`, [language], 'local')
           );
           const userProviders = Array.from({ length: numUser }, (_, i) =>
             createMockProvider(`user-${i}`, [language], 'online')
@@ -150,7 +150,7 @@ describe('Feature: language-dictionaries, Property 5: Provider registration orde
           );
 
           // Register in the defined priority order
-          for (const p of hunspellProviders) {
+          for (const p of localProviders) {
             service.registerProvider(p, 'local');
           }
           for (const p of userProviders) {
@@ -162,8 +162,8 @@ describe('Feature: language-dictionaries, Property 5: Provider registration orde
 
           await service.lookup('word', language, 'a text with word in it', 12);
 
-          // Hunspell (local) should be called first due to local-first routing
-          expect(hunspellProviders[0].lookup).toHaveBeenCalled();
+          // Local providers should be called first due to local-first routing
+          expect(localProviders[0].lookup).toHaveBeenCalled();
 
           // User-supplied online should NOT be called (local succeeded)
           for (const p of userProviders) {

@@ -48,7 +48,6 @@
   "dependencies": {
     "jszip": "^3.10.1",
     "markdown-it": "^14.2.0",
-    "nspell": "^2.1.5",
     "pdfjs-dist": "^4.10.38",
     "sqids": "^0.3.0"
   },
@@ -64,7 +63,6 @@
     "@testing-library/jest-dom": "^6.4.2",
     "@testing-library/react": "^16.3.2",
     "@types/markdown-it": "^14.1.2",
-    "@types/nspell": "^2.1.6",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^4.3.1",

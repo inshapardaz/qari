@@ -757,7 +757,6 @@ When set to `"auto"`, the reader detects direction by analyzing character freque
 | `mantineTheme` | `MantineThemeOverride` | `undefined` | Overrides for the UI chrome's Mantine theme (deep-merged with defaults) |
 | `enableBuiltInDictionary` | `boolean` | `false` | Enable online dictionary lookup |
 | `stardictDictionaries` | `StarDictDictionaryConfig[]` | `undefined` | Offline StarDict/GoldenDict dictionaries |
-| `hunspellDictionaries` | `HunspellDictionaryConfig[]` | `undefined` | Offline Hunspell dictionaries |
 | `dictionaryProviders` | `DictionaryProvider[]` | `undefined` | Custom dictionary providers |
 | `onReady` | `(event) => void` | — | Book loaded callback |
 | `onPageChange` | `(event) => void` | — | Page navigation callback |
@@ -787,46 +786,6 @@ import { Reader } from 'qari/components/Reader';
 ```
 
 This gives you English definitions from [dictionaryapi.dev](https://dictionaryapi.dev) and multilingual support (English, French, Spanish, German, Italian, Portuguese, Russian) from Wiktionary. No API keys needed.
-
-### Offline Spell-Check with Hunspell Dictionaries
-
-For offline-first usage, provide Hunspell `.dic`/`.aff` dictionary files. These are checked before any online lookups:
-
-```tsx
-import { Reader } from 'qari/components/Reader';
-
-// Option A: Pre-loaded buffers (immediate, no network)
-const affBuffer = await fetch('/dictionaries/en.aff').then(r => r.arrayBuffer());
-const dicBuffer = await fetch('/dictionaries/en.dic').then(r => r.arrayBuffer());
-
-<Reader
-  source={source}
-  hunspellDictionaries={[
-    { language: 'en', aff: affBuffer, dic: dicBuffer },
-  ]}
-  enableBuiltInDictionary={true}
-/>
-
-// Option B: URLs (fetched and cached on first load)
-<Reader
-  source={source}
-  hunspellDictionaries={[
-    {
-      language: 'en',
-      affUrl: '/dictionaries/en.aff',
-      dicUrl: '/dictionaries/en.dic',
-    },
-    {
-      language: 'fr',
-      affUrl: '/dictionaries/fr.aff',
-      dicUrl: '/dictionaries/fr.dic',
-    },
-  ]}
-  enableBuiltInDictionary={true}
-/>
-```
-
-When Hunspell detects a misspelled word, the popover shows spelling suggestions. Clicking a suggestion triggers a new lookup for that word.
 
 ### Offline Definitions with StarDict / GoldenDict Dictionaries
 
@@ -900,22 +859,20 @@ const myProvider: DictionaryProvider = {
 When multiple provider sources are configured, lookups follow this priority:
 
 1. **StarDict providers** (local/offline) — checked first, real offline definitions
-2. **Hunspell providers** (local/offline) — checked next, instant spell-check response
-3. **User-supplied `dictionaryProviders`** — your custom providers
-4. **Built-in online providers** — Free Dictionary API + Wiktionary
+2. **User-supplied `dictionaryProviders`** — your custom providers
+3. **Built-in online providers** — Free Dictionary API + Wiktionary
 
 ```tsx
-// All combined — StarDict checked first, then Hunspell, then custom, then built-in
+// All combined — StarDict checked first, then custom, then built-in
 <Reader
   source={source}
   stardictDictionaries={[{ language: 'en', ifoUrl: '/en.ifo', idxUrl: '/en.idx', dictUrl: '/en.dict.dz' }]}
-  hunspellDictionaries={[{ language: 'en', affUrl: '/en.aff', dicUrl: '/en.dic' }]}
   dictionaryProviders={[myCustomProvider]}
   enableBuiltInDictionary={true}
 />
 ```
 
-If a local Hunspell provider confirms the word is spelled correctly but has no semantic definition, the reader automatically queries the next online provider and merges the results (showing both the "correctly spelled" indicator and the full definition). Only one local provider is consulted per language — if both a StarDict and a Hunspell dictionary are configured for the same language, register just the one you want to be authoritative for that language.
+If a local provider's result includes a `spellCheck` field confirming the word is spelled correctly but carries no semantic definition, the reader automatically queries the next online provider and merges the results (showing both the "correctly spelled" indicator and the full definition). Only one local provider is consulted per language — if multiple local dictionaries are configured for the same language, register just the one you want to be authoritative for it.
 
 ### Disabling Dictionary
 
@@ -932,7 +889,6 @@ When none of the dictionary props are set, dictionary functionality is completel
 |------|------|---------|-------------|
 | `enableBuiltInDictionary` | `boolean` | `false` | Enable Free Dictionary + Wiktionary providers |
 | `stardictDictionaries` | `StarDictDictionaryConfig[]` | `undefined` | Array of StarDict/GoldenDict dictionary configs for offline definitions |
-| `hunspellDictionaries` | `HunspellDictionaryConfig[]` | `undefined` | Array of Hunspell dictionary configs for offline spell-check |
 | `dictionaryProviders` | `DictionaryProvider[]` | `undefined` | Custom provider implementations |
 
 #### `StarDictDictionaryConfig`
@@ -950,20 +906,6 @@ interface StarDictDictionaryConfig {
 ```
 
 Provide either `ifo`+`idx`+`dict` (buffer mode, immediate) or `ifoUrl`+`idxUrl`+`dictUrl` (URL mode, async fetch). A gzip-compressed `.dict.dz` file is decompressed automatically.
-
-#### `HunspellDictionaryConfig`
-
-```ts
-interface HunspellDictionaryConfig {
-  language: string;           // ISO 639-1 code (e.g., 'en', 'fr')
-  aff?: ArrayBuffer | Uint8Array;  // Pre-loaded .aff content
-  dic?: ArrayBuffer | Uint8Array;  // Pre-loaded .dic content
-  affUrl?: string;            // URL to fetch .aff file
-  dicUrl?: string;            // URL to fetch .dic file
-}
-```
-
-Provide either `aff`+`dic` (buffer mode, immediate) or `affUrl`+`dicUrl` (URL mode, async fetch with in-memory caching).
 
 #### `DictionaryProvider` Interface
 
