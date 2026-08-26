@@ -93,33 +93,67 @@ describe('Feature: language-dictionaries, Property 5: Provider registration orde
     );
   });
 
-  it('among same-category providers, the first registered wins for a given language', async () => {
+  it('among same-language online providers, the first registered wins', async () => {
     await fc.assert(
       fc.asyncProperty(
         languageArb,
         fc.integer({ min: 2, max: 5 }),
-        fc.constantFrom('local' as const, 'online' as const),
-        async (language, numProviders, category) => {
+        async (language, numProviders) => {
           const service = new DictionaryService();
 
-          // Create multiple providers of the same category supporting the same language
+          // Create multiple online providers supporting the same language
           const providers = Array.from({ length: numProviders }, (_, i) =>
-            createMockProvider(`provider-${category}-${i}`, [language], category)
+            createMockProvider(`provider-online-${i}`, [language], 'online')
           );
 
           // Register all in order
           for (const p of providers) {
-            service.registerProvider(p, category);
+            service.registerProvider(p, 'online');
           }
 
           await service.lookup('hello', language, 'text with hello in it', 10);
 
-          // Only the first provider should be called
+          // Only the first online provider should be called
           expect(providers[0].lookup).toHaveBeenCalled();
 
-          // Subsequent providers of same category should NOT be called
+          // Subsequent online providers should NOT be called
           for (let i = 1; i < providers.length; i++) {
             expect(providers[i].lookup).not.toHaveBeenCalled();
+          }
+        }
+      ),
+      { numRuns: 100 }
+    );
+  });
+
+  it('among same-language local providers, every one is consulted and their definitions merged', async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        languageArb,
+        fc.integer({ min: 2, max: 5 }),
+        async (language, numProviders) => {
+          const service = new DictionaryService();
+
+          // Multiple local dictionaries for the same language (e.g. several
+          // StarDict dictionaries configured for the same book language)
+          const providers = Array.from({ length: numProviders }, (_, i) =>
+            createMockProvider(`provider-local-${i}`, [language], 'local')
+          );
+
+          for (const p of providers) {
+            service.registerProvider(p, 'local');
+          }
+
+          const result = await service.lookup('hello', language, 'text with hello in it', 10);
+
+          // Every local provider should have been consulted
+          for (const p of providers) {
+            expect(p.lookup).toHaveBeenCalled();
+          }
+
+          // Every provider's definition should show up in the merged result
+          for (const p of providers) {
+            expect(result.definitions).toContainEqual({ meaning: `Definition from ${p.id}` });
           }
         }
       ),

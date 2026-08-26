@@ -820,6 +820,18 @@ const dict = await fetch('/dictionaries/en-en.dict.dz').then(r => r.arrayBuffer(
 
 The `.dict`/`.dict.dz` file is decompressed automatically when gzip-compressed — no separate configuration needed. HTML/Pango/XDXF-formatted entries are reduced to plain text for display.
 
+You can configure more than one dictionary for the same language — every entry in `stardictDictionaries` is queried, and their definitions are merged into a single result, in configuration order (the same word looked up against, say, an English-English dictionary and an English-Urdu one shows both):
+
+```tsx
+<Reader
+  source={source}
+  stardictDictionaries={[
+    { language: 'en', ifoUrl: '/dictionaries/en-en.ifo', idxUrl: '/dictionaries/en-en.idx', dictUrl: '/dictionaries/en-en.dict.dz' },
+    { language: 'en', ifoUrl: '/dictionaries/en-ur.ifo', idxUrl: '/dictionaries/en-ur.idx', dictUrl: '/dictionaries/en-ur.dict.dz' },
+  ]}
+/>
+```
+
 ### Custom Dictionary Providers
 
 Build your own provider by implementing the `DictionaryProvider` interface:
@@ -872,7 +884,7 @@ When multiple provider sources are configured, lookups follow this priority:
 />
 ```
 
-If a local provider's result includes a `spellCheck` field confirming the word is spelled correctly but carries no semantic definition, the reader automatically queries the next online provider and merges the results (showing both the "correctly spelled" indicator and the full definition). Only one local provider is consulted per language — if multiple local dictionaries are configured for the same language, register just the one you want to be authoritative for it.
+All local providers configured for a given language are consulted, not just the first — their definitions are merged into a single result (see the multi-dictionary example above). If a local provider's result includes a `spellCheck` field confirming the word is spelled correctly but carries no semantic definition of its own, the reader also queries the next online provider and merges that in (showing both the "correctly spelled" indicator and the full definition). A misspelling reported by any local provider short-circuits the rest — its suggestions are returned immediately.
 
 ### Disabling Dictionary
 
