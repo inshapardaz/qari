@@ -120,8 +120,10 @@ describe('Feature: language-dictionaries, Property 7: Spell-check merges with on
 
         const result = await service.lookup(word, language, `context with ${word} in it`, 0);
 
-        // Merged result must have the online definitions
-        expect(result.definitions).toEqual(definitions);
+        // Merged result must have the online definitions, tagged with their source
+        expect(result.definitions).toEqual(
+          definitions.map((d) => ({ ...d, source: 'online-definitions' }))
+        );
       }),
       { numRuns: 100 }
     );

@@ -77,8 +77,6 @@ import { BookmarkIcon, NoteIcon, SearchIcon, ChaptersIcon, ThemeIcon, SinglePage
 import { TranslationContext, DEFAULT_TRANSLATIONS, useTranslations, interpolate } from '../i18n';
 import type { TranslationStrings } from '../i18n';
 
-import { HunspellProvider } from '../services/hunspell-provider';
-import type { HunspellDictionaryConfig } from '../services/hunspell-provider';
 import { StarDictProvider } from '../services/stardict-provider';
 import type { StarDictDictionaryConfig } from '../services/stardict-provider';
 import { FreeDictionaryProvider } from '../services/free-dictionary-provider';
@@ -183,8 +181,6 @@ export interface ReaderProps {
   zoom?: number;
   direction?: 'ltr' | 'rtl' | 'auto';
   dictionaryProviders?: DictionaryProvider[];
-  /** Hunspell dictionary configurations for local/offline spell checking */
-  hunspellDictionaries?: HunspellDictionaryConfig[];
   /** StarDict dictionary configurations for local/offline definitions (also covers GoldenDict-distributed dictionaries, which typically ship in StarDict format) */
   stardictDictionaries?: StarDictDictionaryConfig[];
   /** Enable built-in online dictionary providers (FreeDictionary + Wiktionary). Defaults to false. */
@@ -998,7 +994,6 @@ export const Reader: React.FC<ReaderProps> = ({
   zoom = 100,
   direction = 'auto',
   dictionaryProviders,
-  hunspellDictionaries,
   stardictDictionaries,
   enableBuiltInDictionary = false,
   enableBookmarks = true,
@@ -1523,9 +1518,8 @@ export const Reader: React.FC<ReaderProps> = ({
   useEffect(() => {
     // Re-create dictionary service with new providers in priority order:
     // 1. StarDict providers (local, real offline definitions)
-    // 2. Hunspell providers (local, spell-check only)
-    // 3. User-supplied dictionaryProviders
-    // 4. Built-in online providers (when enableBuiltInDictionary is true)
+    // 2. User-supplied dictionaryProviders
+    // 3. Built-in online providers (when enableBuiltInDictionary is true)
     const service = new DictionaryService();
 
     // 1. Register StarDict providers for each config
@@ -1534,6 +1528,7 @@ export const Reader: React.FC<ReaderProps> = ({
         try {
           const stardictProvider = new StarDictProvider({
             language: config.language,
+            name: config.name,
             ifo: config.ifo,
             idx: config.idx,
             dict: config.dict,
@@ -1548,32 +1543,14 @@ export const Reader: React.FC<ReaderProps> = ({
       }
     }
 
-    // 2. Register Hunspell providers for each config
-    if (hunspellDictionaries) {
-      for (const config of hunspellDictionaries) {
-        try {
-          const hunspellProvider = new HunspellProvider({
-            language: config.language,
-            aff: config.aff,
-            dic: config.dic,
-            affUrl: config.affUrl,
-            dicUrl: config.dicUrl,
-          });
-          service.registerProvider(hunspellProvider, 'local');
-        } catch {
-          // Initialization failure for this config — skip it
-        }
-      }
-    }
-
-    // 3. Register user-supplied providers
+    // 2. Register user-supplied providers
     if (dictionaryProviders) {
       for (const provider of dictionaryProviders) {
         service.registerProvider(provider);
       }
     }
 
-    // 4. Register built-in online providers when enabled
+    // 3. Register built-in online providers when enabled
     if (enableBuiltInDictionary) {
       const freeDictProvider = new FreeDictionaryProvider();
       service.registerProvider(freeDictProvider, 'online');
@@ -1585,7 +1562,7 @@ export const Reader: React.FC<ReaderProps> = ({
     }
 
     dictionaryServiceRef.current = service;
-  }, [dictionaryProviders, hunspellDictionaries, stardictDictionaries, enableBuiltInDictionary]);
+  }, [dictionaryProviders, stardictDictionaries, enableBuiltInDictionary]);
 
   // ---------------------------------------------------------------------------
   // Determine whether any providers are registered (for selection handler)
@@ -1593,11 +1570,10 @@ export const Reader: React.FC<ReaderProps> = ({
   const hasProviders = useMemo(() => {
     return !!(
       (dictionaryProviders && dictionaryProviders.length > 0) ||
-      (hunspellDictionaries && hunspellDictionaries.length > 0) ||
       (stardictDictionaries && stardictDictionaries.length > 0) ||
       enableBuiltInDictionary
     );
-  }, [dictionaryProviders, hunspellDictionaries, stardictDictionaries, enableBuiltInDictionary]);
+  }, [dictionaryProviders, stardictDictionaries, enableBuiltInDictionary]);
 
   // ---------------------------------------------------------------------------
   // Selection handler hook — bridges user text interactions with dictionary lookups

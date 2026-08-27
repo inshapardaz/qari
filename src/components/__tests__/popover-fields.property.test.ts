@@ -46,6 +46,7 @@ const definitionArb: fc.Arbitrary<Definition> = fc.record({
     fc.array(simpleStringArb(5, 30), { minLength: 1, maxLength: 3 }),
     { nil: undefined }
   ),
+  source: fc.option(simpleStringArb(3, 20), { nil: undefined }),
 });
 
 /**
@@ -113,6 +114,15 @@ describe('Property 4: Popover renders all DictionaryResult fields', () => {
             def.examples.forEach((example) => {
               expect(examplesEl!.textContent).toContain(example);
             });
+          }
+
+          // Verify source (dictionary name) appears when present
+          if (def.source) {
+            const sourceEl = container.querySelector(
+              `[data-testid="dictionary-source-${index}"]`
+            );
+            expect(sourceEl).not.toBeNull();
+            expect(sourceEl!.textContent).toBe(def.source);
           }
         });
       }),

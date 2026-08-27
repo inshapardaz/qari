@@ -22,6 +22,13 @@ import { DictionaryProvider, DictionaryResult, Definition } from '../interfaces/
 export interface StarDictProviderConfig {
   /** ISO 639-1 language code this dictionary supports */
   language: string;
+  /**
+   * Human-readable name for this dictionary, shown as its source label next
+   * to results (e.g. "Oxford Concise") — especially useful when multiple
+   * dictionaries are configured for the same language. Defaults to the
+   * `.ifo` file's own `bookname` field when not set.
+   */
+  name?: string;
   /** Pre-loaded .ifo file content (plain-text metadata) */
   ifo?: ArrayBuffer | Uint8Array | string;
   /** Pre-loaded .idx file content (word index) */
@@ -54,6 +61,8 @@ export class StarDictProvider implements DictionaryProvider {
   readonly supportedLanguages: string[];
   readonly category: 'local' = 'local';
   ready: boolean;
+  /** Display name for this dictionary — set from config, or the .ifo `bookname` once parsed. */
+  name?: string;
 
   private index = new Map<string, IndexEntry[]>();
   private lowerCaseIndex = new Map<string, string>();
@@ -64,6 +73,7 @@ export class StarDictProvider implements DictionaryProvider {
   constructor(private config: StarDictProviderConfig) {
     this.supportedLanguages = [config.language];
     this.ready = false;
+    this.name = config.name;
 
     if (config.ifo && config.idx && config.dict) {
       this.initPromise = this.initFromBuffers(config.ifo, config.idx, config.dict);
@@ -137,6 +147,10 @@ export class StarDictProvider implements DictionaryProvider {
     const ifo = parseIfo(ifoText);
     this.sameTypeSequence = ifo.sametypesequence;
     const offsetBits = ifo.idxoffsetbits === '64' ? 64 : 32;
+
+    if (!this.name && ifo.bookname) {
+      this.name = ifo.bookname;
+    }
 
     this.index = parseIdx(idxData, offsetBits);
     this.lowerCaseIndex = new Map();

@@ -5,7 +5,7 @@
  * queried before online providers for faster offline lookups.
  */
 
-import { DictionaryProvider, DictionaryResult } from '../interfaces/dictionary';
+import { DictionaryProvider, DictionaryResult, Definition } from '../interfaces/dictionary';
 
 /**
  * Extended DictionaryResult that includes a fallbackLanguage field
@@ -83,6 +83,28 @@ export class DictionaryService {
   }
 
   /**
+   * Call a provider's lookup() and stamp its provider's display name (`name`,
+   * falling back to `id`) onto every returned definition's `source` field —
+   * unless the provider already set one itself. This is what lets the popover
+   * show which dictionary each definition came from, including when several
+   * local providers' results are merged together.
+   */
+  private async invokeProvider(
+    provider: DictionaryProvider,
+    word: string,
+    language: string,
+    context: string,
+    signal: AbortSignal
+  ): Promise<DictionaryResult> {
+    const result = await provider.lookup(word, language, context, signal);
+    const sourceName = provider.name ?? provider.id;
+    return {
+      ...result,
+      definitions: result.definitions.map((d) => ({ ...d, source: d.source ?? sourceName })),
+    };
+  }
+
+  /**
    * Look up a word in the dictionary appropriate for the given language.
    * Uses local-first routing: local providers are queried first, and their
    * results may be merged with online provider results.
@@ -124,66 +146,87 @@ export class DictionaryService {
         e.provider.supportedLanguages.includes(language)
     );
 
-    // Local-first routing
+    // Local-first routing — every matching local provider is consulted (not just
+    // the first), so multiple dictionaries configured for the same language (e.g.
+    // several StarDict dictionaries) all get a chance to contribute definitions.
     if (localEntries.length > 0) {
-      // Query local provider (first matching)
-      const localProvider = localEntries[0].provider;
-      try {
-        const localResult = await localProvider.lookup(word, language, context, signal);
+      const collectedDefinitions: Definition[] = [];
+      let spellCheckResult: DictionaryResult | null = null;
 
-        // If local provider returned a misspelled result, return immediately
-        if (localResult.spellCheck && !localResult.spellCheck.correct) {
-          return localResult;
+      for (const entry of localEntries) {
+        let localResult: DictionaryResult;
+        try {
+          localResult = await this.invokeProvider(entry.provider, word, language, context, signal);
+        } catch (error: unknown) {
+          // Silently return empty result for AbortError (expected cancellation)
+          if (error instanceof Error && error.name === 'AbortError') {
+            return { word, language, definitions: [] };
+          }
+          // This provider failed — try the next local provider
+          continue;
         }
 
-        // If local provider says word is correct but has no meaningful definition,
-        // merge with online provider
-        if (localResult.spellCheck && localResult.spellCheck.correct) {
-          // Check if the result has real definitions (not just spell-check confirmations)
+        if (localResult.spellCheck) {
+          // If any local provider reports a misspelling, return immediately with
+          // its suggestions — remaining providers (local or online) are skipped.
+          if (!localResult.spellCheck.correct) {
+            return localResult;
+          }
+
+          // Correctly spelled — remember it (for a possible online merge) and
+          // collect any real definitions it also returned alongside the check.
+          spellCheckResult = localResult;
           const hasSemanticDefinitions = localResult.definitions.some(
             (d) => d.meaning && !d.meaning.includes('correctly spelled')
           );
-
-          if (!hasSemanticDefinitions && onlineEntries.length > 0) {
-            // Query online provider and merge
-            const onlineProvider = onlineEntries[0].provider;
-            try {
-              const onlineResult = await onlineProvider.lookup(word, language, context, signal);
-              // Merge: take online definitions, add spellCheck from local
-              return {
-                ...onlineResult,
-                spellCheck: localResult.spellCheck,
-              };
-            } catch (error: unknown) {
-              // Silently return empty result for AbortError (expected cancellation)
-              if (error instanceof Error && error.name === 'AbortError') {
-                return { word, language, definitions: [] };
-              }
-              // Online failed, return local result as-is
-              return localResult;
-            }
+          if (hasSemanticDefinitions) {
+            collectedDefinitions.push(...localResult.definitions);
           }
-
-          // Has real definitions from local or no online fallback
-          return localResult;
+          continue;
         }
 
-        // Local result without spellCheck — return it
-        return localResult;
-      } catch (error: unknown) {
-        // Silently return empty result for AbortError (expected cancellation)
-        if (error instanceof Error && error.name === 'AbortError') {
-          return { word, language, definitions: [] };
+        // Plain local dictionary (e.g. StarDict) — merge in whatever it found.
+        if (!localResult.notFound && localResult.definitions.length > 0) {
+          collectedDefinitions.push(...localResult.definitions);
         }
-        // Local provider threw — fall through to online
       }
+
+      if (collectedDefinitions.length > 0) {
+        return {
+          word,
+          language,
+          definitions: collectedDefinitions,
+          notFound: false,
+          ...(spellCheckResult?.spellCheck ? { spellCheck: spellCheckResult.spellCheck } : {}),
+        };
+      }
+
+      if (spellCheckResult) {
+        // Spelled correctly per a local provider, but no local dictionary had a
+        // definition for it — fall through to online and merge the spell-check in.
+        if (onlineEntries.length > 0) {
+          const onlineProvider = onlineEntries[0].provider;
+          try {
+            const onlineResult = await this.invokeProvider(onlineProvider, word, language, context, signal);
+            return { ...onlineResult, spellCheck: spellCheckResult.spellCheck };
+          } catch (error: unknown) {
+            if (error instanceof Error && error.name === 'AbortError') {
+              return { word, language, definitions: [] };
+            }
+            return spellCheckResult;
+          }
+        }
+        return spellCheckResult;
+      }
+
+      // None of the local providers found anything — fall through to online.
     }
 
-    // No local provider for this language, or local provider failed — query online
+    // No local provider for this language, or none of them found anything — query online
     if (onlineEntries.length > 0) {
       const onlineProvider = onlineEntries[0].provider;
       try {
-        const result = await onlineProvider.lookup(word, language, context, signal);
+        const result = await this.invokeProvider(onlineProvider, word, language, context, signal);
         return result;
       } catch (error: unknown) {
         // Silently return empty result for AbortError (expected cancellation)

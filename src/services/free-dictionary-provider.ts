@@ -25,6 +25,7 @@ interface FreeDictionaryApiEntry {
 
 export class FreeDictionaryProvider implements DictionaryProvider {
   readonly id = 'free-dictionary-api';
+  readonly name = 'Free Dictionary';
   readonly supportedLanguages = ['en'];
   readonly category: 'online' = 'online';
   readonly ready = true;

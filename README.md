@@ -757,7 +757,6 @@ When set to `"auto"`, the reader detects direction by analyzing character freque
 | `mantineTheme` | `MantineThemeOverride` | `undefined` | Overrides for the UI chrome's Mantine theme (deep-merged with defaults) |
 | `enableBuiltInDictionary` | `boolean` | `false` | Enable online dictionary lookup |
 | `stardictDictionaries` | `StarDictDictionaryConfig[]` | `undefined` | Offline StarDict/GoldenDict dictionaries |
-| `hunspellDictionaries` | `HunspellDictionaryConfig[]` | `undefined` | Offline Hunspell dictionaries |
 | `dictionaryProviders` | `DictionaryProvider[]` | `undefined` | Custom dictionary providers |
 | `onReady` | `(event) => void` | — | Book loaded callback |
 | `onPageChange` | `(event) => void` | — | Page navigation callback |
@@ -787,46 +786,6 @@ import { Reader } from 'qari/components/Reader';
 ```
 
 This gives you English definitions from [dictionaryapi.dev](https://dictionaryapi.dev) and multilingual support (English, French, Spanish, German, Italian, Portuguese, Russian) from Wiktionary. No API keys needed.
-
-### Offline Spell-Check with Hunspell Dictionaries
-
-For offline-first usage, provide Hunspell `.dic`/`.aff` dictionary files. These are checked before any online lookups:
-
-```tsx
-import { Reader } from 'qari/components/Reader';
-
-// Option A: Pre-loaded buffers (immediate, no network)
-const affBuffer = await fetch('/dictionaries/en.aff').then(r => r.arrayBuffer());
-const dicBuffer = await fetch('/dictionaries/en.dic').then(r => r.arrayBuffer());
-
-<Reader
-  source={source}
-  hunspellDictionaries={[
-    { language: 'en', aff: affBuffer, dic: dicBuffer },
-  ]}
-  enableBuiltInDictionary={true}
-/>
-
-// Option B: URLs (fetched and cached on first load)
-<Reader
-  source={source}
-  hunspellDictionaries={[
-    {
-      language: 'en',
-      affUrl: '/dictionaries/en.aff',
-      dicUrl: '/dictionaries/en.dic',
-    },
-    {
-      language: 'fr',
-      affUrl: '/dictionaries/fr.aff',
-      dicUrl: '/dictionaries/fr.dic',
-    },
-  ]}
-  enableBuiltInDictionary={true}
-/>
-```
-
-When Hunspell detects a misspelled word, the popover shows spelling suggestions. Clicking a suggestion triggers a new lookup for that word.
 
 ### Offline Definitions with StarDict / GoldenDict Dictionaries
 
@@ -861,6 +820,18 @@ const dict = await fetch('/dictionaries/en-en.dict.dz').then(r => r.arrayBuffer(
 
 The `.dict`/`.dict.dz` file is decompressed automatically when gzip-compressed — no separate configuration needed. HTML/Pango/XDXF-formatted entries are reduced to plain text for display.
 
+You can configure more than one dictionary for the same language — every entry in `stardictDictionaries` is queried, and their definitions are merged into a single result, in configuration order (the same word looked up against, say, an English-English dictionary and an English-Urdu one shows both):
+
+```tsx
+<Reader
+  source={source}
+  stardictDictionaries={[
+    { language: 'en', ifoUrl: '/dictionaries/en-en.ifo', idxUrl: '/dictionaries/en-en.idx', dictUrl: '/dictionaries/en-en.dict.dz' },
+    { language: 'en', ifoUrl: '/dictionaries/en-ur.ifo', idxUrl: '/dictionaries/en-ur.idx', dictUrl: '/dictionaries/en-ur.dict.dz' },
+  ]}
+/>
+```
+
 ### Custom Dictionary Providers
 
 Build your own provider by implementing the `DictionaryProvider` interface:
@@ -871,6 +842,7 @@ import type { DictionaryProvider, DictionaryResult } from 'qari/interfaces/dicti
 
 const myProvider: DictionaryProvider = {
   id: 'my-custom-dict',
+  name: 'My Custom Dictionary', // shown as this provider's source label in the popover
   supportedLanguages: ['en', 'ur'],
   category: 'online', // or 'local'
 
@@ -900,22 +872,20 @@ const myProvider: DictionaryProvider = {
 When multiple provider sources are configured, lookups follow this priority:
 
 1. **StarDict providers** (local/offline) — checked first, real offline definitions
-2. **Hunspell providers** (local/offline) — checked next, instant spell-check response
-3. **User-supplied `dictionaryProviders`** — your custom providers
-4. **Built-in online providers** — Free Dictionary API + Wiktionary
+2. **User-supplied `dictionaryProviders`** — your custom providers
+3. **Built-in online providers** — Free Dictionary API + Wiktionary
 
 ```tsx
-// All combined — StarDict checked first, then Hunspell, then custom, then built-in
+// All combined — StarDict checked first, then custom, then built-in
 <Reader
   source={source}
   stardictDictionaries={[{ language: 'en', ifoUrl: '/en.ifo', idxUrl: '/en.idx', dictUrl: '/en.dict.dz' }]}
-  hunspellDictionaries={[{ language: 'en', affUrl: '/en.aff', dicUrl: '/en.dic' }]}
   dictionaryProviders={[myCustomProvider]}
   enableBuiltInDictionary={true}
 />
 ```
 
-If a local Hunspell provider confirms the word is spelled correctly but has no semantic definition, the reader automatically queries the next online provider and merges the results (showing both the "correctly spelled" indicator and the full definition). Only one local provider is consulted per language — if both a StarDict and a Hunspell dictionary are configured for the same language, register just the one you want to be authoritative for that language.
+All local providers configured for a given language are consulted, not just the first — their definitions are merged into a single result (see the multi-dictionary example above). If a local provider's result includes a `spellCheck` field confirming the word is spelled correctly but carries no semantic definition of its own, the reader also queries the next online provider and merges that in (showing both the "correctly spelled" indicator and the full definition). A misspelling reported by any local provider short-circuits the rest — its suggestions are returned immediately.
 
 ### Disabling Dictionary
 
@@ -932,7 +902,6 @@ When none of the dictionary props are set, dictionary functionality is completel
 |------|------|---------|-------------|
 | `enableBuiltInDictionary` | `boolean` | `false` | Enable Free Dictionary + Wiktionary providers |
 | `stardictDictionaries` | `StarDictDictionaryConfig[]` | `undefined` | Array of StarDict/GoldenDict dictionary configs for offline definitions |
-| `hunspellDictionaries` | `HunspellDictionaryConfig[]` | `undefined` | Array of Hunspell dictionary configs for offline spell-check |
 | `dictionaryProviders` | `DictionaryProvider[]` | `undefined` | Custom provider implementations |
 
 #### `StarDictDictionaryConfig`
@@ -940,6 +909,7 @@ When none of the dictionary props are set, dictionary functionality is completel
 ```ts
 interface StarDictDictionaryConfig {
   language: string;                 // ISO 639-1 code (e.g., 'en', 'fr')
+  name?: string;                    // Display name shown as this dictionary's source label (e.g. "Oxford Concise"); defaults to the .ifo file's own `bookname` field
   ifo?: ArrayBuffer | Uint8Array | string;  // Pre-loaded .ifo content
   idx?: ArrayBuffer | Uint8Array;   // Pre-loaded .idx content
   dict?: ArrayBuffer | Uint8Array;  // Pre-loaded .dict/.dict.dz content
@@ -951,25 +921,12 @@ interface StarDictDictionaryConfig {
 
 Provide either `ifo`+`idx`+`dict` (buffer mode, immediate) or `ifoUrl`+`idxUrl`+`dictUrl` (URL mode, async fetch). A gzip-compressed `.dict.dz` file is decompressed automatically.
 
-#### `HunspellDictionaryConfig`
-
-```ts
-interface HunspellDictionaryConfig {
-  language: string;           // ISO 639-1 code (e.g., 'en', 'fr')
-  aff?: ArrayBuffer | Uint8Array;  // Pre-loaded .aff content
-  dic?: ArrayBuffer | Uint8Array;  // Pre-loaded .dic content
-  affUrl?: string;            // URL to fetch .aff file
-  dicUrl?: string;            // URL to fetch .dic file
-}
-```
-
-Provide either `aff`+`dic` (buffer mode, immediate) or `affUrl`+`dicUrl` (URL mode, async fetch with in-memory caching).
-
 #### `DictionaryProvider` Interface
 
 ```ts
 interface DictionaryProvider {
   id: string;
+  name?: string;                    // Display name shown as this provider's source label; falls back to `id`
   supportedLanguages: string[];
   category?: 'local' | 'online';
   ready?: boolean;
@@ -988,8 +945,11 @@ interface Definition {
   meaning: string;
   partOfSpeech?: string;
   examples?: string[];
+  source?: string;                  // Which dictionary this definition came from; auto-filled from the provider's `name`/`id` if not set explicitly
 }
 ```
+
+Every definition the popover displays carries a `source` — the name of the dictionary it came from. If a provider doesn't set `source` itself, `DictionaryService` fills it in automatically from that provider's `name` (or `id` if `name` isn't set either). When multiple dictionaries have an entry for the same word — several `stardictDictionaries` configured for one language, for instance — each definition keeps its own dictionary's name, shown as a small label under it in the popover.
 
 ### User Interaction
 
@@ -997,6 +957,7 @@ interface Definition {
 - **Touch**: Long-press on a word (~500ms) → popover appears
 - **Dismiss**: Click outside the popover, press Escape, or click the × button
 - **Suggestions**: When a word is misspelled, click a suggestion to look it up
+- **Source**: Each definition shows the dictionary it came from — useful for telling apart results when more than one dictionary matched
 
 ## RTL Support
 

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { DictionaryService } from './dictionary-service';
 import { DictionaryProvider, DictionaryResult } from '../interfaces/dictionary';
 
@@ -86,6 +86,176 @@ describe('DictionaryService', () => {
 
       const result = await service.lookup('test', 'en', 'test text', 0);
       expect(result.definitions[0].meaning).toBe('first provider');
+    });
+  });
+
+  describe('multiple local dictionaries for the same language', () => {
+    function createLocalProvider(
+      id: string,
+      lookupFn: (word: string) => Promise<DictionaryResult>
+    ): DictionaryProvider {
+      return {
+        id,
+        supportedLanguages: ['en'],
+        category: 'local',
+        ready: true,
+        lookup: async (word) => lookupFn(word),
+      };
+    }
+
+    it('merges definitions from every local provider that finds the word', async () => {
+      const service = new DictionaryService();
+      service.registerProvider(
+        createLocalProvider('dict-a', async (word) => ({
+          word,
+          language: 'en',
+          definitions: [{ meaning: 'meaning from dict A' }],
+        })),
+        'local'
+      );
+      service.registerProvider(
+        createLocalProvider('dict-b', async (word) => ({
+          word,
+          language: 'en',
+          definitions: [{ meaning: 'meaning from dict B' }],
+        })),
+        'local'
+      );
+
+      const result = await service.lookup('word', 'en', 'a word here', 2);
+
+      expect(result.notFound).toBe(false);
+      expect(result.definitions).toEqual([
+        { meaning: 'meaning from dict A', source: 'dict-a' },
+        { meaning: 'meaning from dict B', source: 'dict-b' },
+      ]);
+    });
+
+    it('skips local providers that report notFound and still uses the others', async () => {
+      const service = new DictionaryService();
+      service.registerProvider(
+        createLocalProvider('dict-a', async (word) => ({
+          word,
+          language: 'en',
+          definitions: [],
+          notFound: true,
+        })),
+        'local'
+      );
+      service.registerProvider(
+        createLocalProvider('dict-b', async (word) => ({
+          word,
+          language: 'en',
+          definitions: [{ meaning: 'found in dict B' }],
+        })),
+        'local'
+      );
+
+      const result = await service.lookup('word', 'en', 'a word here', 2);
+
+      expect(result.notFound).toBe(false);
+      expect(result.definitions).toEqual([{ meaning: 'found in dict B', source: 'dict-b' }]);
+    });
+
+    it('continues to the next local provider when one throws', async () => {
+      const service = new DictionaryService();
+      service.registerProvider(
+        createLocalProvider('dict-a', async () => {
+          throw new Error('dict A failed');
+        }),
+        'local'
+      );
+      service.registerProvider(
+        createLocalProvider('dict-b', async (word) => ({
+          word,
+          language: 'en',
+          definitions: [{ meaning: 'found in dict B' }],
+        })),
+        'local'
+      );
+
+      const result = await service.lookup('word', 'en', 'a word here', 2);
+
+      expect(result.definitions).toEqual([{ meaning: 'found in dict B', source: 'dict-b' }]);
+    });
+
+    it('returns notFound when no local provider finds the word and there is no online fallback', async () => {
+      const service = new DictionaryService();
+      service.registerProvider(
+        createLocalProvider('dict-a', async (word) => ({
+          word,
+          language: 'en',
+          definitions: [],
+          notFound: true,
+        })),
+        'local'
+      );
+      service.registerProvider(
+        createLocalProvider('dict-b', async (word) => ({
+          word,
+          language: 'en',
+          definitions: [],
+          notFound: true,
+        })),
+        'local'
+      );
+
+      const result = await service.lookup('word', 'en', 'a word here', 2);
+
+      expect(result.notFound).toBe(true);
+    });
+
+    it('a misspelling reported by any local provider short-circuits the rest', async () => {
+      const service = new DictionaryService();
+      const secondLookup = vi.fn(async (word: string) => ({
+        word,
+        language: 'en',
+        definitions: [{ meaning: 'should not be reached' }],
+      }));
+      service.registerProvider(
+        createLocalProvider('spellchecker', async (word) => ({
+          word,
+          language: 'en',
+          definitions: [],
+          spellCheck: { correct: false, suggestions: ['worm', 'ward'] },
+        })),
+        'local'
+      );
+      service.registerProvider(
+        { id: 'dict-b', supportedLanguages: ['en'], category: 'local', ready: true, lookup: secondLookup },
+        'local'
+      );
+
+      const result = await service.lookup('wrod', 'en', 'a wrod here', 2);
+
+      expect(result.spellCheck).toEqual({ correct: false, suggestions: ['worm', 'ward'] });
+      expect(secondLookup).not.toHaveBeenCalled();
+    });
+
+    it('merges a correct-spelling local provider with a plain local dictionary\'s definition', async () => {
+      const service = new DictionaryService();
+      service.registerProvider(
+        createLocalProvider('spellchecker', async (word) => ({
+          word,
+          language: 'en',
+          definitions: [],
+          spellCheck: { correct: true, suggestions: [] },
+        })),
+        'local'
+      );
+      service.registerProvider(
+        createLocalProvider('dict-b', async (word) => ({
+          word,
+          language: 'en',
+          definitions: [{ meaning: 'a real definition' }],
+        })),
+        'local'
+      );
+
+      const result = await service.lookup('word', 'en', 'a word here', 2);
+
+      expect(result.spellCheck).toEqual({ correct: true, suggestions: [] });
+      expect(result.definitions).toEqual([{ meaning: 'a real definition', source: 'dict-b' }]);
     });
   });
 

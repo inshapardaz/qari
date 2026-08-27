@@ -202,12 +202,20 @@ function App() {
   const [enableSearch, setEnableSearch] = useState(true);
   const [enableProgressTracking, setEnableProgressTracking] = useState(true);
   const [enableBuiltInDictionary, setEnableBuiltInDictionary] = useState(true);
-  // StarDict/GoldenDict offline dictionary (.ifo/.idx/.dict[.dz]) — loaded as
-  // a set of local files, since that's how these dictionaries are normally
-  // distributed. `stardictLanguage` tags which book language it applies to.
+  // StarDict/GoldenDict offline dictionaries (.ifo/.idx/.dict[.dz]) — loaded as
+  // sets of local files, since that's how these dictionaries are normally
+  // distributed. Multiple dictionaries can be loaded at once (even for the
+  // same language — the reader merges definitions from all of them);
+  // `stardictLanguage` tags which book language the next one loaded applies to;
+  // `stardictName` is its display name (shown as the source label on each of
+  // its definitions in the popover) — left blank to fall back to the .ifo
+  // file's own `bookname` field.
   const [stardictLanguage, setStardictLanguage] = useState('en');
-  const [stardictConfig, setStardictConfig] = useState<StarDictDictionaryConfig | null>(null);
-  const [stardictLabel, setStardictLabel] = useState('No StarDict dictionary loaded');
+  const [stardictName, setStardictName] = useState('');
+  const [stardictEntries, setStardictEntries] = useState<
+    { id: string; label: string; config: StarDictDictionaryConfig }[]
+  >([]);
+  const [stardictStatus, setStardictStatus] = useState('');
   const stardictFileInputRef = useRef<HTMLInputElement>(null);
   const [readOnly, setReadOnly] = useState(false);
   const [blockDevTools, setBlockDevTools] = useState(false);
@@ -322,10 +330,26 @@ function App() {
     }
 
     if (ifo && idx && dict) {
-      setStardictConfig({ language: stardictLanguage, ifo, idx, dict });
-      setStardictLabel(`Loaded: ${dictName} (${stardictLanguage})`);
+      const id = `${dictName}-${Date.now()}`;
+      const trimmedName = stardictName.trim();
+      const label = trimmedName ? `${trimmedName} (${stardictLanguage})` : `${dictName} (${stardictLanguage})`;
+      setStardictEntries((prev) => [
+        ...prev,
+        {
+          id,
+          label,
+          config: {
+            language: stardictLanguage,
+            ...(trimmedName && { name: trimmedName }),
+            ifo,
+            idx,
+            dict,
+          },
+        },
+      ]);
+      setStardictStatus('');
     } else {
-      setStardictLabel('Incomplete set — select the matching .ifo + .idx + .dict(.dz) files together');
+      setStardictStatus('Incomplete set — select the matching .ifo + .idx + .dict(.dz) files together');
     }
 
     if (stardictFileInputRef.current) {
@@ -333,9 +357,13 @@ function App() {
     }
   };
 
-  const handleClearStardict = () => {
-    setStardictConfig(null);
-    setStardictLabel('No StarDict dictionary loaded');
+  const handleRemoveStardict = (id: string) => {
+    setStardictEntries((prev) => prev.filter((entry) => entry.id !== id));
+  };
+
+  const handleClearAllStardict = () => {
+    setStardictEntries([]);
+    setStardictStatus('');
   };
 
   const handleLoadSample = () => {
@@ -558,7 +586,26 @@ function App() {
 
           <div>
             <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: '#555' }}>
-              Load StarDict/GoldenDict files (.ifo + .idx + .dict[.dz])
+              name (shown as its source label — optional)
+            </label>
+            <input
+              type="text"
+              placeholder="(use .ifo bookname)"
+              value={stardictName}
+              onChange={(e) => setStardictName(e.target.value)}
+              style={{
+                padding: '0.5rem',
+                border: '1px solid #ccc',
+                borderRadius: '4px',
+                fontSize: '0.9rem',
+                width: '160px',
+              }}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: '#555' }}>
+              Add a StarDict/GoldenDict dictionary (.ifo + .idx + .dict[.dz]) — load more than one, even for the same language, to see them merged
             </label>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
               <input
@@ -569,9 +616,9 @@ function App() {
                 onChange={handleStardictFilesSelect}
                 style={{ fontSize: '0.9rem' }}
               />
-              {stardictConfig && (
+              {stardictEntries.length > 0 && (
                 <button
-                  onClick={handleClearStardict}
+                  onClick={handleClearAllStardict}
                   style={{
                     padding: '0.4rem 0.75rem',
                     background: '#f3f4f6',
@@ -581,10 +628,36 @@ function App() {
                     fontSize: '0.85rem',
                   }}
                 >
-                  Clear
+                  Clear all
                 </button>
               )}
             </div>
+            {stardictEntries.length > 0 && (
+              <ul style={{ margin: '0.4rem 0 0', paddingLeft: '1.1rem', fontSize: '0.8rem', color: '#444' }}>
+                {stardictEntries.map((entry) => (
+                  <li key={entry.id} style={{ marginBottom: '0.15rem' }}>
+                    {entry.label}{' '}
+                    <button
+                      onClick={() => handleRemoveStardict(entry.id)}
+                      style={{
+                        border: 'none',
+                        background: 'none',
+                        color: '#dc2626',
+                        cursor: 'pointer',
+                        fontSize: '0.8rem',
+                        padding: 0,
+                        textDecoration: 'underline',
+                      }}
+                    >
+                      remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {stardictStatus && (
+              <p style={{ margin: '0.3rem 0 0', fontSize: '0.8rem', color: '#b91c1c' }}>{stardictStatus}</p>
+            )}
           </div>
 
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem' }}>
@@ -706,7 +779,7 @@ function App() {
         <p style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#888' }}>
           bookInfo overrides show up in the reader's chapter menu (☰) — see the book title/author there.
           {source.type === 'pdf' && ' pdfChapters titles the matching page ranges there too, instead of "Page N".'}
-          {' '}StarDict: <strong>{stardictLabel}</strong> — right-click a word in a matching-language book to look it up offline.
+          {' '}StarDict: <strong>{stardictEntries.length > 0 ? `${stardictEntries.length} dictionary(ies) loaded` : 'none loaded'}</strong> — right-click a word in a matching-language book to look it up offline.
         </p>
 
         {closeMessage && (
@@ -752,7 +825,7 @@ function App() {
           enableSearch={enableSearch}
           enableProgressTracking={enableProgressTracking}
           enableBuiltInDictionary={enableBuiltInDictionary}
-          stardictDictionaries={stardictConfig ? [stardictConfig] : undefined}
+          stardictDictionaries={stardictEntries.length > 0 ? stardictEntries.map((entry) => entry.config) : undefined}
           readOnly={readOnly}
           blockDevTools={blockDevTools}
           showCloseButton={showCloseButton}

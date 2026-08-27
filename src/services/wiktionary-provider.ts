@@ -103,6 +103,7 @@ export function mapWiktionaryResponse(response: WiktionaryApiResponse): Definiti
  */
 export class WiktionaryProvider implements DictionaryProvider {
   readonly id = 'wiktionary-rest';
+  readonly name = 'Wiktionary';
   readonly supportedLanguages: string[];
   readonly category: 'online' = 'online';
 
