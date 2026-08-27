@@ -842,6 +842,7 @@ import type { DictionaryProvider, DictionaryResult } from 'qari/interfaces/dicti
 
 const myProvider: DictionaryProvider = {
   id: 'my-custom-dict',
+  name: 'My Custom Dictionary', // shown as this provider's source label in the popover
   supportedLanguages: ['en', 'ur'],
   category: 'online', // or 'local'
 
@@ -908,6 +909,7 @@ When none of the dictionary props are set, dictionary functionality is completel
 ```ts
 interface StarDictDictionaryConfig {
   language: string;                 // ISO 639-1 code (e.g., 'en', 'fr')
+  name?: string;                    // Display name shown as this dictionary's source label (e.g. "Oxford Concise"); defaults to the .ifo file's own `bookname` field
   ifo?: ArrayBuffer | Uint8Array | string;  // Pre-loaded .ifo content
   idx?: ArrayBuffer | Uint8Array;   // Pre-loaded .idx content
   dict?: ArrayBuffer | Uint8Array;  // Pre-loaded .dict/.dict.dz content
@@ -924,6 +926,7 @@ Provide either `ifo`+`idx`+`dict` (buffer mode, immediate) or `ifoUrl`+`idxUrl`+
 ```ts
 interface DictionaryProvider {
   id: string;
+  name?: string;                    // Display name shown as this provider's source label; falls back to `id`
   supportedLanguages: string[];
   category?: 'local' | 'online';
   ready?: boolean;
@@ -942,8 +945,11 @@ interface Definition {
   meaning: string;
   partOfSpeech?: string;
   examples?: string[];
+  source?: string;                  // Which dictionary this definition came from; auto-filled from the provider's `name`/`id` if not set explicitly
 }
 ```
+
+Every definition the popover displays carries a `source` — the name of the dictionary it came from. If a provider doesn't set `source` itself, `DictionaryService` fills it in automatically from that provider's `name` (or `id` if `name` isn't set either). When multiple dictionaries have an entry for the same word — several `stardictDictionaries` configured for one language, for instance — each definition keeps its own dictionary's name, shown as a small label under it in the popover.
 
 ### User Interaction
 
@@ -951,6 +957,7 @@ interface Definition {
 - **Touch**: Long-press on a word (~500ms) → popover appears
 - **Dismiss**: Click outside the popover, press Escape, or click the × button
 - **Suggestions**: When a word is misspelled, click a suggestion to look it up
+- **Source**: Each definition shows the dictionary it came from — useful for telling apart results when more than one dictionary matched
 
 ## RTL Support
 

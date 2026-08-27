@@ -126,8 +126,8 @@ describe('DictionaryService', () => {
 
       expect(result.notFound).toBe(false);
       expect(result.definitions).toEqual([
-        { meaning: 'meaning from dict A' },
-        { meaning: 'meaning from dict B' },
+        { meaning: 'meaning from dict A', source: 'dict-a' },
+        { meaning: 'meaning from dict B', source: 'dict-b' },
       ]);
     });
 
@@ -154,7 +154,7 @@ describe('DictionaryService', () => {
       const result = await service.lookup('word', 'en', 'a word here', 2);
 
       expect(result.notFound).toBe(false);
-      expect(result.definitions).toEqual([{ meaning: 'found in dict B' }]);
+      expect(result.definitions).toEqual([{ meaning: 'found in dict B', source: 'dict-b' }]);
     });
 
     it('continues to the next local provider when one throws', async () => {
@@ -176,7 +176,7 @@ describe('DictionaryService', () => {
 
       const result = await service.lookup('word', 'en', 'a word here', 2);
 
-      expect(result.definitions).toEqual([{ meaning: 'found in dict B' }]);
+      expect(result.definitions).toEqual([{ meaning: 'found in dict B', source: 'dict-b' }]);
     });
 
     it('returns notFound when no local provider finds the word and there is no online fallback', async () => {
@@ -255,7 +255,7 @@ describe('DictionaryService', () => {
       const result = await service.lookup('word', 'en', 'a word here', 2);
 
       expect(result.spellCheck).toEqual({ correct: true, suggestions: [] });
-      expect(result.definitions).toEqual([{ meaning: 'a real definition' }]);
+      expect(result.definitions).toEqual([{ meaning: 'a real definition', source: 'dict-b' }]);
     });
   });
 

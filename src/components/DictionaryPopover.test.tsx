@@ -86,6 +86,26 @@ describe('DictionaryPopover', () => {
     expect(screen.getByTestId('dictionary-examples-0')).toHaveTextContent('The ephemeral nature of fashion trends.');
   });
 
+  it('does not show a source badge when a definition has no source', () => {
+    render(<DictionaryPopover lookupResult={foundResult} />);
+    expect(screen.queryByTestId('dictionary-source-0')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('dictionary-source-1')).not.toBeInTheDocument();
+  });
+
+  it('shows each definition\'s dictionary name when multiple dictionaries have the word', () => {
+    const multiDictResult: DictionaryLookupResult = {
+      word: 'bank',
+      language: 'en',
+      definitions: [
+        { meaning: 'a financial institution', source: 'Oxford Concise' },
+        { meaning: 'the side of a river', source: 'Collins English' },
+      ],
+    };
+    render(<DictionaryPopover lookupResult={multiDictResult} />);
+    expect(screen.getByTestId('dictionary-source-0')).toHaveTextContent('Oxford Concise');
+    expect(screen.getByTestId('dictionary-source-1')).toHaveTextContent('Collins English');
+  });
+
   it('shows "not found" message when notFound is true', () => {
     render(<DictionaryPopover lookupResult={notFoundResult} />);
     expect(screen.getByTestId('dictionary-not-found')).toBeInTheDocument();

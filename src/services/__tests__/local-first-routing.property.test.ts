@@ -207,8 +207,8 @@ describe('Feature: language-dictionaries, Property 6: Local-first provider routi
           // Online provider SHOULD be called
           expect(onlineProvider.lookup).toHaveBeenCalled();
 
-          // Result should come from online
-          expect(result.definitions).toEqual(onlineResult.definitions);
+          // Result should come from online, tagged with the online provider's source
+          expect(result.definitions).toEqual([{ ...onlineResult.definitions[0], source: 'online-provider' }]);
         }
       ),
       { numRuns: 100 }
@@ -299,8 +299,8 @@ describe('Feature: language-dictionaries, Property 6: Local-first provider routi
           // Online provider should be called
           expect(onlineProvider.lookup).toHaveBeenCalled();
 
-          // Result should contain the online definitions
-          expect(result.definitions).toEqual(onlineResult.definitions);
+          // Result should contain the online definitions, tagged with their source
+          expect(result.definitions).toEqual([{ ...onlineResult.definitions[0], source: 'online-provider' }]);
         }
       ),
       { numRuns: 100 }

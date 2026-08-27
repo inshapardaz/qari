@@ -83,6 +83,28 @@ export class DictionaryService {
   }
 
   /**
+   * Call a provider's lookup() and stamp its provider's display name (`name`,
+   * falling back to `id`) onto every returned definition's `source` field —
+   * unless the provider already set one itself. This is what lets the popover
+   * show which dictionary each definition came from, including when several
+   * local providers' results are merged together.
+   */
+  private async invokeProvider(
+    provider: DictionaryProvider,
+    word: string,
+    language: string,
+    context: string,
+    signal: AbortSignal
+  ): Promise<DictionaryResult> {
+    const result = await provider.lookup(word, language, context, signal);
+    const sourceName = provider.name ?? provider.id;
+    return {
+      ...result,
+      definitions: result.definitions.map((d) => ({ ...d, source: d.source ?? sourceName })),
+    };
+  }
+
+  /**
    * Look up a word in the dictionary appropriate for the given language.
    * Uses local-first routing: local providers are queried first, and their
    * results may be merged with online provider results.
@@ -134,7 +156,7 @@ export class DictionaryService {
       for (const entry of localEntries) {
         let localResult: DictionaryResult;
         try {
-          localResult = await entry.provider.lookup(word, language, context, signal);
+          localResult = await this.invokeProvider(entry.provider, word, language, context, signal);
         } catch (error: unknown) {
           // Silently return empty result for AbortError (expected cancellation)
           if (error instanceof Error && error.name === 'AbortError') {
@@ -185,7 +207,7 @@ export class DictionaryService {
         if (onlineEntries.length > 0) {
           const onlineProvider = onlineEntries[0].provider;
           try {
-            const onlineResult = await onlineProvider.lookup(word, language, context, signal);
+            const onlineResult = await this.invokeProvider(onlineProvider, word, language, context, signal);
             return { ...onlineResult, spellCheck: spellCheckResult.spellCheck };
           } catch (error: unknown) {
             if (error instanceof Error && error.name === 'AbortError') {
@@ -204,7 +226,7 @@ export class DictionaryService {
     if (onlineEntries.length > 0) {
       const onlineProvider = onlineEntries[0].provider;
       try {
-        const result = await onlineProvider.lookup(word, language, context, signal);
+        const result = await this.invokeProvider(onlineProvider, word, language, context, signal);
         return result;
       } catch (error: unknown) {
         // Silently return empty result for AbortError (expected cancellation)

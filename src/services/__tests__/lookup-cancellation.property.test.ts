@@ -156,7 +156,7 @@ describe('Feature: language-dictionaries, Property 15: Superseded lookup cancell
           const lastWord = words[words.length - 1];
           expect(lastResult.word).toBe(lastWord);
           expect(lastResult.definitions).toEqual([
-            { meaning: `Definition of ${lastWord}` },
+            { meaning: `Definition of ${lastWord}`, source: 'test-provider' },
           ]);
 
           // All earlier results should have empty definitions (cancelled)

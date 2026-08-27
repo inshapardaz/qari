@@ -5,7 +5,7 @@
  */
 
 import React, { useEffect, useRef, useCallback } from 'react';
-import { Paper, ActionIcon, Button, Loader, Text, Group } from '@mantine/core';
+import { Paper, ActionIcon, Button, Loader, Text, Group, Badge } from '@mantine/core';
 import type { DictionaryLookupResult } from '../services/dictionary-service';
 import { useTranslations, interpolate } from '../i18n';
 
@@ -159,20 +159,25 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
 
   // When loading and no result yet, show loading state
   if (loading && !lookupResult) {
-    const style: React.CSSProperties = anchorPosition
-      ? {
-          position: 'absolute',
-          top: `${anchorPosition.top + 8}px`,
-          left: `${anchorPosition.left}px`,
-          transform: 'translateX(-50%)',
-          zIndex: 1000,
-          maxWidth: '320px',
-          maxHeight: '50vh',
-          overflowY: 'auto',
-          fontSize: '14px',
-          lineHeight: '1.5',
-        }
-      : { position: 'relative' as const };
+    const style: React.CSSProperties = {
+      ...(anchorPosition
+        ? {
+            position: 'absolute',
+            top: `${anchorPosition.top + 8}px`,
+            left: `${anchorPosition.left}px`,
+            transform: 'translateX(-50%)',
+            zIndex: 1000,
+            maxWidth: '320px',
+            maxHeight: '50vh',
+            overflowY: 'auto',
+            fontSize: '14px',
+            lineHeight: '1.5',
+          }
+        : { position: 'relative' as const }),
+      backgroundColor: 'var(--reader-bg, #fff)',
+      color: 'var(--reader-fg, #1a1a1a)',
+      borderColor: 'var(--reader-border, #e8e8e8)',
+    };
 
     return (
       <Paper
@@ -185,14 +190,15 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
         tabIndex={-1}
         shadow="md"
         withBorder
-        p="sm"
+        p="md"
+        radius="lg"
       >
         <Group
           gap="xs"
           data-testid="dictionary-loading"
           role="status"
           aria-live="polite"
-          style={{ color: 'var(--reader-fg, #666)' }}
+          style={{ color: 'var(--reader-secondary, #666)' }}
         >
           <Loader size={14} />
           {t.dictionaryLoading}
@@ -214,21 +220,26 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
 
   const isNotFound = notFound && !hasNoDictionary;
 
-  const style: React.CSSProperties = anchorPosition
-    ? {
-        position: 'absolute',
-        top: `${anchorPosition.top + 8}px`,
-        left: `${anchorPosition.left}px`,
-        transform: 'translateX(-50%)',
-        zIndex: 1000,
-        maxWidth: '340px',
-        minWidth: '220px',
-        maxHeight: '50vh',
-        overflowY: 'auto',
-        fontSize: '14px',
-        lineHeight: '1.5',
-      }
-    : { position: 'relative' as const };
+  const style: React.CSSProperties = {
+    ...(anchorPosition
+      ? {
+          position: 'absolute',
+          top: `${anchorPosition.top + 8}px`,
+          left: `${anchorPosition.left}px`,
+          transform: 'translateX(-50%)',
+          zIndex: 1000,
+          maxWidth: '380px',
+          minWidth: '240px',
+          maxHeight: '50vh',
+          overflowY: 'auto',
+          fontSize: '14px',
+          lineHeight: '1.5',
+        }
+      : { position: 'relative' as const }),
+    backgroundColor: 'var(--reader-bg, #fff)',
+    color: 'var(--reader-fg, #1a1a1a)',
+    borderColor: 'var(--reader-border, #e8e8e8)',
+  };
 
   return (
     <Paper
@@ -241,7 +252,8 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
       tabIndex={-1}
       shadow="md"
       withBorder
-      p="sm"
+      p="md"
+      radius="lg"
     >
       {/* Loading indicator when loading with existing result */}
       {loading && (
@@ -259,13 +271,25 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
       )}
 
       {/* Header */}
-      <Group gap="xs" align="baseline" mb="xs" pb="xs" style={{ borderBottom: '1px solid var(--reader-border, #e8e8e8)' }}>
-        <Text className="dictionary-popover__word" data-testid="dictionary-word" fw={700} size="md">
-          {word}
-        </Text>
-        <Text className="dictionary-popover__language" data-testid="dictionary-language" size="xs" c="dimmed">
-          ({language})
-        </Text>
+      <Group gap="xs" align="flex-start" mb="sm" pb="sm" style={{ borderBottom: '1px solid var(--reader-border, #e8e8e8)' }}>
+        <Group gap={6} align="baseline" style={{ flex: 1, minWidth: 0 }}>
+          <Text
+            className="dictionary-popover__word"
+            data-testid="dictionary-word"
+            fw={700}
+            style={{ fontSize: '24px', lineHeight: 1.2, color: 'var(--reader-fg, #1a1a1a)', wordBreak: 'break-word' }}
+          >
+            {word}
+          </Text>
+          <Text
+            className="dictionary-popover__language"
+            data-testid="dictionary-language"
+            size="xs"
+            style={{ color: 'var(--reader-secondary, #888)' }}
+          >
+            ({language})
+          </Text>
+        </Group>
         {onClose && (
           <ActionIcon
             className="dictionary-popover__close"
@@ -275,7 +299,6 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
             variant="subtle"
             color="gray"
             size="sm"
-            ml="auto"
           >
             ×
           </ActionIcon>
@@ -366,22 +389,44 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
 
       {/* Definitions */}
       {!notFound && definitions.length > 0 && (
-        <ul className="dictionary-popover__definitions" data-testid="dictionary-definitions" role="list" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+        <ul className="dictionary-popover__definitions" data-testid="dictionary-definitions" role="list" style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {definitions.map((def, index) => (
-            <li key={index} className="dictionary-popover__definition" style={{ marginBottom: '10px', paddingBottom: index < definitions.length - 1 ? '10px' : 0, borderBottom: index < definitions.length - 1 ? '1px solid var(--reader-border, #f0f0f0)' : 'none' }}>
+            <li
+              key={index}
+              className="dictionary-popover__definition"
+              style={{
+                padding: '10px 12px',
+                borderRadius: '10px',
+                backgroundColor: 'var(--reader-surface, #f5f5f7)',
+              }}
+            >
               {def.partOfSpeech && (
-                <span
+                <Badge
                   className="dictionary-popover__pos"
                   data-testid={`dictionary-pos-${index}`}
-                  style={{ display: 'inline-block', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--reader-accent, #6366f1)', marginBottom: '2px' }}
+                  variant="light"
+                  size="sm"
+                  radius="sm"
+                  mb={6}
+                  style={{
+                    textTransform: 'none',
+                    // Override Mantine's own (Mantine-blue) badge color vars
+                    // directly, rather than passing a `color` prop — Mantine
+                    // computes "light"/"outline" tints via JS color math that
+                    // can't parse a `var(--reader-*)` reference, but plain CSS
+                    // custom properties compose fine (see MANTINE_PRIMARY_COLOR_STYLE
+                    // in Reader.tsx for the same technique).
+                    ['--badge-bg' as string]: 'color-mix(in srgb, var(--reader-accent, #0071e3) 15%, transparent)',
+                    ['--badge-color' as string]: 'var(--reader-accent, #0071e3)',
+                  }}
                 >
                   {def.partOfSpeech}
-                </span>
+                </Badge>
               )}
               <span
                 className="dictionary-popover__meaning"
                 data-testid={`dictionary-meaning-${index}`}
-                style={{ display: 'block', fontSize: '14px' }}
+                style={{ display: 'block', fontSize: '15px', color: 'var(--reader-fg, #1a1a1a)' }}
               >
                 {def.meaning}
               </span>
@@ -391,14 +436,47 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
                   data-testid={`dictionary-examples-${index}`}
                   role="list"
                   aria-label={t.dictionaryExamples}
-                  style={{ listStyle: 'none', padding: '4px 0 0 0', margin: 0 }}
+                  style={{
+                    listStyle: 'none',
+                    padding: 0,
+                    margin: '6px 0 0 0',
+                    borderLeft: '2px solid var(--reader-border, #ddd)',
+                  }}
                 >
                   {def.examples.map((example, exIdx) => (
-                    <li key={exIdx} className="dictionary-popover__example" style={{ fontSize: '13px', fontStyle: 'italic', opacity: 0.75, marginTop: '2px' }}>
+                    <li
+                      key={exIdx}
+                      className="dictionary-popover__example"
+                      style={{
+                        fontSize: '13px',
+                        fontStyle: 'italic',
+                        color: 'var(--reader-secondary, #666)',
+                        padding: '1px 0 1px 10px',
+                      }}
+                    >
                       &ldquo;{example}&rdquo;
                     </li>
                   ))}
                 </ul>
+              )}
+              {def.source && (
+                <Badge
+                  className="dictionary-popover__source"
+                  data-testid={`dictionary-source-${index}`}
+                  variant="outline"
+                  size="xs"
+                  radius="sm"
+                  mt={8}
+                  style={{
+                    textTransform: 'none',
+                    fontWeight: 500,
+                    ['--badge-bg' as string]: 'transparent',
+                    ['--badge-color' as string]: 'var(--reader-secondary, #666)',
+                    ['--badge-bd' as string]: '1px solid var(--reader-border, #ccc)',
+                  }}
+                >
+                  {def.source}
+                </Badge>
               )}
             </li>
           ))}

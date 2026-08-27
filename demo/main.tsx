@@ -206,8 +206,12 @@ function App() {
   // sets of local files, since that's how these dictionaries are normally
   // distributed. Multiple dictionaries can be loaded at once (even for the
   // same language — the reader merges definitions from all of them);
-  // `stardictLanguage` tags which book language the next one loaded applies to.
+  // `stardictLanguage` tags which book language the next one loaded applies to;
+  // `stardictName` is its display name (shown as the source label on each of
+  // its definitions in the popover) — left blank to fall back to the .ifo
+  // file's own `bookname` field.
   const [stardictLanguage, setStardictLanguage] = useState('en');
+  const [stardictName, setStardictName] = useState('');
   const [stardictEntries, setStardictEntries] = useState<
     { id: string; label: string; config: StarDictDictionaryConfig }[]
   >([]);
@@ -327,9 +331,21 @@ function App() {
 
     if (ifo && idx && dict) {
       const id = `${dictName}-${Date.now()}`;
+      const trimmedName = stardictName.trim();
+      const label = trimmedName ? `${trimmedName} (${stardictLanguage})` : `${dictName} (${stardictLanguage})`;
       setStardictEntries((prev) => [
         ...prev,
-        { id, label: `${dictName} (${stardictLanguage})`, config: { language: stardictLanguage, ifo, idx, dict } },
+        {
+          id,
+          label,
+          config: {
+            language: stardictLanguage,
+            ...(trimmedName && { name: trimmedName }),
+            ifo,
+            idx,
+            dict,
+          },
+        },
       ]);
       setStardictStatus('');
     } else {
@@ -564,6 +580,25 @@ function App() {
                 borderRadius: '4px',
                 fontSize: '0.9rem',
                 width: '70px',
+              }}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: '#555' }}>
+              name (shown as its source label — optional)
+            </label>
+            <input
+              type="text"
+              placeholder="(use .ifo bookname)"
+              value={stardictName}
+              onChange={(e) => setStardictName(e.target.value)}
+              style={{
+                padding: '0.5rem',
+                border: '1px solid #ccc',
+                borderRadius: '4px',
+                fontSize: '0.9rem',
+                width: '160px',
               }}
             />
           </div>

@@ -1528,6 +1528,7 @@ export const Reader: React.FC<ReaderProps> = ({
         try {
           const stardictProvider = new StarDictProvider({
             language: config.language,
+            name: config.name,
             ifo: config.ifo,
             idx: config.idx,
             dict: config.dict,

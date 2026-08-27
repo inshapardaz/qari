@@ -151,9 +151,10 @@ describe('Feature: language-dictionaries, Property 5: Provider registration orde
             expect(p.lookup).toHaveBeenCalled();
           }
 
-          // Every provider's definition should show up in the merged result
+          // Every provider's definition should show up in the merged result,
+          // tagged with that provider's id as its source
           for (const p of providers) {
-            expect(result.definitions).toContainEqual({ meaning: `Definition from ${p.id}` });
+            expect(result.definitions).toContainEqual({ meaning: `Definition from ${p.id}`, source: p.id });
           }
         }
       ),
