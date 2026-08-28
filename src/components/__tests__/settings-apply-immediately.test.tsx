@@ -45,15 +45,13 @@ describe('Settings panel applies changes immediately', () => {
     expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
   });
 
-  it('calls onSettingsChange with the new font size as soon as the + chip is clicked', async () => {
+  it('calls onSettingsChange with the new font size as soon as the toolbar\'s + button is clicked', async () => {
     const onSettingsChange = vi.fn();
     render(<Reader source={createMarkdownSource()} fontSize={16} onSettingsChange={onSettingsChange} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
 
-    await openSettings();
-    fireEvent.click(screen.getByText('+').closest('button')!);
+    fireEvent.click(screen.getByRole('button', { name: /Increase font size/ }));
 
-    expect(onSettingsChange).toHaveBeenCalledTimes(1);
     expect(onSettingsChange).toHaveBeenCalledWith(expect.objectContaining({ fontSize: 18 }));
   });
 
@@ -79,17 +77,13 @@ describe('Settings panel applies changes immediately', () => {
     expect(onSettingsChange).toHaveBeenCalledWith(expect.objectContaining({ scroll: false, columns: 2 }));
   });
 
-  it('reflects the current committed fontSize prop directly (no stale draft) each time it reopens', async () => {
+  it('reflects the current committed fontSize prop directly (no stale draft) in the toolbar readout', async () => {
     const { rerender } = render(<Reader source={createMarkdownSource()} fontSize={16} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('toolbar', { name: 'Font Size' })).toHaveTextContent('100%'));
 
-    await openSettings();
-    expect(screen.getByTestId('font-size-percent').textContent).toBe('100%');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Reading settings' })); // close
     rerender(<Reader source={createMarkdownSource()} fontSize={24} />);
 
-    await openSettings();
-    expect(screen.getByTestId('font-size-percent').textContent).toBe('150%');
+    await waitFor(() => expect(screen.getByRole('toolbar', { name: 'Font Size' })).toHaveTextContent('150%'));
   });
 });

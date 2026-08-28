@@ -100,6 +100,29 @@ describe('DictionaryPopover - Translation Integration', () => {
     });
   });
 
+  describe('add-to-note button', () => {
+    it('renders translated dictionaryAddToNote text', () => {
+      const customTranslations: TranslationStrings = {
+        ...DEFAULT_TRANSLATIONS,
+        dictionaryAddToNote: 'Ajouter à une note',
+      };
+
+      renderWithTranslations(
+        <DictionaryPopover
+          lookupResult={{
+            word: 'test',
+            language: 'en',
+            definitions: [{ meaning: 'a trial', partOfSpeech: 'noun' }],
+          }}
+          onAddToNote={() => {}}
+        />,
+        customTranslations
+      );
+
+      expect(screen.getByTestId('dictionary-add-to-note')).toHaveTextContent('Ajouter à une note');
+    });
+  });
+
   describe('fallback language button (Requirement 5.5)', () => {
     it('renders interpolated dictionaryTryIn message on the fallback button', () => {
       const customTranslations: TranslationStrings = {

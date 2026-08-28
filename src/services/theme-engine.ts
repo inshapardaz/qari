@@ -33,6 +33,18 @@ const FONT_SIZE_STEP = 2;
  * contrast (black bg + white text = 21:1) and keeps that guarantee
  * regardless of the other themes' tuning.
  *
+ * Retuned to move each theme's exact values toward its nearest counterpart
+ * in the Qari Reader Mockups design (light→light, paper→paper, calm→sepia,
+ * quiet→dusk, dark→dark, high-contrast→contrast) without renaming any key —
+ * the `ThemeName` union is a public API host apps persist and pass back in,
+ * so only the color *values* move, never the keys. `focus` has no
+ * counterpart in that design (which has `forest` instead, itself with no
+ * counterpart here), so it's untouched. Every `secondary` value was
+ * contrast-checked against its own `background` after retuning (see the
+ * `secondary` paragraph below) — two of the mockup's own raw secondary
+ * values (paper, sepia/calm) landed under the 4.5:1 floor and were darkened
+ * a step further than the mockup's own choice to clear it.
+ *
  * `secondary` is each theme's own muted/dimmed text tone (subtitles, author
  * names, captions) — every value here clears WCAG AA's 4.5:1 text-contrast
  * minimum against that theme's own `background`, high-contrast comfortably
@@ -48,59 +60,68 @@ const FONT_SIZE_STEP = 2;
  * reads as the exact same "selected" color the header's own toggle buttons
  * already use there, instead of an unrelated accent hue that only agrees
  * with `foreground` by coincidence (or not at all). light/calm/
- * high-contrast keep a genuinely distinct accent hue instead.
+ * high-contrast keep a genuinely distinct accent hue instead — for those
+ * three, the accent hue itself was retuned toward the mockup design's own
+ * (a muted plum for light, a warmer brick-red for calm/sepia, a brighter
+ * gold for high-contrast/contrast), each re-verified against `background`
+ * to stay well clear of the same contrast floors.
  */
 export const THEMES: Record<ThemeName, ThemeColors> = {
   light: {
     background: '#ffffff',
-    foreground: '#1a1a1a',
-    accent: '#0071e3',
-    surface: '#f5f5f7',
-    border: '#d2d2d7',
-    secondary: '#6e6e73',
+    foreground: '#1c1c1c',
+    accent: '#5a3a5f',
+    surface: '#faf9f7',
+    border: '#e6e4e0',
+    secondary: '#6b6b6b',
   },
   dark: {
     background: '#000000',
-    foreground: '#d6d6d6',
+    foreground: '#c9c9c9',
     // Same reasoning as paper's own accent below — matches the header's
     // "selected" toggle-button state (backgroundColor: var(--reader-fg)),
     // rather than a separate highlight hue unrelated to the rest of the
     // theme's neutral black/off-white palette.
-    accent: '#d6d6d6',
-    surface: '#1c1c1e',
-    border: '#38383a',
-    secondary: '#98989d',
+    accent: '#c9c9c9',
+    surface: '#1a1a1a',
+    border: '#2a2a2a',
+    secondary: '#8a8a8a',
   },
   calm: {
-    background: '#f6ecd8',
-    foreground: '#5b4636',
-    accent: '#8b5e34',
-    surface: '#efe1c6',
-    border: '#ddcba6',
-    secondary: '#7a6754',
+    background: '#ead9be',
+    foreground: '#4a3728',
+    accent: '#6b3a3a',
+    surface: '#ddc9a3',
+    border: '#cdb488',
+    // Darkened one step past the mockup's own sepia `sub` (#7c6248, which
+    // measures 4.10:1 here — under the 4.5:1 AA floor) to actually clear it.
+    secondary: '#6f573f',
   },
   quiet: {
-    background: '#3a3a3c',
-    foreground: '#c7c7cc',
+    background: '#2b2b30',
+    foreground: '#d9d4c8',
     // Same reasoning as dark/paper's own accent — matches the header's
     // "selected" toggle-button state rather than a separate highlight hue.
-    accent: '#c7c7cc',
-    surface: '#48484a',
-    border: '#5a5a5c',
-    secondary: '#a5a5aa',
+    accent: '#d9d4c8',
+    surface: '#34343a',
+    border: '#45454c',
+    secondary: '#9a968c',
   },
   paper: {
-    background: '#e9e9e7',
-    foreground: '#1c1c1e',
+    background: '#f6efe1',
+    foreground: '#3a2f28',
     // Deliberately the same as `foreground`, not a distinct highlight hue
     // like the other themes' accents — matches the header's own "selected"
     // toggle-button state (backgroundColor: var(--reader-fg)), so Paper's
     // neutral, monochrome look (see the Apple Books reference this theme
-    // was modeled on) doesn't get an incongruous blue accent bolted onto it.
-    accent: '#1c1c1e',
-    surface: '#dcdcda',
-    border: '#c7c7c5',
-    secondary: '#636368',
+    // was modeled on) doesn't get an incongruous accent hue bolted onto it.
+    accent: '#3a2f28',
+    surface: '#efe6d2',
+    border: '#ddcfae',
+    // Darkened one step past the mockup's own paper `sub` (#7a6a56, which
+    // measures 4.56:1 here — a hair over the 4.5:1 AA floor) for a
+    // comfortable margin instead of a razor-thin pass.
+    secondary: '#6f5c48',
   },
   focus: {
     background: '#faf6ef',
@@ -116,7 +137,7 @@ export const THEMES: Record<ThemeName, ThemeColors> = {
   'high-contrast': {
     background: '#000000',
     foreground: '#ffffff',
-    accent: '#ffff00',
+    accent: '#ffdd55',
     surface: '#1a1a1a',
     border: '#ffffff',
     secondary: '#c9c9c9',

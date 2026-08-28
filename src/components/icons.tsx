@@ -63,15 +63,6 @@ export function SearchIcon({ size = '1.1em' }: IconProps) {
   );
 }
 
-export function ThemeIcon({ size = '1.1em' }: IconProps) {
-  return (
-    <svg {...defaultProps} width={size} height={size}>
-      <circle cx="12" cy="12" r="8.25" />
-      <path d="M12 3.75a8.25 8.25 0 0 1 0 16.5V3.75Z" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
 export function SinglePageIcon({ size = '1.1em' }: IconProps) {
   return (
     <svg {...defaultProps} width={size} height={size}>

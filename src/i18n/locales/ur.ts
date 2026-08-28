@@ -34,6 +34,8 @@ export const ur: TranslationStrings = {
   themeHighContrast: 'اعلیٰ تباین',
   settingsFontFamily: 'فونٹ فیملی',
   settingsFontSize: 'فونٹ سائز',
+  settingsFontSizeDecrease: 'فونٹ سائز کم کریں',
+  settingsFontSizeIncrease: 'فونٹ سائز بڑھائیں',
   settingsJustify: 'متن جواز',
   settingsLineSpacing: 'لائن اسپیسنگ',
   settingsLetterSpacing: 'حروف اسپیسنگ',
@@ -62,6 +64,7 @@ export const ur: TranslationStrings = {
   dictionaryLoadingAriaLabel: 'لغت تلاش ہو رہی ہے',
   dictionaryExamples: 'مثالیں',
   dictionaryLookupMenuItem: 'معنی',
+  dictionaryAddToNote: 'نوٹ میں شامل کریں',
 
   // Bookmark panel
   bookmarksPanelTitle: 'بک مارکس',
@@ -73,6 +76,7 @@ export const ur: TranslationStrings = {
   notesPanelTitle: 'نوٹس',
   notesEmpty: 'ابھی کوئی نوٹ نہیں۔ متن منتخب کریں اور شامل کرنے کے لیے دائیں کلک کریں۔',
   noteAddMenuItem: 'نوٹ شامل کریں',
+  noteCopyMenuItem: 'کاپی کریں',
   noteRemoveMenuItem: 'نوٹ حذف کریں',
   noteEditComment: 'تبصرہ میں ترمیم کریں',
   noteCommentPlaceholder: 'تبصرہ شامل کریں…',

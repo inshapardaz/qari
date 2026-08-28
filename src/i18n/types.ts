@@ -33,6 +33,10 @@ export interface TranslationStrings {
   themeHighContrast: string;
   settingsFontFamily: string;
   settingsFontSize: string; // supports {size}
+  /** Toolbar button that decreases font size — a distinct label from settingsFontSize since it names an action, not a value. */
+  settingsFontSizeDecrease: string;
+  /** Toolbar button that increases font size. */
+  settingsFontSizeIncrease: string;
   settingsJustify: string;
   settingsLineSpacing: string; // supports {value}
   settingsLetterSpacing: string; // supports {value}
@@ -62,6 +66,8 @@ export interface TranslationStrings {
   dictionaryExamples: string;
   /** Context menu item that triggers a dictionary lookup for the selected text. */
   dictionaryLookupMenuItem: string;
+  /** Button at the end of the dictionary popover that turns the looked-up selection into a note. */
+  dictionaryAddToNote: string;
 
   // Bookmark panel
   bookmarksPanelTitle: string;
@@ -75,6 +81,8 @@ export interface TranslationStrings {
   notesEmpty: string;
   /** Context menu item shown on right-click after selecting text. */
   noteAddMenuItem: string;
+  /** Context menu item shown on right-click after selecting text; copies the selection to the clipboard. */
+  noteCopyMenuItem: string;
   /** Context menu item shown on right-click over an existing note highlight. */
   noteRemoveMenuItem: string;
   /** Button that reveals the comment editor for a note. */

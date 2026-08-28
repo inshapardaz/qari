@@ -112,6 +112,25 @@ describe('DictionaryPopover', () => {
     expect(screen.getByTestId('dictionary-not-found')).toHaveTextContent('No definition found');
   });
 
+  it('shows an "Add to note" button when onAddToNote is provided and a definition was found', () => {
+    const onAddToNote = vi.fn();
+    render(<DictionaryPopover lookupResult={foundResult} onAddToNote={onAddToNote} />);
+    const button = screen.getByTestId('dictionary-add-to-note');
+    expect(button).toBeInTheDocument();
+    fireEvent.click(button);
+    expect(onAddToNote).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not show "Add to note" when onAddToNote is omitted', () => {
+    render(<DictionaryPopover lookupResult={foundResult} />);
+    expect(screen.queryByTestId('dictionary-add-to-note')).not.toBeInTheDocument();
+  });
+
+  it('does not show "Add to note" when the word was not found, even with onAddToNote provided', () => {
+    render(<DictionaryPopover lookupResult={notFoundResult} onAddToNote={vi.fn()} />);
+    expect(screen.queryByTestId('dictionary-add-to-note')).not.toBeInTheDocument();
+  });
+
   it('shows "no dictionary for this language" message', () => {
     render(<DictionaryPopover lookupResult={noDictResult} />);
     expect(screen.getByTestId('dictionary-no-dict')).toBeInTheDocument();
@@ -143,17 +162,13 @@ describe('DictionaryPopover', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('positions the popover using anchorPosition', () => {
-    render(
-      <DictionaryPopover
-        lookupResult={foundResult}
-        anchorPosition={{ top: 100, left: 200 }}
-      />
-    );
+  it('always centers itself in the viewport, regardless of where the selection was', () => {
+    render(<DictionaryPopover lookupResult={foundResult} />);
     const popover = screen.getByTestId('dictionary-popover');
-    expect(popover.style.top).toBe('108px');
-    expect(popover.style.left).toBe('200px');
-    expect(popover.style.position).toBe('absolute');
+    expect(popover.style.position).toBe('fixed');
+    expect(popover.style.top).toBe('50%');
+    expect(popover.style.left).toBe('50%');
+    expect(popover.style.transform).toBe('translate(-50%, -50%)');
   });
 
   it('has accessible dialog role and label', () => {

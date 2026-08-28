@@ -34,6 +34,8 @@ export const en: TranslationStrings = {
   themeHighContrast: 'HC',
   settingsFontFamily: 'Font Family',
   settingsFontSize: 'Font Size',
+  settingsFontSizeDecrease: 'Decrease font size',
+  settingsFontSizeIncrease: 'Increase font size',
   settingsJustify: 'Justify Text',
   settingsLineSpacing: 'Line Spacing',
   settingsLetterSpacing: 'Letter Spacing',
@@ -62,6 +64,7 @@ export const en: TranslationStrings = {
   dictionaryLoadingAriaLabel: 'Dictionary lookup loading',
   dictionaryExamples: 'Examples',
   dictionaryLookupMenuItem: 'Meaning',
+  dictionaryAddToNote: 'Add to note',
 
   // Bookmark panel
   bookmarksPanelTitle: 'Bookmarks',
@@ -73,6 +76,7 @@ export const en: TranslationStrings = {
   notesPanelTitle: 'Notes',
   notesEmpty: 'No notes yet. Select text and right-click to add one.',
   noteAddMenuItem: 'Add note',
+  noteCopyMenuItem: 'Copy',
   noteRemoveMenuItem: 'Remove note',
   noteEditComment: 'Edit comment',
   noteCommentPlaceholder: 'Add a comment…',

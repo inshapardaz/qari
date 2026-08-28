@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { Reader } from '../Reader';
 import type { ReaderSource } from '../Reader';
+import type { DictionaryProvider } from '../../interfaces/dictionary';
 
 function createMarkdownSource(): ReaderSource {
   return {
@@ -160,11 +161,13 @@ describe('Notes feature', () => {
 
     const menu = await screen.findByTestId('note-context-menu');
     // "Add note" is a label over a row of color-circle buttons, not itself
-    // a menuitem (see clickAddNote's comment) — "Remove note" is still a
-    // plain Menu.Item, so it's the only one that shows up as a menuitem.
+    // a menuitem (see clickAddNote's comment) — "Copy" and "Remove note"
+    // are plain Menu.Items, so those are the ones that show up as menuitems.
+    // "Copy" appears because there's a fresh selection ('world') alongside
+    // the right-clicked highlight.
     expect(within(menu).getByText('Add note')).toBeInTheDocument();
     expect(within(menu).getByTestId('note-add-color-yellow')).toBeInTheDocument();
-    expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Remove note']);
+    expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Copy', 'Remove note']);
   });
 
   it('positions the context menu relative to the reader root, not raw viewport coordinates', async () => {
@@ -241,7 +244,7 @@ describe('Notes feature', () => {
     expect(within(menu).getByText('Add note')).toBeInTheDocument();
     expect(within(menu).getByTestId('note-add-color-yellow')).toBeInTheDocument();
     const items = within(menu).getAllByRole('menuitem');
-    expect(items.map(item => item.textContent)).toEqual(['Meaning']);
+    expect(items.map(item => item.textContent)).toEqual(['Copy', 'Meaning']);
   });
 
   it('triggers a dictionary lookup when "Meaning" is clicked, and closes the menu', async () => {
@@ -272,7 +275,39 @@ describe('Notes feature', () => {
     }
   });
 
-  it('only shows "Add note" (no "Meaning") when no dictionary providers are configured', async () => {
+  it('creates a note from the dictionary popover\'s "Add to note" button', async () => {
+    const fakeProvider: DictionaryProvider = {
+      id: 'fake',
+      supportedLanguages: ['en'],
+      lookup: async (word) => ({
+        word,
+        language: 'en',
+        definitions: [{ meaning: 'a made-up definition for testing', partOfSpeech: 'noun' }],
+      }),
+    };
+
+    render(<Reader source={createMarkdownSource()} dictionaryProviders={[fakeProvider]} />);
+    await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
+
+    const content = document.querySelector('.ebook-reader__columns') as HTMLElement;
+    selectText(content, 'wonderful');
+    fireEvent.contextMenu(content);
+    await screen.findByTestId('note-context-menu');
+
+    fireEvent.click(screen.getByText('Meaning'));
+
+    const addToNote = await screen.findByTestId('dictionary-add-to-note');
+    fireEvent.click(addToNote);
+
+    expect(screen.queryByTestId('dictionary-popover')).not.toBeInTheDocument();
+    await waitFor(() => {
+      const mark = content.querySelector('mark.qari-note-highlight');
+      expect(mark).not.toBeNull();
+      expect(mark!.textContent).toBe('wonderful');
+    });
+  });
+
+  it('only shows "Add note" and "Copy" (no "Meaning") when no dictionary providers are configured', async () => {
     render(<Reader source={createMarkdownSource()} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
 
@@ -283,7 +318,8 @@ describe('Notes feature', () => {
     const menu = await screen.findByTestId('note-context-menu');
     expect(within(menu).getByText('Add note')).toBeInTheDocument();
     expect(within(menu).queryByText('Meaning')).not.toBeInTheDocument();
-    expect(within(menu).queryAllByRole('menuitem')).toHaveLength(0);
+    // "Copy" isn't gated on dictionary providers — it's still offered.
+    expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Copy']);
   });
 
   it('does not show the Notes tab or accept right-click note creation when enableNotes is false', async () => {

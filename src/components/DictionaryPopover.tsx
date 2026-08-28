@@ -1,7 +1,12 @@
 /**
- * DictionaryPopover Component — displays word lookup results in a positioned popover.
+ * DictionaryPopover Component — displays word lookup results in a centered popover.
  * Shows definitions, part of speech, examples, and handles "not found" and
  * "no dictionary for language" states with fallback offers.
+ *
+ * Always centers in the reader's own viewport (the reader root establishes
+ * the containing block for `position: fixed` — see its own comment in
+ * Reader.tsx) rather than anchoring to the selection point: a selection near
+ * an edge could otherwise push the popover partly or fully off-screen.
  */
 
 import React, { useEffect, useRef, useCallback } from 'react';
@@ -9,11 +14,21 @@ import { Paper, ActionIcon, Button, Loader, Text, Group, Badge } from '@mantine/
 import type { DictionaryLookupResult } from '../services/dictionary-service';
 import { useTranslations, interpolate } from '../i18n';
 
+const CENTERED_POPOVER_STYLE: React.CSSProperties = {
+  position: 'fixed',
+  top: '50%',
+  left: '50%',
+  transform: 'translate(-50%, -50%)',
+  zIndex: 1000,
+  maxHeight: '70vh',
+  overflowY: 'auto',
+  fontSize: '14px',
+  lineHeight: '1.5',
+};
+
 export interface DictionaryPopoverProps {
   /** The lookup result to display */
   lookupResult: DictionaryLookupResult | null;
-  /** Anchor position for the popover (relative to reader viewport) */
-  anchorPosition?: { top: number; left: number };
   /** Whether the popover is visible */
   visible?: boolean;
   /** Whether a lookup is currently in progress */
@@ -24,16 +39,23 @@ export interface DictionaryPopoverProps {
   onClose?: () => void;
   /** Called when the user selects a spelling suggestion */
   onSuggestionSelect?: (word: string) => void;
+  /**
+   * Called when the user clicks "Add to note", turning the looked-up
+   * selection into a persistent note. Omit this prop (rather than passing a
+   * no-op) to hide the button entirely — e.g. when notes are disabled, or
+   * there's no selection left to attach a note to.
+   */
+  onAddToNote?: () => void;
 }
 
 export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
   lookupResult,
-  anchorPosition,
   visible = true,
   loading = false,
   onFallbackLookup,
   onClose,
   onSuggestionSelect,
+  onAddToNote,
 }) => {
   const t = useTranslations();
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -160,20 +182,8 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
   // When loading and no result yet, show loading state
   if (loading && !lookupResult) {
     const style: React.CSSProperties = {
-      ...(anchorPosition
-        ? {
-            position: 'absolute',
-            top: `${anchorPosition.top + 8}px`,
-            left: `${anchorPosition.left}px`,
-            transform: 'translateX(-50%)',
-            zIndex: 1000,
-            maxWidth: '320px',
-            maxHeight: '50vh',
-            overflowY: 'auto',
-            fontSize: '14px',
-            lineHeight: '1.5',
-          }
-        : { position: 'relative' as const }),
+      ...CENTERED_POPOVER_STYLE,
+      maxWidth: '320px',
       backgroundColor: 'var(--reader-bg, #fff)',
       color: 'var(--reader-fg, #1a1a1a)',
       borderColor: 'var(--reader-border, #e8e8e8)',
@@ -221,21 +231,9 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
   const isNotFound = notFound && !hasNoDictionary;
 
   const style: React.CSSProperties = {
-    ...(anchorPosition
-      ? {
-          position: 'absolute',
-          top: `${anchorPosition.top + 8}px`,
-          left: `${anchorPosition.left}px`,
-          transform: 'translateX(-50%)',
-          zIndex: 1000,
-          maxWidth: '380px',
-          minWidth: '240px',
-          maxHeight: '50vh',
-          overflowY: 'auto',
-          fontSize: '14px',
-          lineHeight: '1.5',
-        }
-      : { position: 'relative' as const }),
+    ...CENTERED_POPOVER_STYLE,
+    maxWidth: '380px',
+    minWidth: '240px',
     backgroundColor: 'var(--reader-bg, #fff)',
     color: 'var(--reader-fg, #1a1a1a)',
     borderColor: 'var(--reader-border, #e8e8e8)',
@@ -481,6 +479,29 @@ export const DictionaryPopover: React.FC<DictionaryPopoverProps> = ({
             </li>
           ))}
         </ul>
+      )}
+
+      {/* Turns the looked-up selection into a persistent note. Only
+          rendered when the caller has a selection to attach one to — see
+          `onAddToNote`'s own doc comment. */}
+      {onAddToNote && !notFound && (
+        <Button
+          className="dictionary-popover__add-to-note"
+          data-testid="dictionary-add-to-note"
+          onClick={onAddToNote}
+          variant="filled"
+          size="compact-sm"
+          fullWidth
+          mt="sm"
+          styles={{
+            root: {
+              backgroundColor: 'var(--reader-accent, #0071e3)',
+              color: 'var(--reader-bg, #ffffff)',
+            },
+          }}
+        >
+          {t.dictionaryAddToNote}
+        </Button>
       )}
     </Paper>
   );

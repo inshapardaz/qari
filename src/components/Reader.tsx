@@ -72,7 +72,7 @@ import { SearchPanel } from './SearchPanel';
 import { DictionaryPopover } from './DictionaryPopover';
 import { FootnotePopover } from './FootnotePopover';
 import { ImageLightbox } from './ImageLightbox';
-import { BookmarkIcon, NoteIcon, SearchIcon, ChaptersIcon, ThemeIcon, SinglePageIcon, DoublePageIcon, ScrollIcon, ExitFullscreenIcon, ChevronLeftIcon, ChevronRightIcon } from './icons';
+import { BookmarkIcon, NoteIcon, SearchIcon, ChaptersIcon, SinglePageIcon, DoublePageIcon, ScrollIcon, ExitFullscreenIcon, ChevronLeftIcon, ChevronRightIcon } from './icons';
 
 import { TranslationContext, DEFAULT_TRANSLATIONS, useTranslations, interpolate } from '../i18n';
 import type { TranslationStrings } from '../i18n';
@@ -1578,7 +1578,10 @@ export const Reader: React.FC<ReaderProps> = ({
   // ---------------------------------------------------------------------------
   // Selection handler hook — bridges user text interactions with dictionary lookups
   // ---------------------------------------------------------------------------
-  const { anchorPosition, lookupState, triggerLookup, dismiss, triggerFromCurrentSelection } = useSelectionHandler({
+  // `anchorPosition` (this hook's own selection-relative coordinates) isn't
+  // read here — the dictionary popover now always centers itself instead of
+  // anchoring to the selection point (see DictionaryPopover's own comment).
+  const { lookupState, triggerLookup, dismiss, triggerFromCurrentSelection } = useSelectionHandler({
     contentRef,
     hasProviders,
     // When notes are enabled, Reader owns the right-click gesture itself
@@ -1593,6 +1596,12 @@ export const Reader: React.FC<ReaderProps> = ({
   // ---------------------------------------------------------------------------
   const [dictionaryResult, setDictionaryResult] = useState<DictionaryLookupResult | null>(null);
   const [dictionaryLoading, setDictionaryLoading] = useState(false);
+  // Captured once, when the lookup starts — independent of `pendingNote`
+  // (which the unified context menu clears as soon as its own "Meaning"
+  // item is clicked, before the popover ever shows a result) so the
+  // popover's own "Add to note" button still has a selection to work with
+  // regardless of which gesture opened it.
+  const [dictionarySelection, setDictionarySelection] = useState<{ start: number; end: number; text: string } | null>(null);
 
   // Perform dictionary lookup when selection handler triggers it
   useEffect(() => {
@@ -1611,6 +1620,14 @@ export const Reader: React.FC<ReaderProps> = ({
 
     const word = text.split(/\s+/)[0];
     if (!word) return;
+
+    if (selection.rangeCount > 0 && contentRef.current) {
+      const range = selection.getRangeAt(0);
+      if (contentRef.current.contains(range.commonAncestorContainer)) {
+        const { start, end } = getRangeOffsets(contentRef.current, range);
+        setDictionarySelection(start !== end ? { start, end, text: selection.toString() } : null);
+      }
+    }
 
     setDictionaryLoading(true);
     setDictionaryResult(null);
@@ -1662,6 +1679,7 @@ export const Reader: React.FC<ReaderProps> = ({
     dismiss();
     setDictionaryResult(null);
     setDictionaryLoading(false);
+    setDictionarySelection(null);
   }, [dismiss]);
 
   // ---------------------------------------------------------------------------
@@ -1826,9 +1844,15 @@ export const Reader: React.FC<ReaderProps> = ({
     setPendingNote({ x, y, selection: selectionInfo, noteId });
   }, [enableNotes]);
 
-  const handleCreateNoteFromSelection = useCallback(async (color?: NoteColor) => {
-    const pending = pendingNote?.selection;
-    setPendingNote(null);
+  // Shared by both places a note can be created from a text selection: the
+  // unified context menu (via `pendingNote.selection`) and the dictionary
+  // popover's "Add to note" button (via `dictionarySelection`) — those two
+  // flows track the underlying selection independently (see `dictionarySelection`
+  // below for why), but converge on the same create/persist logic here.
+  const createNoteFromSelectionInfo = useCallback(async (
+    pending: { start: number; end: number; text: string } | null,
+    color?: NoteColor
+  ) => {
     if (!pending || !noteStoreRef.current || !state.book) return;
 
     const chapterId = state.book.chapters[currentChapterIdx]?.id;
@@ -1856,7 +1880,19 @@ export const Reader: React.FC<ReaderProps> = ({
     } catch {
       // Note creation failure is non-fatal — the reader stays usable either way.
     }
-  }, [pendingNote, state.book, currentChapterIdx, addNote]);
+  }, [state.book, currentChapterIdx, addNote]);
+
+  const handleCreateNoteFromSelection = useCallback(async (color?: NoteColor) => {
+    const pending = pendingNote?.selection;
+    setPendingNote(null);
+    await createNoteFromSelectionInfo(pending ?? null, color);
+  }, [pendingNote, createNoteFromSelectionInfo]);
+
+  const handleAddNoteFromDictionary = useCallback(async () => {
+    const pending = dictionarySelection;
+    handleDictionaryClose();
+    await createNoteFromSelectionInfo(pending);
+  }, [dictionarySelection, createNoteFromSelectionInfo]);
 
   const handleRemoveNoteFromMenu = useCallback(async () => {
     const noteId = pendingNote?.noteId;
@@ -3361,21 +3397,32 @@ export const Reader: React.FC<ReaderProps> = ({
                       interaction with the content behind it while it's
                       open, and closes the drawer on an outside click — but
                       instead of Mantine's default 60%-black scrim (which
-                      would read as the content vanishing), it stays fully
-                      see-through (`backgroundOpacity={0}`) and uses a
-                      `backdrop-filter: blur()` instead, the same "frosted
-                      glass" effect a modal backdrop typically gives. This
-                      portals into the content viewport
+                      would read as the content vanishing), it's a much
+                      lighter dim so the pages stay legible-but-secondary
+                      behind it. A `backdrop-filter: blur()` was tried here
+                      first for a "frosted glass" look, but Chromium doesn't
+                      reliably composite `backdrop-filter` through the page
+                      content's own `transform: translateX(...)` (used for
+                      column-pagination page turns just below) — instead of
+                      blurring, it can render as fully opaque, hiding the
+                      pages completely rather than dimming them. A plain
+                      low-opacity scrim has no such dependency on what's
+                      behind it. `fixed={false}` additionally keeps the
+                      overlay `position: absolute` (sized against this
+                      viewport, which is already `position: relative`)
+                      instead of Mantine's default `position: fixed` —
+                      `fixed` descendants of a `transform`ed ancestor (this
+                      viewport has one, see below) reparent their containing
+                      block to that ancestor, which is a second layering
+                      trick this overlay doesn't need on top of the first.
+                      This portals into the content viewport
                       (`mantineContentPortalTarget`, not the whole-reader
                       `mantinePortalTarget` every other overlay here uses) so
-                      the overlay/blur only spans the content area: the
-                      header and footer bars sit outside it entirely, so
-                      their buttons (theme, zoom, close, etc.) stay fully
-                      visible, sharp, and clickable while the drawer is
-                      open, instead of being blurred over and made
-                      unclickable by an overlay that used to span the whole
-                      reader. */}
-                  <Drawer.Overlay backgroundOpacity={0} blur={4} />
+                      the overlay only spans the content area: the header and
+                      footer bars sit outside it entirely, so their buttons
+                      (theme, zoom, close, etc.) stay fully visible and
+                      clickable while the drawer is open. */}
+                  <Drawer.Overlay backgroundOpacity={0.25} fixed={false} />
                   {/* Overridden here rather than left to Mantine's own
                       forced light/dark colorScheme (see `mantineColorScheme`
                       above): that only gives Mantine components a binary
@@ -3633,7 +3680,21 @@ export const Reader: React.FC<ReaderProps> = ({
                           ? { backgroundColor: 'var(--reader-fg, #1a1a1a)', color: 'var(--reader-bg, #ffffff)' }
                           : { color: 'var(--reader-fg, #1a1a1a)' }}
                       >
-                        <ThemeIcon />
+                        {/* A swatch of the active theme's own colors rather
+                            than a generic icon — same gradient idea as each
+                            option's own swatch in the dropdown below, so the
+                            trigger itself previews which theme is picked. */}
+                        <span
+                          aria-hidden="true"
+                          style={{
+                            width: '1.1em',
+                            height: '1.1em',
+                            borderRadius: '50%',
+                            display: 'block',
+                            background: 'linear-gradient(135deg, var(--reader-accent, #0071e3), var(--reader-bg, #ffffff))',
+                            border: '1.5px solid currentColor',
+                          }}
+                        />
                       </ActionIcon>
                     </Popover.Target>
                     <Popover.Dropdown data-testid="theme-panel" p="sm" style={POPOVER_THEME_STYLE}>
@@ -3656,21 +3717,36 @@ export const Reader: React.FC<ReaderProps> = ({
                                 aria-pressed={active}
                                 aria-label={label}
                                 style={{
-                                  width: '3rem',
-                                  height: '3rem',
-                                  borderRadius: 'var(--mantine-radius-lg)',
-                                  border: active ? '2px solid var(--mantine-primary-color-filled)' : '1px solid var(--mantine-color-default-border)',
+                                  width: '2.75rem',
+                                  height: '2.75rem',
+                                  borderRadius: '50%',
+                                  border: active ? '2px solid var(--mantine-primary-color-filled)' : `1px solid ${THEMES[thm].border}`,
                                   boxShadow: active ? '0 2px 6px rgba(0, 0, 0, 0.15)' : 'none',
                                   backgroundColor: THEMES[thm].background,
-                                  color: THEMES[thm].foreground,
-                                  fontWeight: 700,
-                                  fontSize: '1.1rem',
                                   cursor: 'pointer',
                                   padding: 0,
+                                  position: 'relative',
                                   transition: 'box-shadow 0.15s, border-color 0.15s',
                                 }}
                               >
-                                Aa
+                                {/* Decorative bar standing in for a line of
+                                    text — echoes the theme's own foreground
+                                    color inside its own background, giving
+                                    the swatch a hint of the reading contrast
+                                    it represents instead of a plain color dot. */}
+                                <span
+                                  aria-hidden="true"
+                                  style={{
+                                    position: 'absolute',
+                                    bottom: '20%',
+                                    left: '22%',
+                                    right: '22%',
+                                    height: '14%',
+                                    borderRadius: '2px',
+                                    backgroundColor: THEMES[thm].foreground,
+                                    opacity: 0.6,
+                                  }}
+                                />
                               </button>
                               <Text size="10px" c="dimmed" fw={active ? 700 : 500} style={{ textAlign: 'center', lineHeight: 1.15, maxWidth: '3.5rem' }}>
                                 {label}
@@ -3766,11 +3842,50 @@ export const Reader: React.FC<ReaderProps> = ({
                     </Popover.Dropdown>
                   </Popover>
 
-                  {/* Text settings (font size/family, justify, spacing,
-                      margin) — all meaningless for PDFs, which render each
-                      page as a fixed-size rasterized image rather than
-                      reflowable text, so the whole "Aa" panel is hidden for
-                      them rather than shown with controls that do nothing. */}
+                  {/* Font size — lives directly in the toolbar (not just
+                      inside the "Aa" panel) for one-tap access, mirroring
+                      the PDF zoom toolbar's own −/value/+ pattern below.
+                      Meaningless for PDFs, same reasoning as the "Aa" panel
+                      right after it. */}
+                  {!isPdfBook && (
+                    <div
+                      role="toolbar"
+                      aria-label={t.settingsFontSize}
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                    >
+                      <ActionIcon
+                        variant="transparent"
+                        size="lg"
+                        onClick={() => { if (onSettingsChange) onSettingsChange({ fontSize: Math.max(12, fontSize - 2) }); }}
+                        disabled={fontSize <= 12}
+                        aria-label={`${t.settingsFontSizeDecrease}. ${Math.round((fontSize / 16) * 100)}%`}
+                        title={t.settingsFontSizeDecrease}
+                        style={{ color: 'var(--reader-fg, #1a1a1a)' }}
+                      >
+                        −
+                      </ActionIcon>
+                      <Text size="xs" fw={600} aria-live="polite" aria-atomic="true" style={{ minWidth: '2.8rem', textAlign: 'center', color: 'var(--reader-fg, #1a1a1a)' }}>
+                        {Math.round((fontSize / 16) * 100)}%
+                      </Text>
+                      <ActionIcon
+                        variant="transparent"
+                        size="lg"
+                        onClick={() => { if (onSettingsChange) onSettingsChange({ fontSize: Math.min(48, fontSize + 2) }); }}
+                        disabled={fontSize >= 48}
+                        aria-label={`${t.settingsFontSizeIncrease}. ${Math.round((fontSize / 16) * 100)}%`}
+                        title={t.settingsFontSizeIncrease}
+                        style={{ color: 'var(--reader-fg, #1a1a1a)' }}
+                      >
+                        +
+                      </ActionIcon>
+                    </div>
+                  )}
+
+                  {/* Text settings (font family, justify, spacing, margin) —
+                      all meaningless for PDFs, which render each page as a
+                      fixed-size rasterized image rather than reflowable
+                      text, so the whole "Aa" panel is hidden for them
+                      rather than shown with controls that do nothing. */}
                   {!isPdfBook && (
                     <Popover
                       opened={settingsOpen}
@@ -3834,38 +3949,6 @@ export const Reader: React.FC<ReaderProps> = ({
                             </ActionIcon>
                           </div>
 
-                          {/* Font size — chip row with a percentage readout
-                            (relative to the 16px baseline), no slider. Every
-                            control here applies immediately via onSettingsChange. */}
-                          <div style={{ marginBottom: '1.1rem' }}>
-                            <Text size="xs" c="dimmed" fw={500} mb={4}>
-                              {t.settingsFontSize}
-                            </Text>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                              <ActionIcon
-                                variant="default"
-                                radius="md"
-                                onClick={() => { if (onSettingsChange) onSettingsChange({ fontSize: Math.max(12, fontSize - 2) }); }}
-                                disabled={fontSize <= 12}
-                                aria-label={t.settingsFontSize}
-                              >
-                                −
-                              </ActionIcon>
-                              <Text data-testid="font-size-percent" fw={600} style={{ flex: 1, textAlign: 'center' }}>
-                                {Math.round((fontSize / 16) * 100)}%
-                              </Text>
-                              <ActionIcon
-                                variant="default"
-                                radius="md"
-                                onClick={() => { if (onSettingsChange) onSettingsChange({ fontSize: Math.min(48, fontSize + 2) }); }}
-                                disabled={fontSize >= 48}
-                                aria-label={t.settingsFontSize}
-                              >
-                                +
-                              </ActionIcon>
-                            </div>
-                          </div>
-
                           {/* Typeface */}
                           <div style={{ marginBottom: '1.1rem' }}>
                             <Select
@@ -3895,6 +3978,38 @@ export const Reader: React.FC<ReaderProps> = ({
                             />
                           </div>
 
+                          {/* Line height */}
+                          <div style={{ marginBottom: '1.1rem' }}>
+                            <Text size="xs" c="dimmed" fw={500} mb={4}>
+                              {t.settingsLineSpacing}
+                            </Text>
+                            <Slider
+                              size="xs"
+                              min={1} max={3} step={0.25} value={lineSpacing}
+                              onChange={(value) => { if (onSettingsChange) onSettingsChange({ lineSpacing: value }); }}
+                              marks={[1, 2, 3].map(value => ({ value, label: value.toFixed(1) }))}
+                              label={(value) => `${value}×`}
+                              aria-label={t.settingsLineSpacing}
+                              mb="0.6rem"
+                            />
+                          </div>
+
+                          {/* Margin */}
+                          <div style={{ marginBottom: '1.1rem' }}>
+                            <Text size="xs" c="dimmed" fw={500} mb={4}>
+                              {t.settingsMargin}
+                            </Text>
+                            <Slider
+                              size="xs"
+                              min={0} max={100} step={8} value={margin}
+                              onChange={(value) => { if (onSettingsChange) onSettingsChange({ margin: value }); }}
+                              marks={[0, 50, 100].map(value => ({ value, label: String(value) }))}
+                              label={(value) => `${value}px`}
+                              aria-label={t.settingsMargin}
+                              mb="0.6rem"
+                            />
+                          </div>
+
                           {/* Justify text */}
                           <div style={{ marginBottom: '1.1rem' }}>
                             <Switch
@@ -3908,11 +4023,13 @@ export const Reader: React.FC<ReaderProps> = ({
                             />
                           </div>
 
-                          {/* Extra properties — collapsed by default, since
-                            they're not part of the primary at-a-glance
-                            controls above (font size, typeface, justify).
-                            Theme and layout are now their own title-bar
-                            items. */}
+                          {/* Advanced — collapsed by default. Letter/word
+                            spacing are finer-grained than the mockup's own
+                            settings panel shows, so they stay tucked away
+                            here instead of crowding the primary at-a-glance
+                            controls above (font, size, line spacing, margin,
+                            justify) that now mirror it directly. Theme and
+                            layout are their own title-bar items. */}
                           <Button
                             variant="subtle"
                             size="xs"
@@ -3927,22 +4044,6 @@ export const Reader: React.FC<ReaderProps> = ({
                           </Button>
                           {moreSettingsOpen && (
                             <div style={{ marginTop: '1.1rem' }}>
-                              {/* Line height */}
-                              <div style={{ marginBottom: '1.1rem' }}>
-                                <Text size="xs" c="dimmed" fw={500} mb={4}>
-                                  {t.settingsLineSpacing}
-                                </Text>
-                                <Slider
-                                  size="xs"
-                                  min={1} max={3} step={0.25} value={lineSpacing}
-                                  onChange={(value) => { if (onSettingsChange) onSettingsChange({ lineSpacing: value }); }}
-                                  marks={[1, 2, 3].map(value => ({ value, label: value.toFixed(1) }))}
-                                  label={(value) => `${value}×`}
-                                  aria-label={t.settingsLineSpacing}
-                                  mb="0.6rem"
-                                />
-                              </div>
-
                               {/* Letter spacing */}
                               <div style={{ marginBottom: '1.1rem' }}>
                                 <Text size="xs" c="dimmed" fw={500} mb={4}>
@@ -3971,22 +4072,6 @@ export const Reader: React.FC<ReaderProps> = ({
                                   marks={[0, 5, 10].map(value => ({ value, label: String(value) }))}
                                   label={(value) => `${value}px`}
                                   aria-label={t.settingsWordSpacing}
-                                  mb="0.6rem"
-                                />
-                              </div>
-
-                              {/* Margin */}
-                              <div style={{ marginBottom: '1.1rem' }}>
-                                <Text size="xs" c="dimmed" fw={500} mb={4}>
-                                  {t.settingsMargin}
-                                </Text>
-                                <Slider
-                                  size="xs"
-                                  min={0} max={100} step={8} value={margin}
-                                  onChange={(value) => { if (onSettingsChange) onSettingsChange({ margin: value }); }}
-                                  marks={[0, 50, 100].map(value => ({ value, label: String(value) }))}
-                                  label={(value) => `${value}px`}
-                                  aria-label={t.settingsMargin}
                                   mb="0.6rem"
                                 />
                               </div>
@@ -4459,6 +4544,7 @@ export const Reader: React.FC<ReaderProps> = ({
                   portalProps={{ target: mantinePortalTarget }}
                   position="bottom-start"
                   shadow="md"
+                  radius="lg"
                   // Otherwise defaults to Mantine's own forced light/dark
                   // colorScheme (see the reader root's own comment on this)
                   // rather than the reading theme — same fix as the
@@ -4513,6 +4599,22 @@ export const Reader: React.FC<ReaderProps> = ({
                         </div>
                       </div>
                     )}
+                    {pendingNote?.selection && (
+                      <Menu.Item
+                        onClick={() => {
+                          const text = pendingNote.selection!.text;
+                          setPendingNote(null);
+                          // Clipboard access can be denied by permissions
+                          // policy/user gesture requirements in some
+                          // embedding contexts — non-fatal either way, same
+                          // as note creation/lookup failures elsewhere in
+                          // this menu.
+                          navigator.clipboard?.writeText(text).catch(() => { });
+                        }}
+                      >
+                        {t.noteCopyMenuItem}
+                      </Menu.Item>
+                    )}
                     {pendingNote?.noteId && (
                       <Menu.Item color="red" onClick={handleRemoveNoteFromMenu}>
                         {t.noteRemoveMenuItem}
@@ -4544,9 +4646,9 @@ export const Reader: React.FC<ReaderProps> = ({
                 <DictionaryPopover
                   lookupResult={dictionaryResult}
                   loading={dictionaryLoading}
-                  anchorPosition={anchorPosition ?? undefined}
                   onClose={handleDictionaryClose}
                   onSuggestionSelect={handleSuggestionSelect}
+                  onAddToNote={enableNotes && dictionarySelection ? handleAddNoteFromDictionary : undefined}
                 />
               )}
 

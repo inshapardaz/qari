@@ -34,6 +34,8 @@ export const fr: TranslationStrings = {
   themeHighContrast: 'Contraste',
   settingsFontFamily: 'Police',
   settingsFontSize: 'Taille',
+  settingsFontSizeDecrease: 'Diminuer la taille de la police',
+  settingsFontSizeIncrease: 'Augmenter la taille de la police',
   settingsJustify: 'Justifier',
   settingsLineSpacing: 'Interligne',
   settingsLetterSpacing: 'Espacement lettres',
@@ -62,6 +64,7 @@ export const fr: TranslationStrings = {
   dictionaryLoadingAriaLabel: 'Recherche dans le dictionnaire',
   dictionaryExamples: 'Exemples',
   dictionaryLookupMenuItem: 'Signification',
+  dictionaryAddToNote: 'Ajouter à une note',
 
   // Bookmark panel
   bookmarksPanelTitle: 'Signets',
@@ -73,6 +76,7 @@ export const fr: TranslationStrings = {
   notesPanelTitle: 'Notes',
   notesEmpty: 'Aucune note pour le moment. Sélectionnez du texte puis faites un clic droit pour en ajouter une.',
   noteAddMenuItem: 'Ajouter une note',
+  noteCopyMenuItem: 'Copier',
   noteRemoveMenuItem: 'Supprimer la note',
   noteEditComment: 'Modifier le commentaire',
   noteCommentPlaceholder: 'Ajouter un commentaire…',

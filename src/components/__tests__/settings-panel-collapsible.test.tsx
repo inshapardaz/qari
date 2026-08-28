@@ -1,9 +1,10 @@
 /**
- * The settings panel shows only font size, typeface, and justify by default
- * (theme and layout are their own separate title-bar items); line height
- * and letter/word spacing live behind a "More settings" toggle.
- * Restore-to-defaults is a small icon button in the panel's top bar rather
- * than a full-width button at the bottom.
+ * The settings panel shows typeface, font size, line spacing, margin, and
+ * justify by default (theme and layout are their own separate title-bar
+ * items) — mirroring the Qari Reader Mockups design's own settings panel.
+ * Only letter/word spacing (finer-grained controls the mockup doesn't show)
+ * live behind a "More settings" toggle. Restore-to-defaults is a small icon
+ * button in the panel's top bar rather than a full-width button at the bottom.
  */
 
 import React from 'react';
@@ -22,26 +23,24 @@ async function openSettings() {
 }
 
 describe('Settings panel: collapsible extra properties, reset icon button', () => {
-  it('hides line height and spacing controls until "More settings" is expanded, but shows justify up front', async () => {
+  it('hides only letter/word spacing until "More settings" is expanded, but shows line spacing, margin, and justify up front', async () => {
     render(<Reader source={createMarkdownSource()} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
 
     await openSettings();
 
     expect(screen.getByLabelText('Justify Text')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Line Spacing')).toBeNull();
+    expect(screen.getByLabelText('Line Spacing')).toBeInTheDocument();
+    expect(screen.getByLabelText('Margin')).toBeInTheDocument();
     expect(screen.queryByLabelText('Letter Spacing')).toBeNull();
     expect(screen.queryByLabelText('Word Spacing')).toBeNull();
-    expect(screen.queryByLabelText('Margin')).toBeNull();
 
     const moreToggle = screen.getByRole('button', { name: 'More settings' });
     expect(moreToggle).toHaveAttribute('aria-expanded', 'false');
     fireEvent.click(moreToggle);
 
-    expect(screen.getByLabelText('Line Spacing')).toBeInTheDocument();
     expect(screen.getByLabelText('Letter Spacing')).toBeInTheDocument();
     expect(screen.getByLabelText('Word Spacing')).toBeInTheDocument();
-    expect(screen.getByLabelText('Margin')).toBeInTheDocument();
     expect(moreToggle).toHaveAttribute('aria-expanded', 'true');
   });
 

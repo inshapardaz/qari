@@ -42,7 +42,7 @@ interface TestHarnessProps {
 
 function DictionaryTestHarness({ dictionaryService, hasProviders, bookLanguage = 'en' }: TestHarnessProps) {
   const contentRef = useRef<HTMLDivElement>(null);
-  const { anchorPosition, lookupState, dismiss } = useSelectionHandler({
+  const { lookupState, dismiss } = useSelectionHandler({
     contentRef,
     hasProviders,
   });
@@ -116,7 +116,6 @@ function DictionaryTestHarness({ dictionaryService, hasProviders, bookLanguage =
         <DictionaryPopover
           lookupResult={dictionaryResult}
           loading={dictionaryLoading}
-          anchorPosition={anchorPosition ?? undefined}
           onClose={handleClose}
           onSuggestionSelect={handleSuggestionSelect}
         />
