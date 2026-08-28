@@ -3397,32 +3397,21 @@ export const Reader: React.FC<ReaderProps> = ({
                       interaction with the content behind it while it's
                       open, and closes the drawer on an outside click — but
                       instead of Mantine's default 60%-black scrim (which
-                      would read as the content vanishing), it's a much
-                      lighter dim so the pages stay legible-but-secondary
-                      behind it. A `backdrop-filter: blur()` was tried here
-                      first for a "frosted glass" look, but Chromium doesn't
-                      reliably composite `backdrop-filter` through the page
-                      content's own `transform: translateX(...)` (used for
-                      column-pagination page turns just below) — instead of
-                      blurring, it can render as fully opaque, hiding the
-                      pages completely rather than dimming them. A plain
-                      low-opacity scrim has no such dependency on what's
-                      behind it. `fixed={false}` additionally keeps the
-                      overlay `position: absolute` (sized against this
-                      viewport, which is already `position: relative`)
-                      instead of Mantine's default `position: fixed` —
-                      `fixed` descendants of a `transform`ed ancestor (this
-                      viewport has one, see below) reparent their containing
-                      block to that ancestor, which is a second layering
-                      trick this overlay doesn't need on top of the first.
-                      This portals into the content viewport
+                      would read as the content vanishing), it stays fully
+                      see-through (`backgroundOpacity={0}`) and uses a
+                      `backdrop-filter: blur()` instead, the same "frosted
+                      glass" effect a modal backdrop typically gives. This
+                      portals into the content viewport
                       (`mantineContentPortalTarget`, not the whole-reader
                       `mantinePortalTarget` every other overlay here uses) so
-                      the overlay only spans the content area: the header and
-                      footer bars sit outside it entirely, so their buttons
-                      (theme, zoom, close, etc.) stay fully visible and
-                      clickable while the drawer is open. */}
-                  <Drawer.Overlay backgroundOpacity={0.25} fixed={false} />
+                      the overlay/blur only spans the content area: the
+                      header and footer bars sit outside it entirely, so
+                      their buttons (theme, zoom, close, etc.) stay fully
+                      visible, sharp, and clickable while the drawer is
+                      open, instead of being blurred over and made
+                      unclickable by an overlay that used to span the whole
+                      reader. */}
+                  <Drawer.Overlay backgroundOpacity={0} blur={4} />
                   {/* Overridden here rather than left to Mantine's own
                       forced light/dark colorScheme (see `mantineColorScheme`
                       above): that only gives Mantine components a binary
@@ -3435,18 +3424,36 @@ export const Reader: React.FC<ReaderProps> = ({
                       every nested Mantine component (Tabs, ActionIcons, and
                       BookmarkPanel/NotePanel's own controls) inherit the
                       precise reading theme automatically, the same way
-                      Mantine's own dark-mode override works. */}
+                      Mantine's own dark-mode override works.
+
+                      Deliberately the `styles={{ content: {...} }}` compound
+                      prop, not a flat `style` prop: Mantine's `DrawerContent`
+                      applies a flat `style` to *both* the actual content box
+                      (`.mantine-Drawer-content`) *and* the full-width `.mantine-Drawer-inner`
+                      flex wrapper that positions it (`getStyle()` spreads
+                      `options.style` onto every part requested, unscoped —
+                      see its own source), whereas `styles` is applied to a
+                      single named part (`content` here). Using a flat
+                      `style` here previously gave `.mantine-Drawer-inner`
+                      this same opaque `backgroundColor`, and since that
+                      wrapper — unlike the 320px content box — spans the
+                      *entire* content viewport width (it's a `flex` row
+                      that aligns the narrower content box to one side), it
+                      opacified the whole viewport, hiding every page behind
+                      it rather than just sitting behind the narrow panel. */}
                   <Drawer.Content
                     data-testid="chapter-menu-panel"
-                    style={{
-                      '--mantine-color-body': 'var(--reader-bg, #ffffff)',
-                      '--mantine-color-text': 'var(--reader-fg, #1a1a1a)',
-                      '--mantine-color-default-border': 'var(--reader-border, #e0e0e0)',
-                      '--mantine-color-dimmed': 'var(--reader-secondary, #6e6e73)',
-                      ...MANTINE_PRIMARY_COLOR_STYLE,
-                      backgroundColor: 'var(--reader-bg, #ffffff)',
-                      color: 'var(--reader-fg, #1a1a1a)',
-                    } as React.CSSProperties}
+                    styles={{
+                      content: {
+                        '--mantine-color-body': 'var(--reader-bg, #ffffff)',
+                        '--mantine-color-text': 'var(--reader-fg, #1a1a1a)',
+                        '--mantine-color-default-border': 'var(--reader-border, #e0e0e0)',
+                        '--mantine-color-dimmed': 'var(--reader-secondary, #6e6e73)',
+                        ...MANTINE_PRIMARY_COLOR_STYLE,
+                        backgroundColor: 'var(--reader-bg, #ffffff)',
+                        color: 'var(--reader-fg, #1a1a1a)',
+                      } as React.CSSProperties,
+                    }}
                   >
                     <Drawer.Body p={0} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                       {state.book?.metadata && (
