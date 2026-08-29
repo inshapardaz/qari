@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 // Required once by any app using the Reader — see the README's "Theming" section.
 import '@mantine/core/styles.css';
@@ -31,45 +31,183 @@ interface ReaderSource {
 }
 
 // ---------------------------------------------------------------------------
-// Collapsible panel — a plain <details>/<summary> disclosure, styled to
-// match the rest of the demo's fieldset-based controls.
+// Default offline Urdu dictionary ("فرہنگ آصفیہ") bundled with the demo
+// (demo/public/dictionaries) and always available for Urdu-language books —
+// English books fall back to the built-in online dictionary
+// (enableBuiltInDictionary) instead, so no default is loaded for 'en'.
+// Served from Vite's public dir at BASE_URL ('/' in dev, '/qari/' in the
+// GitHub Pages build). Declared once at module scope — Reader re-creates its
+// StarDictProvider (re-fetching the multi-MB .dict file) whenever the
+// `stardictDictionaries` array reference changes, so this must stay a stable
+// object rather than being rebuilt inline on every render.
 // ---------------------------------------------------------------------------
 
-function CollapsiblePanel({
+const DEFAULT_URDU_DICTIONARY: StarDictDictionaryConfig = {
+  language: 'ur',
+  name: 'فرہنگ آصفیہ',
+  ifoUrl: `${import.meta.env.BASE_URL}dictionaries/farhang.ifo`,
+  idxUrl: `${import.meta.env.BASE_URL}dictionaries/farhang.idx`,
+  dictUrl: `${import.meta.env.BASE_URL}dictionaries/farhang.dict`,
+};
+
+const DEFAULT_STARDICT_ENTRY = {
+  id: 'default-urdu',
+  label: `${DEFAULT_URDU_DICTIONARY.name} (ur) — default`,
+  config: DEFAULT_URDU_DICTIONARY,
+  isDefault: true as const,
+};
+
+// ---------------------------------------------------------------------------
+// Icons — plain monochrome (currentColor) SVGs instead of colour emoji, so
+// the header/dialog chrome stays black-and-white regardless of platform
+// emoji rendering.
+// ---------------------------------------------------------------------------
+
+function IconBook(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" />
+    </svg>
+  );
+}
+
+function IconFolderOpen(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v1H8a2 2 0 0 0-1.94 1.5L4 19" />
+      <path d="M3 7v11a2 2 0 0 0 2 2h13.2a2 2 0 0 0 1.94-1.5l1.66-6.5A1 1 0 0 0 21 11H8a2 2 0 0 0-1.94 1.5L4 19" />
+    </svg>
+  );
+}
+
+function IconSettings(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
+    </svg>
+  );
+}
+
+function IconClose(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Modal — a plain fixed-overlay dialog (no Mantine dependency in the demo
+// shell itself) used for the "Open book" and "Settings" popups. Closes on
+// backdrop click or Escape.
+// ---------------------------------------------------------------------------
+
+function Modal({
   title,
-  defaultOpen = false,
-  style,
+  open,
+  onClose,
   children,
 }: {
   title: string;
-  defaultOpen?: boolean;
-  style?: React.CSSProperties;
+  open: boolean;
+  onClose: () => void;
   children: React.ReactNode;
 }) {
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
   return (
-    <details
-      open={defaultOpen}
+    <div
+      onClick={onClose}
       style={{
-        border: '1px solid #ccc',
-        borderRadius: '6px',
-        marginBottom: '0.5rem',
-        ...style,
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0, 0, 0, 0.4)',
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'center',
+        padding: '5vh 1rem',
+        zIndex: 1000,
       }}
     >
-      <summary
+      <div
+        onClick={(e) => e.stopPropagation()}
         style={{
-          fontWeight: 600,
-          padding: '0.75rem 1rem',
-          cursor: 'pointer',
-          userSelect: 'none',
+          background: '#fff',
+          borderRadius: '8px',
+          boxShadow: '0 10px 40px rgba(0, 0, 0, 0.25)',
+          width: '100%',
+          maxWidth: '720px',
+          maxHeight: '90vh',
+          overflowY: 'auto',
         }}
       >
-        {title}
-      </summary>
-      <div style={{ padding: '0 1rem 1rem' }}>
-        {children}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '1rem 1.25rem',
+          borderBottom: '1px solid #e5e7eb',
+          position: 'sticky',
+          top: 0,
+          background: '#fff',
+        }}>
+          <h2 style={{ fontSize: '1.05rem', fontWeight: 600 }}>{title}</h2>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            style={{
+              border: 'none',
+              background: 'none',
+              lineHeight: 1,
+              cursor: 'pointer',
+              color: '#333',
+              padding: '0.25rem',
+              display: 'flex',
+            }}
+          >
+            <IconClose />
+          </button>
+        </div>
+        <div style={{ padding: '1rem 1.25rem 1.25rem' }}>
+          {children}
+        </div>
       </div>
-    </details>
+    </div>
+  );
+}
+
+function HeaderButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: '0.5rem 1rem',
+        background: '#fff',
+        border: '1px solid #d1d5db',
+        borderRadius: '6px',
+        cursor: 'pointer',
+        fontSize: '0.9rem',
+        fontWeight: 500,
+        color: '#111',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.4rem',
+      }}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -223,14 +361,26 @@ function App() {
   const [zoom, setZoom] = useState(100);
   const [closeMessage, setCloseMessage] = useState<string | null>(null);
   // bookInfo overrides — left blank by default so the reader falls back to
-  // whatever title/author was parsed from the loaded source (see the
-  // bookInfo prop's doc comment on ReaderProps).
+  // whatever title/author/language was parsed from the loaded source (see
+  // the bookInfo prop's doc comment on ReaderProps). `language` matters for
+  // dictionary lookup: it's matched exactly against each provider's
+  // supportedLanguages, and the Markdown/PDF parsers never set it, so the
+  // sample book (and any plain-text/PDF source) defaults to 'en' — override
+  // it to 'ur' here to exercise the bundled Urdu StarDict dictionary against
+  // the sample's Urdu chapter.
   const [bookInfoTitle, setBookInfoTitle] = useState('');
   const [bookInfoAuthor, setBookInfoAuthor] = useState('');
+  const [bookInfoLanguage, setBookInfoLanguage] = useState('');
   // PDF chapter map (see `pdfChapters` prop, only relevant for `{ type: 'pdf' }`
   // sources) — entered as one "startPage: title" pair per line rather than
   // building a whole mini-editor for a handful of rows.
   const [pdfChaptersInput, setPdfChaptersInput] = useState('1: Foreword\n5: Chapter 1');
+
+  // Popup visibility — "Open" (book source) and "Settings" (component props
+  // playground) are the only two config surfaces now; everything else lives
+  // full-page behind them.
+  const [sourceModalOpen, setSourceModalOpen] = useState(false);
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
 
   // Persist settings whenever they change
   useEffect(() => {
@@ -271,6 +421,7 @@ function App() {
     setSourceLabel(trimmed.length > 50 ? trimmed.slice(0, 50) + '…' : trimmed);
     // The URL itself is already a stable, unique identifier.
     setBookIdentifier(trimmed);
+    setSourceModalOpen(false);
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -301,6 +452,7 @@ function App() {
       setSourceLabel(file.name + ' (as text)');
     }
     setBookIdentifier(identifier);
+    setSourceModalOpen(false);
 
     // Reset file input so re-selecting the same file triggers onChange
     if (fileInputRef.current) {
@@ -370,12 +522,14 @@ function App() {
     setSource({ type: 'markdown', content: SAMPLE_MARKDOWN });
     setSourceLabel('Sample Markdown');
     setBookIdentifier('sample-markdown');
+    setSourceModalOpen(false);
   };
 
   const bookInfo = {
     identifier: bookIdentifier,
     ...(bookInfoTitle.trim() && { title: bookInfoTitle.trim() }),
     ...(bookInfoAuthor.trim() && { author: bookInfoAuthor.trim() }),
+    ...(bookInfoLanguage.trim() && { language: bookInfoLanguage.trim() }),
   };
 
   // Parses the "startPage: title" lines above into a PdfChapterMapEntry[] —
@@ -389,31 +543,56 @@ function App() {
     })
     .filter((entry): entry is PdfChapterMapEntry => entry !== null);
 
+  // Memoized so the array reference only changes when the user actually adds
+  // or removes a dictionary — Reader re-creates (and re-fetches) every
+  // StarDictProvider whenever this reference changes, so a fresh array on
+  // every render would restart the default Urdu dictionary's ~6MB fetch
+  // before it ever finished loading.
+  const stardictDictionaries = useMemo(
+    () => [DEFAULT_URDU_DICTIONARY, ...stardictEntries.map((entry) => entry.config)],
+    [stardictEntries]
+  );
+
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <header style={{ marginBottom: '0.5rem', flexShrink: 0 }}>
-        <h1 style={{ fontSize: '1.15rem', marginBottom: '0.15rem' }}>
-          📖 Qari — Ebook Reader Demo
-        </h1>
-        <p style={{ color: '#666', fontSize: '0.8rem' }}>
-          Try the reader with your own EPUB, PDF, or Markdown files.{' '}
-          <a
-            href="https://github.com/inshapardaz/qari"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ color: '#2563eb' }}
-          >
-            View on GitHub
-          </a>
-        </p>
+      <header style={{
+        marginBottom: '0.5rem',
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '1rem',
+        flexWrap: 'wrap',
+      }}>
+        <div>
+          <h1 style={{
+            fontSize: '1.15rem',
+            marginBottom: '0.15rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+          }}>
+            <IconBook /> Qari — Ebook Reader Demo
+          </h1>
+          <p style={{ color: '#666', fontSize: '0.8rem' }}>
+            Currently loaded: <strong>{sourceLabel}</strong> ·{' '}
+            <a
+              href="https://github.com/inshapardaz/qari"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: '#2563eb' }}
+            >
+              View on GitHub
+            </a>
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+          <HeaderButton onClick={() => setSourceModalOpen(true)}><IconFolderOpen /> Open</HeaderButton>
+          <HeaderButton onClick={() => setSettingsModalOpen(true)}><IconSettings /> Settings</HeaderButton>
+        </div>
       </header>
 
-      {/* Settings — collapsed by default and laid out side by side so they
-          take up as little vertical space as possible, leaving the reader
-          below as much room as the viewport allows. */}
-      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', flexShrink: 0 }}>
-      {/* Source selection */}
-      <CollapsiblePanel title="Book Source" style={{ flex: '1 1 320px' }}>
+      <Modal title="Open Book" open={sourceModalOpen} onClose={() => setSourceModalOpen(false)}>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
           {/* URL input */}
           <div style={{ flex: '1 1 300px' }}>
@@ -507,10 +686,9 @@ function App() {
         <p style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#888' }}>
           Currently loaded: <strong>{sourceLabel}</strong>
         </p>
-      </CollapsiblePanel>
+      </Modal>
 
-      {/* Component props playground */}
-      <CollapsiblePanel title="Component Props" style={{ flex: '1 1 320px' }}>
+      <Modal title="Settings" open={settingsModalOpen} onClose={() => setSettingsModalOpen(false)}>
         <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem' }}>
             <input
@@ -632,29 +810,30 @@ function App() {
                 </button>
               )}
             </div>
-            {stardictEntries.length > 0 && (
-              <ul style={{ margin: '0.4rem 0 0', paddingLeft: '1.1rem', fontSize: '0.8rem', color: '#444' }}>
-                {stardictEntries.map((entry) => (
-                  <li key={entry.id} style={{ marginBottom: '0.15rem' }}>
-                    {entry.label}{' '}
-                    <button
-                      onClick={() => handleRemoveStardict(entry.id)}
-                      style={{
-                        border: 'none',
-                        background: 'none',
-                        color: '#dc2626',
-                        cursor: 'pointer',
-                        fontSize: '0.8rem',
-                        padding: 0,
-                        textDecoration: 'underline',
-                      }}
-                    >
-                      remove
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <ul style={{ margin: '0.4rem 0 0', paddingLeft: '1.1rem', fontSize: '0.8rem', color: '#444' }}>
+              <li style={{ marginBottom: '0.15rem' }}>
+                {DEFAULT_STARDICT_ENTRY.label}
+              </li>
+              {stardictEntries.map((entry) => (
+                <li key={entry.id} style={{ marginBottom: '0.15rem' }}>
+                  {entry.label}{' '}
+                  <button
+                    onClick={() => handleRemoveStardict(entry.id)}
+                    style={{
+                      border: 'none',
+                      background: 'none',
+                      color: '#dc2626',
+                      cursor: 'pointer',
+                      fontSize: '0.8rem',
+                      padding: 0,
+                      textDecoration: 'underline',
+                    }}
+                  >
+                    remove
+                  </button>
+                </li>
+              ))}
+            </ul>
             {stardictStatus && (
               <p style={{ margin: '0.3rem 0 0', fontSize: '0.8rem', color: '#b91c1c' }}>{stardictStatus}</p>
             )}
@@ -754,6 +933,30 @@ function App() {
             />
           </div>
 
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: '#555' }}>
+              bookInfo.language
+            </label>
+            <input
+              type="text"
+              placeholder="(use parsed language, e.g. 'ur')"
+              value={bookInfoLanguage}
+              onChange={(e) => setBookInfoLanguage(e.target.value)}
+              style={{
+                padding: '0.5rem',
+                border: '1px solid #ccc',
+                borderRadius: '4px',
+                fontSize: '0.9rem',
+                width: '220px',
+              }}
+            />
+            <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem', color: '#888', maxWidth: '260px' }}>
+              Dictionary lookup matches this exactly against each provider's language — Markdown/PDF sources never
+              parse a language, so set this to <strong>ur</strong> to try the default StarDict dictionary against
+              the sample's Urdu chapter.
+            </p>
+          </div>
+
           {source.type === 'pdf' && (
             <div>
               <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', color: '#555' }}>
@@ -779,7 +982,7 @@ function App() {
         <p style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#888' }}>
           bookInfo overrides show up in the reader's chapter menu (☰) — see the book title/author there.
           {source.type === 'pdf' && ' pdfChapters titles the matching page ranges there too, instead of "Page N".'}
-          {' '}StarDict: <strong>{stardictEntries.length > 0 ? `${stardictEntries.length} dictionary(ies) loaded` : 'none loaded'}</strong> — right-click a word in a matching-language book to look it up offline.
+          {' '}StarDict: <strong>فرہنگ آصفیہ (ur) loaded by default{stardictEntries.length > 0 ? `, plus ${stardictEntries.length} more` : ''}</strong> — right-click a word in a matching-language book to look it up offline.
         </p>
 
         {closeMessage && (
@@ -795,20 +998,17 @@ function App() {
             {closeMessage}
           </p>
         )}
-      </CollapsiblePanel>
-      </div>
+      </Modal>
 
-      {/* Reader — flex:1 fills whatever vertical space the (collapsed by
-          default) settings panels above and the progress bar below leave
-          available, and there's no outer max-width constraining it
-          horizontally, so it gets the full viewport in both dimensions. */}
+      {/* Reader — fills the entire page below the (minimal, fixed-height)
+          header; there's no outer max-width constraining it horizontally
+          either, so it gets the full viewport in both dimensions. */}
       <div style={{
         border: '1px solid #ddd',
         borderRadius: '8px',
         overflow: 'hidden',
         flex: 1,
         minHeight: 0,
-        marginTop: '0.5rem',
       }}>
         <Reader
           source={source as any}
@@ -825,7 +1025,7 @@ function App() {
           enableSearch={enableSearch}
           enableProgressTracking={enableProgressTracking}
           enableBuiltInDictionary={enableBuiltInDictionary}
-          stardictDictionaries={stardictEntries.length > 0 ? stardictEntries.map((entry) => entry.config) : undefined}
+          stardictDictionaries={stardictDictionaries}
           readOnly={readOnly}
           blockDevTools={blockDevTools}
           showCloseButton={showCloseButton}
