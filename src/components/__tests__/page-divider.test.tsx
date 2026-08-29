@@ -115,7 +115,7 @@ describe('Page divider (two-column split view)', () => {
 
     it('hides the divider when only one column of the spread is populated', async () => {
       const container = await renderAndStub(492);
-      await waitFor(() => expect(container.querySelector('.ebook-reader__columns') as HTMLElement).toHaveStyle({ transform: 'translateX(246px)' }));
+      await waitFor(() => expect(container.querySelector('.ebook-reader__columns') as HTMLElement).toHaveStyle({ transform: 'translateX(0px)' }));
 
       expect(container.querySelector('[data-testid="page-divider"]')).not.toBeInTheDocument();
     });

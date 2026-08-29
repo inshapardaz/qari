@@ -3130,9 +3130,11 @@ export const Reader: React.FC<ReaderProps> = ({
 
   // Whether the page currently on screen is a two-column spread's lone
   // populated column (see `trailingLoneColumn`/measureAllChapters) — if so,
-  // it gets re-centered within the still spread-wide page box instead of
-  // sitting pinned to one edge with an empty second column beside it (see
-  // `trailingLoneColumnShift` near the render return).
+  // its normal spread position is left pinned rather than shifted, and the
+  // page divider is suppressed (see where it's rendered near the render
+  // return) so a blank second column doesn't get a seam drawn next to it —
+  // the same treatment `pdfSpreadHasBothPages` already gives a trailing odd
+  // PDF page.
   const isTrailingLoneColumnPage = !scroll && effectiveColumns === 2
     && !!trailingLoneColumn[currentChapterIdx]
     && currentPage === (pagesPerChapter[currentChapterIdx] || 1) - 1;
@@ -3510,20 +3512,16 @@ export const Reader: React.FC<ReaderProps> = ({
   const pageColumnsForWidth = scroll ? 1 : effectiveColumns;
   const pageBoxMaxWidth = pageColumnsForWidth * MAX_PAGE_WIDTH + margin * 2 + (pageColumnsForWidth === 2 ? 64 : 0);
 
-  // On a trailing lone-column page, re-center the populated column within
-  // the still spread-wide page box instead of leaving it pinned to the
-  // leading edge with a blank column's worth of dead space beside it.
-  // Deliberately *not* touching `pageBoxMaxWidth`/`colWidth`/`columnWidth`
-  // for this: those drive the actual CSS multi-column flow for the *whole*
-  // chapter, and narrowing them just for this one page would reflow every
-  // other page in the chapter along with it (the flow only has one
-  // column-width for its entire scrollWidth). A same-magnitude extra
-  // translateX offset, on top of the existing page-turn transform, moves
-  // only the current page's painted position — the underlying column
-  // layout, and every other page's, is untouched.
-  const trailingLoneColumnShift = isTrailingLoneColumnPage && pageBoxRef.current
-    ? (((pageBoxRef.current.clientWidth - margin * 2 - 64) / 2) + 64) / 2
-    : 0;
+  // A trailing lone-column page (its second column empty) is left pinned to
+  // its normal spread slot — the same "single real page in an otherwise
+  // two-up spread" treatment already used for a trailing odd PDF page (see
+  // `pdfSpreadHasBothPages`'s own comment) — rather than adding any extra
+  // transform to re-center it. Centering was tried and reverted: it has
+  // nowhere blank to shift *toward*, since the immediately-preceding column
+  // (just a 64px gap away) is real, already-read text, not blank space — so
+  // "centering" the lone column dragged a slice of that text into view
+  // instead. Left pinned, the empty slot is genuinely blank: there's
+  // nothing beyond the last column in the flow to paint there.
 
   // Caps in-content images (see the 'image' cases in `contentNodeToHtml`
   // and `ContentNodeRenderer`) at the real available height of one
@@ -4659,13 +4657,9 @@ export const Reader: React.FC<ReaderProps> = ({
                         columnFill: 'auto',
                         height: '100%',
                         padding: `2rem ${margin}px`,
-                        // The extra `trailingLoneColumnShift` term re-centers
-                        // a spread's lone populated column when its second
-                        // column is empty (see where it's computed, near
-                        // `pageBoxMaxWidth`) — zero on every other page.
                         transform: state.direction === 'rtl'
-                          ? `translateX(${currentPage * pagePitch - trailingLoneColumnShift}px)`
-                          : `translateX(${-(currentPage * pagePitch) + trailingLoneColumnShift}px)`,
+                          ? `translateX(${currentPage * pagePitch}px)`
+                          : `translateX(${-(currentPage * pagePitch)}px)`,
                         transition: 'transform 0.3s ease',
                         color: 'var(--reader-fg, #1a1a1a)',
                         fontFamily: selectedFontFamily,
