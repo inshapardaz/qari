@@ -42,13 +42,13 @@ function stubMeasurementDimensions() {
   };
 }
 
-// With more than one chapter, the footer also renders a "· Chapter X of Y"
-// suffix as a sibling text node after the page indicator, so the footer's
-// full textContent (not screen.getByText, which needs an exact match) is
-// what's checked here.
-async function waitForFooterText(container: HTMLElement, expected: string) {
+// With more than one chapter, the header status line also includes the
+// chapter's own title ("Chapter {n} · {title} · Page {x} of {y}") — here
+// each chapter's title is literally "Chapter {n}" (from the markdown
+// fixture's own `## Chapter N` headings), so it reads doubled.
+async function waitForHeaderStatusText(container: HTMLElement, expected: string) {
   await waitFor(
-    () => expect(container.querySelector('.ebook-reader__footer')?.textContent).toBe(expected),
+    () => expect(container.querySelector('[data-testid="header-status"]')?.textContent).toBe(expected),
     { timeout: 5000 }
   );
 }
@@ -69,7 +69,7 @@ describe('Large-book page-count measurement performance', () => {
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
 
     // 12 chapters * 2 pages/chapter = 24.
-    await waitForFooterText(container, 'Page 1 of 24 · Chapter 1 of 12');
+    await waitForHeaderStatusText(container, 'Chapter 1 · Chapter 1 · Page 1 of 24');
   });
 
   it('yields to the main thread between batches instead of measuring the whole book in one blocking loop', async () => {
@@ -84,7 +84,7 @@ describe('Large-book page-count measurement performance', () => {
     const { container } = render(<Reader source={createManyChapterSource(CHAPTER_COUNT)} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
 
-    await waitForFooterText(container, 'Page 1 of 24 · Chapter 1 of 12');
+    await waitForHeaderStatusText(container, 'Chapter 1 · Chapter 1 · Page 1 of 24');
 
     expect(idleCallbackSpy.mock.calls.length).toBeGreaterThan(0);
   });
@@ -103,6 +103,6 @@ describe('Large-book page-count measurement performance', () => {
       rerender(<Reader source={createManyChapterSource(CHAPTER_COUNT)} fontSize={size} />);
     }
 
-    await waitForFooterText(container, 'Page 1 of 24 · Chapter 1 of 12');
+    await waitForHeaderStatusText(container, 'Chapter 1 · Chapter 1 · Page 1 of 24');
   });
 });

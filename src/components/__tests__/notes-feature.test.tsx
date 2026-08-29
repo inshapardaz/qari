@@ -275,6 +275,29 @@ describe('Notes feature', () => {
     }
   });
 
+  it('sends the entire multi-word selection to the dictionary, not just its first word', async () => {
+    const lookup = vi.fn(async (word: string) => ({
+      word,
+      language: 'en',
+      definitions: [{ meaning: 'a made-up definition for testing', partOfSpeech: 'noun' }],
+    }));
+    const fakeProvider: DictionaryProvider = { id: 'fake', supportedLanguages: ['en'], lookup };
+
+    render(<Reader source={createMarkdownSource()} dictionaryProviders={[fakeProvider]} />);
+    await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
+
+    const content = document.querySelector('.ebook-reader__columns') as HTMLElement;
+    selectText(content, 'wonderful world');
+    fireEvent.contextMenu(content);
+    await screen.findByTestId('note-context-menu');
+
+    fireEvent.click(screen.getByText('Meaning'));
+
+    await waitFor(() => expect(lookup).toHaveBeenCalled());
+    expect(lookup.mock.calls[0][0]).toBe('wonderful world');
+    expect(await screen.findByTestId('dictionary-word')).toHaveTextContent('wonderful world');
+  });
+
   it('creates a note from the dictionary popover\'s "Add to note" button', async () => {
     const fakeProvider: DictionaryProvider = {
       id: 'fake',

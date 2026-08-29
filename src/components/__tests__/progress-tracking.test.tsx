@@ -40,6 +40,17 @@ async function navigateToChapterTwo() {
   fireEvent.click(screen.getByRole('button', { name: 'Chapter Two' }));
 }
 
+/**
+ * Waits for the header status line to show the given chapter title. Scoped
+ * to `header-status` specifically (rather than a page-wide `findByText`)
+ * because this fixture's own chapter *body* text ("Content of chapter
+ * two.") also contains the chapter title as a substring, which a
+ * non-exact `findByText` would otherwise match ambiguously.
+ */
+async function waitForHeaderChapter(title: string) {
+  await waitFor(() => expect(screen.getByTestId('header-status')).toHaveTextContent(title));
+}
+
 describe('Reading progress tracking', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -51,7 +62,7 @@ describe('Reading progress tracking', () => {
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
 
     await navigateToChapterTwo();
-    await screen.findByText('Chapter Two');
+    await waitForHeaderChapter('Chapter Two');
 
     await waitFor(() => {
       expect(adapter.save).toHaveBeenCalledWith(
@@ -67,15 +78,15 @@ describe('Reading progress tracking', () => {
     const { unmount } = render(<Reader source={source} progressAdapter={adapter} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
     await navigateToChapterTwo();
-    await screen.findByText('Chapter Two');
+    await waitForHeaderChapter('Chapter Two');
     await waitFor(() => expect(adapter.save).toHaveBeenCalled());
 
     unmount();
 
     render(<Reader source={source} progressAdapter={adapter} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
-    await screen.findByText('Chapter Two');
-    expect(screen.queryByText('Chapter One')).not.toBeInTheDocument();
+    await waitForHeaderChapter('Chapter Two');
+    expect(screen.getByTestId('header-status')).not.toHaveTextContent('Chapter One');
   });
 
   it('defaults to localStorage when no progressAdapter is provided', async () => {
@@ -84,7 +95,7 @@ describe('Reading progress tracking', () => {
     const { unmount } = render(<Reader source={source} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
     await navigateToChapterTwo();
-    await screen.findByText('Chapter Two');
+    await waitForHeaderChapter('Chapter Two');
     await waitFor(() => {
       expect(localStorage.getItem('qari-progress-')).toBeTruthy();
     });
@@ -93,7 +104,7 @@ describe('Reading progress tracking', () => {
 
     render(<Reader source={source} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
-    await screen.findByText('Chapter Two');
+    await waitForHeaderChapter('Chapter Two');
   });
 
   it('does not save or resume progress when enableProgressTracking is false', async () => {
@@ -103,7 +114,7 @@ describe('Reading progress tracking', () => {
     const { unmount } = render(<Reader source={source} progressAdapter={adapter} enableProgressTracking={false} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
     await navigateToChapterTwo();
-    await screen.findByText('Chapter Two');
+    await waitForHeaderChapter('Chapter Two');
 
     expect(adapter.save).not.toHaveBeenCalled();
 
@@ -111,7 +122,7 @@ describe('Reading progress tracking', () => {
 
     render(<Reader source={source} progressAdapter={adapter} enableProgressTracking={false} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
-    await screen.findByText('Chapter One');
+    await waitForHeaderChapter('Chapter One');
     expect(adapter.load).not.toHaveBeenCalled();
   });
 
@@ -122,7 +133,7 @@ describe('Reading progress tracking', () => {
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
 
     await navigateToChapterTwo();
-    await screen.findByText('Chapter Two');
+    await waitForHeaderChapter('Chapter Two');
 
     await waitFor(() => {
       expect(onProgressSave).toHaveBeenCalledWith({
@@ -139,6 +150,6 @@ describe('Reading progress tracking', () => {
 
     render(<Reader source={createTwoChapterSource()} progressAdapter={adapter} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
-    await screen.findByText('Chapter One');
+    await waitForHeaderChapter('Chapter One');
   });
 });

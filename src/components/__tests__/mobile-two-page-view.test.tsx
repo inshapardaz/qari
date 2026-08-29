@@ -43,6 +43,22 @@ async function openLayoutPanel() {
   await screen.findByTestId('layout-panel');
 }
 
+/**
+ * On a mobile viewport, Layout (along with Theme and Reading settings)
+ * lives behind the header's single "⋯" overflow popover instead of its own
+ * button — see that popover's own comment in Reader.tsx.
+ */
+async function openLayoutPanelOnMobile() {
+  fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+  await screen.findByTestId('mobile-more-panel');
+  fireEvent.click(screen.getByRole('button', { name: 'Layout' }));
+  // The mobile overflow popover swaps its own content in place (see its
+  // comment in Reader.tsx) rather than opening a second, separately
+  // testid'd `layout-panel` popover — "Single column" only renders once
+  // that swap has happened.
+  await screen.findByRole('button', { name: 'Single column' });
+}
+
 describe('Two-page view on mobile', () => {
   let restoreMatchMedia: (() => void) | null = null;
 
@@ -56,7 +72,7 @@ describe('Two-page view on mobile', () => {
     render(<Reader source={createSource()} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
 
-    await openLayoutPanel();
+    await openLayoutPanelOnMobile();
 
     expect(screen.queryByRole('button', { name: 'Two columns' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Single column' })).toBeInTheDocument();

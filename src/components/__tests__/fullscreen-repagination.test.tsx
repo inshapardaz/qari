@@ -38,7 +38,11 @@ describe('Repagination on fullscreen toggle', () => {
     Object.defineProperty(pageBoxEl, 'clientWidth', { value: 1000, configurable: true });
     Object.defineProperty(columnsEl, 'scrollWidth', { value: 3000, configurable: true });
     fireEvent(window, new Event('resize'));
-    await waitFor(() => expect(screen.getByText('Page 1 of 3')).toBeInTheDocument());
+    // The header status line reads "Chapter 1 · Page 1 of 3" here — the
+    // fixture's single chapter is itself titled "Chapter 1" (from its own
+    // `## Chapter 1` heading), so that title segment always precedes the
+    // page segment even though there's only one chapter.
+    await waitFor(() => expect(screen.getByTestId('header-status')).toHaveTextContent('Chapter 1 · Page 1 of 3'));
 
     // Simulate the container measuring wider, as it would full-bleed over
     // the viewport in fullscreen — set *before* the click, since a real
@@ -56,7 +60,7 @@ describe('Repagination on fullscreen toggle', () => {
     await screen.findByRole('button', { name: 'Exit fullscreen' });
 
     // pagePitch = 1400-160+64=1304 -> round(3000/1304) = 2 pages.
-    await waitFor(() => expect(screen.getByText('Page 1 of 2')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('header-status')).toHaveTextContent('Chapter 1 · Page 1 of 2'));
 
     // Exiting fullscreen changes the width back — again, no 'resize' event —
     // and set before the click for the same reason as above.
@@ -65,6 +69,6 @@ describe('Repagination on fullscreen toggle', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Exit fullscreen' }));
     await screen.findByRole('button', { name: 'Enter fullscreen' });
 
-    await waitFor(() => expect(screen.getByText('Page 1 of 3')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('header-status')).toHaveTextContent('Chapter 1 · Page 1 of 3'));
   });
 });

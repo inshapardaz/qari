@@ -50,7 +50,7 @@ describe('Offscreen page-count measurement matches the real rendered content', (
 
     const { container, rerender } = render(<Reader source={source} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
-    await waitFor(() => expect(container.querySelector('.ebook-reader__footer')?.textContent).toContain('Page 1 of'));
+    await waitFor(() => expect(container.querySelector('[data-testid="header-status"]')?.textContent).toContain('Page 1 of'));
 
     const measurerEl = screen.getByTestId('page-count-measurer');
     const setValues: string[] = [];

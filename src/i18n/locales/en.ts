@@ -20,8 +20,11 @@ export const en: TranslationStrings = {
   nextChapter: 'Next chapter',
   pageIndicator: 'Page {current} of {total}',
   chapterIndicator: 'Chapter {current} of {total}',
+  headerChapterTitle: 'Chapter {current} · {title}',
   resetToDefaults: 'Reset to Defaults',
   closeReader: 'Close reader',
+  moreOptions: 'More options',
+  backToMenu: 'Back',
 
   // Settings dialog
   settingsTheme: 'Theme',

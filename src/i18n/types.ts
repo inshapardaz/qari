@@ -19,8 +19,14 @@ export interface TranslationStrings {
   nextChapter: string;
   pageIndicator: string; // supports {current}, {total}, {percent}
   chapterIndicator: string; // supports {current}, {total}, {title}
+  /** Header status line's chapter segment when the book has more than one chapter — combines the chapter number and its title. Supports {current}, {title}. */
+  headerChapterTitle: string;
   resetToDefaults: string;
   closeReader: string;
+  /** Mobile-only header button that collapses Theme/Layout/Text-settings into one overflow menu (see the header's own "more options" popover). */
+  moreOptions: string;
+  /** Back button inside that overflow popover, returning from a sub-panel (Theme/Layout/Text settings) to its own menu list. */
+  backToMenu: string;
 
   // Settings dialog
   settingsTheme: string;

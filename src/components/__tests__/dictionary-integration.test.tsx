@@ -64,7 +64,8 @@ function DictionaryTestHarness({ dictionaryService, hasProviders, bookLanguage =
     const text = selection.toString().trim();
     if (!text) return;
 
-    const word = text.split(/\s+/)[0];
+    // Mirrors Reader.tsx: the full selection is sent, not just its first word.
+    const word = text.replace(/\s+/g, ' ');
     if (!word) return;
 
     setDictionaryLoading(true);

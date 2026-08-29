@@ -1096,6 +1096,13 @@ export const Reader: React.FC<ReaderProps> = ({
   const [pendingSearchSelection, setPendingSearchSelection] = useState<{ chapterId: string; matchedText: string; occurrence: number } | null>(null);
   const [themePanelOpen, setThemePanelOpen] = useState(false);
   const [layoutPanelOpen, setLayoutPanelOpen] = useState(false);
+  // Mobile-only: Theme/Layout/Text-settings collapse into one "⋯" overflow
+  // popover instead of three separate header icons (see that popover's own
+  // comment near the header JSX) — `mobileMoreView` is which of its own
+  // "screens" is showing, starting back at the menu list every time it's
+  // reopened rather than remembering the last sub-panel visited.
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const [mobileMoreView, setMobileMoreView] = useState<'menu' | 'theme' | 'layout' | 'text' | 'fontSize'>('menu');
   // Pending note context menu — position, plus whichever of these apply to
   // the right-click that opened it: a fresh text selection (offers "Add
   // note" and, if configured, "Meaning") and/or an existing note highlight
@@ -1618,7 +1625,11 @@ export const Reader: React.FC<ReaderProps> = ({
     const text = selection.toString().trim();
     if (!text) return;
 
-    const word = text.split(/\s+/)[0];
+    // The full selection, not just its first word — a multi-word selection
+    // (e.g. an idiom or phrase) is sent to the dictionary as-is, since
+    // providers are given the whole lookup string rather than this reader
+    // assuming the user only ever wants the first word defined.
+    const word = text.replace(/\s+/g, ' ');
     if (!word) return;
 
     if (selection.rangeCount > 0 && contentRef.current) {
@@ -2879,6 +2890,7 @@ export const Reader: React.FC<ReaderProps> = ({
       themePanelOpen ||
       layoutPanelOpen ||
       settingsOpen ||
+      mobileMoreOpen ||
       lightboxImage ||
       activeFootnote ||
       dictionaryLoading ||
@@ -2898,7 +2910,7 @@ export const Reader: React.FC<ReaderProps> = ({
     ) {
       setHovered(true);
     }
-  }, [chapterMenuOpen, pendingNote, themePanelOpen, layoutPanelOpen, settingsOpen, lightboxImage, activeFootnote, dictionaryLoading, dictionaryResult]);
+  }, [chapterMenuOpen, pendingNote, themePanelOpen, layoutPanelOpen, settingsOpen, mobileMoreOpen, lightboxImage, activeFootnote, dictionaryLoading, dictionaryResult]);
 
   // ---------------------------------------------------------------------------
   // Context value (memoized)
@@ -3150,6 +3162,334 @@ export const Reader: React.FC<ReaderProps> = ({
   const bookPageNumber = pagesBefore + currentPage + 1;
   const bookTotalPages = pagesPerChapter.reduce((sum, p) => sum + (p || 1), 0);
 
+  // The header's own status line — "Chapter {n} · {title} · Page {x} of {y}"
+  // — replaces the old separate footer bar entirely (see the header's own
+  // JSX comment). The chapter segment only appears for multi-chapter books,
+  // matching the same condition the old footer used for its own chapter
+  // indicator, and is joined to the page segment with a literal ` · `
+  // (rather than baking that separator into a single all-in-one translated
+  // string) so a single-chapter book's line reads as just "Page x of y"
+  // instead of a stray leading separator.
+  const headerChapterSegment = state.book && state.book.chapters.length > 1
+    ? interpolate(t.headerChapterTitle, { current: currentChapterIdx + 1, title: chapterTitle })
+    : chapterTitle;
+  const headerPageSegment = interpolate(t.pageIndicator, { current: bookPageNumber, total: bookTotalPages, percent: overallProgress });
+  const headerStatusLine = headerChapterSegment ? `${headerChapterSegment} · ${headerPageSegment}` : headerPageSegment;
+
+  // Every ActionIcon in the header shrinks on narrow/mobile viewports
+  // (see `isMobileViewport`) so the full row of icons — chapters, bookmark,
+  // theme, layout, "Aa", fullscreen, close — fits without crowding or
+  // wrapping; unaffected on desktop.
+  const headerIconSize = isMobileViewport ? 'sm' : 'lg';
+
+  // Theme/layout/text-settings panel bodies — pulled out into their own
+  // values (rather than written once inline) so both the desktop header's
+  // three separate Popovers *and* the mobile header's single "⋯" overflow
+  // Popover (see its own comment near the header JSX) can render the exact
+  // same content instead of maintaining two copies of each.
+
+  // Font size — mobile-only, since desktop already has its own toolbar
+  // −/value/+ control (see that control's own comment for why); on mobile
+  // it's its own row in the "⋯" overflow menu rather than folded into
+  // "Reading settings", so it stays one tap away instead of two.
+  const fontSizePanelContent = (
+    <div dir={t.uiDirection}>
+      <Text size="xs" c="dimmed" fw={500} mb={4}>
+        {t.settingsFontSize}
+      </Text>
+      <Slider
+        size="xs"
+        min={12} max={48} step={2} value={fontSize}
+        onChange={(value) => { if (onSettingsChange) onSettingsChange({ fontSize: value }); }}
+        label={() => `${Math.round((fontSize / 16) * 100)}%`}
+        aria-label={t.settingsFontSize}
+        mb="0.6rem"
+      />
+    </div>
+  );
+
+  const themePanelContent = (
+    // 3-per-row grid (matches Apple Books' own appearance grid) rather
+    // than a single row — 7 themes' worth of swatches would either
+    // overflow or wrap raggedly in a plain flex row.
+    <div
+      dir={t.uiDirection}
+      style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}
+    >
+      {THEME_ORDER.map(thm => {
+        const active = theme === thm;
+        const label = themeLabels[thm];
+        return (
+          <div key={thm} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem' }}>
+            <button
+              type="button"
+              onClick={() => { if (onSettingsChange) onSettingsChange({ theme: thm }); }}
+              aria-pressed={active}
+              aria-label={label}
+              style={{
+                width: '2.75rem',
+                height: '2.75rem',
+                borderRadius: '50%',
+                border: active ? '2px solid var(--mantine-primary-color-filled)' : `1px solid ${THEMES[thm].border}`,
+                boxShadow: active ? '0 2px 6px rgba(0, 0, 0, 0.15)' : 'none',
+                backgroundColor: THEMES[thm].background,
+                cursor: 'pointer',
+                padding: 0,
+                position: 'relative',
+                transition: 'box-shadow 0.15s, border-color 0.15s',
+              }}
+            >
+              {/* Decorative bar standing in for a line of text — echoes
+                  the theme's own foreground color inside its own
+                  background, giving the swatch a hint of the reading
+                  contrast it represents instead of a plain color dot. */}
+              <span
+                aria-hidden="true"
+                style={{
+                  position: 'absolute',
+                  bottom: '20%',
+                  left: '22%',
+                  right: '22%',
+                  height: '14%',
+                  borderRadius: '2px',
+                  backgroundColor: THEMES[thm].foreground,
+                  opacity: 0.6,
+                }}
+              />
+            </button>
+            <Text size="10px" c="dimmed" fw={active ? 700 : 500} style={{ textAlign: 'center', lineHeight: 1.15, maxWidth: '3.5rem' }}>
+              {label}
+            </Text>
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const layoutPanelContent = (
+    <>
+      <div dir={t.uiDirection} style={{ display: 'flex', gap: '0.5rem' }}>
+        {([
+          { key: 'single', active: !scroll && effectiveColumns === 1, icon: <SinglePageIcon size="1.2em" />, label: t.settingsLayoutSingle, onClick: () => { if (onSettingsChange) onSettingsChange({ scroll: false, columns: 1 }); } },
+          // Two-page view doesn't fit comfortably on narrow/mobile viewports — hidden there rather than shown-but-forced-back, per issue #6.
+          ...(isMobileViewport ? [] : [{ key: 'double', active: !scroll && effectiveColumns === 2, icon: <DoublePageIcon size="1.2em" />, label: t.settingsLayoutDouble, onClick: () => { if (onSettingsChange) onSettingsChange({ scroll: false, columns: 2 }); } }]),
+          // PDF pages are fixed-size raster images, not
+          // reflowable text — paging through them one at a
+          // time works far better than an endless vertical
+          // scroll of them, so this option (and the ability
+          // to enter that mode at all — see where `scroll`
+          // is forced off for PDFs above) doesn't apply.
+          ...(isPdfBook ? [] : [{ key: 'scroll', active: scroll, icon: <ScrollIcon size="1.2em" />, label: t.settingsLayoutScroll, onClick: () => { if (onSettingsChange) onSettingsChange({ scroll: true }); } }]),
+        ]).map(opt => (
+          <button
+            key={opt.key}
+            type="button"
+            onClick={opt.onClick}
+            aria-pressed={opt.active}
+            aria-label={opt.label}
+            style={{
+              flex: 1,
+              padding: '0.5rem',
+              borderRadius: 'var(--mantine-radius-md)',
+              border: opt.active ? '2px solid var(--mantine-primary-color-filled)' : '1px solid var(--mantine-color-default-border)',
+              backgroundColor: 'transparent',
+              color: opt.active ? 'var(--reader-accent, #0071e3)' : 'var(--reader-fg, #1a1a1a)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {opt.icon}
+          </button>
+        ))}
+      </div>
+      {/* Only meaningful — and only shown — while two-column
+          mode is the *active* layout, not merely available
+          as an option: offering a page-divider toggle while
+          reading single-column or scroll (where there's no
+          second page for it to sit between) reads as a
+          control for a divider that doesn't exist. */}
+      {!scroll && effectiveColumns === 2 && (
+        <Switch
+          mt="sm"
+          size="sm"
+          data-testid="layout-panel-show-divider"
+          checked={showPageDivider}
+          onChange={(e) => { if (onSettingsChange) onSettingsChange({ showPageDivider: e.currentTarget.checked }); }}
+          label={t.settingsLayoutShowDivider}
+          aria-label={t.settingsLayoutShowDivider}
+          labelPosition="left"
+          styles={{ body: { justifyContent: 'space-between' }, label: { fontSize: 'var(--mantine-font-size-xs)', fontWeight: 600 } }}
+        />
+      )}
+    </>
+  );
+
+  const textSettingsContent = (
+    <div dir={t.uiDirection}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--mantine-spacing-sm)' }}>
+        <Text fw={700} size="lg">
+          {t.readingSettings}
+        </Text>
+        <ActionIcon
+          variant="subtle"
+          size="sm"
+          aria-label={t.resetToDefaults}
+          title={t.resetToDefaults}
+          onClick={() => {
+            const defaultFamily = fontOptions.find(o => o.name.toLowerCase() === 'serif')?.family
+              ?? fontOptions[0]?.family
+              ?? 'Georgia, "Times New Roman", serif';
+            setSelectedFontFamily(defaultFamily);
+            if (onSettingsChange) onSettingsChange({
+              theme: 'light',
+              fontFamily: 'serif',
+              fontSize: 16,
+              justify: true,
+              lineSpacing: 1.5,
+              letterSpacing: 0,
+              wordSpacing: 0,
+              margin: 32,
+              columns: 1,
+            });
+          }}
+        >
+          ↺
+        </ActionIcon>
+      </div>
+
+      {/* Typeface */}
+      <div style={{ marginBottom: '1.1rem' }}>
+        <Select
+          size="xs"
+          label={t.settingsFontFamily}
+          value={selectedFontFamily}
+          onChange={(family) => {
+            if (!family) return;
+            setSelectedFontFamily(family);
+            const opt = fontOptions.find(o => o.family === family);
+            if (onSettingsChange) onSettingsChange({ fontFamily: opt?.name ?? family });
+          }}
+          data={fontOptions.map(opt => ({ value: opt.family, label: t.fontNames[opt.name] ?? opt.name }))}
+          allowDeselect={false}
+          onDropdownOpen={() => setFontDropdownOpen(true)}
+          onDropdownClose={() => setFontDropdownOpen(false)}
+          comboboxProps={{ withinPortal: true, portalProps: { target: mantinePortalTarget } }}
+          styles={{
+            label: { fontSize: 'var(--mantine-font-size-xs)', color: 'var(--mantine-color-dimmed)', fontWeight: 500, marginBottom: 4 },
+            input: { fontFamily: selectedFontFamily },
+            // Its dropdown is portaled to `mantinePortalTarget` directly
+            // (a sibling of the settings Popover.Dropdown above, not
+            // nested inside it), so it needs the same theme override
+            // independently rather than inheriting the popover's.
+            dropdown: POPOVER_THEME_STYLE,
+          }}
+        />
+      </div>
+
+      {/* Line height */}
+      <div style={{ marginBottom: '1.1rem' }}>
+        <Text size="xs" c="dimmed" fw={500} mb={4}>
+          {t.settingsLineSpacing}
+        </Text>
+        <Slider
+          size="xs"
+          min={1} max={3} step={0.25} value={lineSpacing}
+          onChange={(value) => { if (onSettingsChange) onSettingsChange({ lineSpacing: value }); }}
+          marks={[1, 2, 3].map(value => ({ value, label: value.toFixed(1) }))}
+          label={(value) => `${value}×`}
+          aria-label={t.settingsLineSpacing}
+          mb="0.6rem"
+        />
+      </div>
+
+      {/* Margin */}
+      <div style={{ marginBottom: '1.1rem' }}>
+        <Text size="xs" c="dimmed" fw={500} mb={4}>
+          {t.settingsMargin}
+        </Text>
+        <Slider
+          size="xs"
+          min={0} max={100} step={8} value={margin}
+          onChange={(value) => { if (onSettingsChange) onSettingsChange({ margin: value }); }}
+          marks={[0, 50, 100].map(value => ({ value, label: String(value) }))}
+          label={(value) => `${value}px`}
+          aria-label={t.settingsMargin}
+          mb="0.6rem"
+        />
+      </div>
+
+      {/* Justify text */}
+      <div style={{ marginBottom: '1.1rem' }}>
+        <Switch
+          size="sm"
+          checked={justify}
+          onChange={(e) => { if (onSettingsChange) onSettingsChange({ justify: e.currentTarget.checked }); }}
+          label={t.settingsJustify}
+          aria-label={t.settingsJustify}
+          labelPosition="left"
+          styles={{ body: { justifyContent: 'space-between' }, label: { fontSize: 'var(--mantine-font-size-xs)', fontWeight: 600 } }}
+        />
+      </div>
+
+      {/* Advanced — collapsed by default. Letter/word
+        spacing are finer-grained than the mockup's own
+        settings panel shows, so they stay tucked away
+        here instead of crowding the primary at-a-glance
+        controls above (font, size, line spacing, margin,
+        justify) that now mirror it directly. Theme and
+        layout are their own title-bar items. */}
+      <Button
+        variant="subtle"
+        size="xs"
+        color="gray"
+        fullWidth
+        justify="space-between"
+        rightSection={<span aria-hidden="true" style={{ transform: moreSettingsOpen ? 'rotate(180deg)' : undefined, transition: 'transform 150ms', display: 'inline-block' }}>⌄</span>}
+        onClick={() => setMoreSettingsOpen((open) => !open)}
+        aria-expanded={moreSettingsOpen}
+      >
+        {t.settingsMore}
+      </Button>
+      {moreSettingsOpen && (
+        <div style={{ marginTop: '1.1rem' }}>
+          {/* Letter spacing */}
+          <div style={{ marginBottom: '1.1rem' }}>
+            <Text size="xs" c="dimmed" fw={500} mb={4}>
+              {t.settingsLetterSpacing}
+            </Text>
+            <Slider
+              size="xs"
+              min={0} max={5} step={0.5} value={letterSpacing}
+              onChange={(value) => { if (onSettingsChange) onSettingsChange({ letterSpacing: value }); }}
+              marks={[0, 2.5, 5].map(value => ({ value, label: String(value) }))}
+              label={(value) => `${value}px`}
+              aria-label={t.settingsLetterSpacing}
+              mb="0.6rem"
+            />
+          </div>
+
+          {/* Word spacing */}
+          <div style={{ marginBottom: '1.1rem' }}>
+            <Text size="xs" c="dimmed" fw={500} mb={4}>
+              {t.settingsWordSpacing}
+            </Text>
+            <Slider
+              size="xs"
+              min={0} max={10} step={1} value={wordSpacing}
+              onChange={(value) => { if (onSettingsChange) onSettingsChange({ wordSpacing: value }); }}
+              marks={[0, 5, 10].map(value => ({ value, label: String(value) }))}
+              label={(value) => `${value}px`}
+              aria-label={t.settingsWordSpacing}
+              mb="0.6rem"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   // The CSS-column pagination trick advances the flow one virtual "column
   // group" at a time, with a fixed 64px gap between every column (page
   // boundaries included) but with `margin` applied as padding on the same
@@ -3362,7 +3702,7 @@ export const Reader: React.FC<ReaderProps> = ({
                     chapters/bookmarks/notes lists below as tabs. */}
                 <ActionIcon
                   variant={chapterMenuOpen ? 'filled' : 'transparent'}
-                  size="lg"
+                  size={headerIconSize}
                   aria-label={t.tableOfContents}
                   aria-expanded={chapterMenuOpen}
                   onClick={() => setChapterMenuOpen((open) => !open)}
@@ -3640,10 +3980,31 @@ export const Reader: React.FC<ReaderProps> = ({
                   </Drawer.Content>
                 </Drawer.Root>
 
-                {/* Chapter title (center) */}
-                <Text size="sm" fw={500} truncate="end" style={{ opacity: 0.8, flex: 1, textAlign: 'center' }}>
-                  {chapterTitle}
-                </Text>
+                {/* Book title + status — replaces the old separate footer
+                    bar (see `headerStatusLine`'s own comment): the book
+                    title is bolded on its own line, with the chapter and
+                    page position underneath, e.g. "Moby-Dick; or, The
+                    Whale" / "Chapter 1 · Loomings · Page 12 of 635".
+                    Left-aligned (`textAlign: 'start'`, not `'center'` —
+                    logical, so it's actually right-aligned under RTL rather
+                    than flipping to the physical left there) with a small
+                    gap from the ☰ button rather than centered in the
+                    header, so it reads as a titled document rather than a
+                    dialog-style centered heading. `minWidth: 0` is what
+                    actually lets the `truncate` ellipsis engage inside a
+                    flex item — without it a flex child won't shrink below
+                    its content's natural (untruncated) width no matter what
+                    `flex`/`truncate` say. */}
+                <div style={{ flex: 1, minWidth: 0, textAlign: 'start', [t.uiDirection === 'rtl' ? 'marginRight' : 'marginLeft']: '0.75rem' }}>
+                  {state.book?.metadata?.title && (
+                    <Text data-testid="header-book-title" size="sm" fw={700} truncate="end">
+                      {state.book.metadata.title}
+                    </Text>
+                  )}
+                  <Text data-testid="header-status" size="xs" c="dimmed" truncate="end">
+                    {headerStatusLine}
+                  </Text>
+                </div>
 
                 {/* Settings button (right) */}
                 <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
@@ -3653,7 +4014,7 @@ export const Reader: React.FC<ReaderProps> = ({
                   {enableBookmarks && (
                     <ActionIcon
                       variant={isCurrentPageBookmarked ? 'filled' : 'transparent'}
-                      size="lg"
+                      size={headerIconSize}
                       aria-label={t.bookmarks}
                       aria-pressed={isCurrentPageBookmarked}
                       onClick={handleToggleBookmark}
@@ -3665,8 +4026,11 @@ export const Reader: React.FC<ReaderProps> = ({
                     </ActionIcon>
                   )}
 
-                  {/* Theme button — its own title-bar item rather than a
-                      section buried in the settings panel. */}
+                  {/* Theme/Layout/Text-settings desktop header items — a
+                      single "⋯" overflow popover replaces all three on
+                      mobile instead (see its own comment right after this
+                      block), so none of these render there. */}
+                  {!isMobileViewport && (
                   <Popover
                     opened={themePanelOpen}
                     onChange={setThemePanelOpen}
@@ -3679,7 +4043,7 @@ export const Reader: React.FC<ReaderProps> = ({
                     <Popover.Target>
                       <ActionIcon
                         variant={themePanelOpen ? 'filled' : 'transparent'}
-                        size="lg"
+                        size={headerIconSize}
                         onClick={() => setThemePanelOpen((open) => !open)}
                         aria-label={t.settingsTheme}
                         aria-expanded={themePanelOpen}
@@ -3705,68 +4069,14 @@ export const Reader: React.FC<ReaderProps> = ({
                       </ActionIcon>
                     </Popover.Target>
                     <Popover.Dropdown data-testid="theme-panel" p="sm" style={POPOVER_THEME_STYLE}>
-                      {/* 3-per-row grid (matches Apple Books' own appearance
-                          grid) rather than a single row — 7 themes' worth of
-                          swatches would either overflow or wrap raggedly in
-                          a plain flex row. */}
-                      <div
-                        dir={t.uiDirection}
-                        style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}
-                      >
-                        {THEME_ORDER.map(thm => {
-                          const active = theme === thm;
-                          const label = themeLabels[thm];
-                          return (
-                            <div key={thm} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem' }}>
-                              <button
-                                type="button"
-                                onClick={() => { if (onSettingsChange) onSettingsChange({ theme: thm }); }}
-                                aria-pressed={active}
-                                aria-label={label}
-                                style={{
-                                  width: '2.75rem',
-                                  height: '2.75rem',
-                                  borderRadius: '50%',
-                                  border: active ? '2px solid var(--mantine-primary-color-filled)' : `1px solid ${THEMES[thm].border}`,
-                                  boxShadow: active ? '0 2px 6px rgba(0, 0, 0, 0.15)' : 'none',
-                                  backgroundColor: THEMES[thm].background,
-                                  cursor: 'pointer',
-                                  padding: 0,
-                                  position: 'relative',
-                                  transition: 'box-shadow 0.15s, border-color 0.15s',
-                                }}
-                              >
-                                {/* Decorative bar standing in for a line of
-                                    text — echoes the theme's own foreground
-                                    color inside its own background, giving
-                                    the swatch a hint of the reading contrast
-                                    it represents instead of a plain color dot. */}
-                                <span
-                                  aria-hidden="true"
-                                  style={{
-                                    position: 'absolute',
-                                    bottom: '20%',
-                                    left: '22%',
-                                    right: '22%',
-                                    height: '14%',
-                                    borderRadius: '2px',
-                                    backgroundColor: THEMES[thm].foreground,
-                                    opacity: 0.6,
-                                  }}
-                                />
-                              </button>
-                              <Text size="10px" c="dimmed" fw={active ? 700 : 500} style={{ textAlign: 'center', lineHeight: 1.15, maxWidth: '3.5rem' }}>
-                                {label}
-                              </Text>
-                            </div>
-                          );
-                        })}
-                      </div>
+                      {themePanelContent}
                     </Popover.Dropdown>
                   </Popover>
+                  )}
 
                   {/* Layout button — its own title-bar item; the icon
                       tracks whichever layout is currently active. */}
+                  {!isMobileViewport && (
                   <Popover
                     opened={layoutPanelOpen}
                     onChange={setLayoutPanelOpen}
@@ -3779,7 +4089,7 @@ export const Reader: React.FC<ReaderProps> = ({
                     <Popover.Target>
                       <ActionIcon
                         variant={layoutPanelOpen ? 'filled' : 'transparent'}
-                        size="lg"
+                        size={headerIconSize}
                         onClick={() => setLayoutPanelOpen((open) => !open)}
                         aria-label={t.settingsLayout}
                         aria-expanded={layoutPanelOpen}
@@ -3791,70 +4101,21 @@ export const Reader: React.FC<ReaderProps> = ({
                       </ActionIcon>
                     </Popover.Target>
                     <Popover.Dropdown data-testid="layout-panel" p="sm" style={POPOVER_THEME_STYLE}>
-                      <div dir={t.uiDirection} style={{ display: 'flex', gap: '0.5rem' }}>
-                        {([
-                          { key: 'single', active: !scroll && effectiveColumns === 1, icon: <SinglePageIcon size="1.2em" />, label: t.settingsLayoutSingle, onClick: () => { if (onSettingsChange) onSettingsChange({ scroll: false, columns: 1 }); } },
-                          // Two-page view doesn't fit comfortably on narrow/mobile viewports — hidden there rather than shown-but-forced-back, per issue #6.
-                          ...(isMobileViewport ? [] : [{ key: 'double', active: !scroll && effectiveColumns === 2, icon: <DoublePageIcon size="1.2em" />, label: t.settingsLayoutDouble, onClick: () => { if (onSettingsChange) onSettingsChange({ scroll: false, columns: 2 }); } }]),
-                          // PDF pages are fixed-size raster images, not
-                          // reflowable text — paging through them one at a
-                          // time works far better than an endless vertical
-                          // scroll of them, so this option (and the ability
-                          // to enter that mode at all — see where `scroll`
-                          // is forced off for PDFs above) doesn't apply.
-                          ...(isPdfBook ? [] : [{ key: 'scroll', active: scroll, icon: <ScrollIcon size="1.2em" />, label: t.settingsLayoutScroll, onClick: () => { if (onSettingsChange) onSettingsChange({ scroll: true }); } }]),
-                        ]).map(opt => (
-                          <button
-                            key={opt.key}
-                            type="button"
-                            onClick={opt.onClick}
-                            aria-pressed={opt.active}
-                            aria-label={opt.label}
-                            style={{
-                              flex: 1,
-                              padding: '0.5rem',
-                              borderRadius: 'var(--mantine-radius-md)',
-                              border: opt.active ? '2px solid var(--mantine-primary-color-filled)' : '1px solid var(--mantine-color-default-border)',
-                              backgroundColor: 'transparent',
-                              color: opt.active ? 'var(--reader-accent, #0071e3)' : 'var(--reader-fg, #1a1a1a)',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            {opt.icon}
-                          </button>
-                        ))}
-                      </div>
-                      {/* Only meaningful — and only shown — while two-column
-                          mode is the *active* layout, not merely available
-                          as an option: offering a page-divider toggle while
-                          reading single-column or scroll (where there's no
-                          second page for it to sit between) reads as a
-                          control for a divider that doesn't exist. */}
-                      {!scroll && effectiveColumns === 2 && (
-                        <Switch
-                          mt="sm"
-                          size="sm"
-                          data-testid="layout-panel-show-divider"
-                          checked={showPageDivider}
-                          onChange={(e) => { if (onSettingsChange) onSettingsChange({ showPageDivider: e.currentTarget.checked }); }}
-                          label={t.settingsLayoutShowDivider}
-                          aria-label={t.settingsLayoutShowDivider}
-                          labelPosition="left"
-                          styles={{ body: { justifyContent: 'space-between' }, label: { fontSize: 'var(--mantine-font-size-xs)', fontWeight: 600 } }}
-                        />
-                      )}
+                      {layoutPanelContent}
                     </Popover.Dropdown>
                   </Popover>
+                  )}
 
                   {/* Font size — lives directly in the toolbar (not just
                       inside the "Aa" panel) for one-tap access, mirroring
                       the PDF zoom toolbar's own −/value/+ pattern below.
                       Meaningless for PDFs, same reasoning as the "Aa" panel
-                      right after it. */}
-                  {!isPdfBook && (
+                      right after it. On mobile it moves into the "Aa" panel
+                      instead (see the font-size Slider inside it below) —
+                      the toolbar is already tight with every other icon at
+                      that width, so this trades one-tap access for the room
+                      those two extra buttons + readout would otherwise take. */}
+                  {!isPdfBook && !isMobileViewport && (
                     <div
                       role="toolbar"
                       aria-label={t.settingsFontSize}
@@ -3862,7 +4123,7 @@ export const Reader: React.FC<ReaderProps> = ({
                     >
                       <ActionIcon
                         variant="transparent"
-                        size="lg"
+                        size={headerIconSize}
                         onClick={() => { if (onSettingsChange) onSettingsChange({ fontSize: Math.max(12, fontSize - 2) }); }}
                         disabled={fontSize <= 12}
                         aria-label={`${t.settingsFontSizeDecrease}. ${Math.round((fontSize / 16) * 100)}%`}
@@ -3876,7 +4137,7 @@ export const Reader: React.FC<ReaderProps> = ({
                       </Text>
                       <ActionIcon
                         variant="transparent"
-                        size="lg"
+                        size={headerIconSize}
                         onClick={() => { if (onSettingsChange) onSettingsChange({ fontSize: Math.min(48, fontSize + 2) }); }}
                         disabled={fontSize >= 48}
                         aria-label={`${t.settingsFontSizeIncrease}. ${Math.round((fontSize / 16) * 100)}%`}
@@ -3892,8 +4153,10 @@ export const Reader: React.FC<ReaderProps> = ({
                       all meaningless for PDFs, which render each page as a
                       fixed-size rasterized image rather than reflowable
                       text, so the whole "Aa" panel is hidden for them
-                      rather than shown with controls that do nothing. */}
-                  {!isPdfBook && (
+                      rather than shown with controls that do nothing.
+                      Mobile gets this same content through the "⋯" overflow
+                      popover instead (see its own comment below). */}
+                  {!isPdfBook && !isMobileViewport && (
                     <Popover
                       opened={settingsOpen}
                       onChange={setSettingsOpen}
@@ -3912,7 +4175,7 @@ export const Reader: React.FC<ReaderProps> = ({
                       <Popover.Target>
                         <ActionIcon
                           variant={settingsOpen ? 'filled' : 'transparent'}
-                          size="lg"
+                          size={headerIconSize}
                           onClick={() => setSettingsOpen(!settingsOpen)}
                           aria-label={t.readingSettings}
                           aria-expanded={settingsOpen}
@@ -3924,167 +4187,89 @@ export const Reader: React.FC<ReaderProps> = ({
                         </ActionIcon>
                       </Popover.Target>
                       <Popover.Dropdown data-testid="settings-panel" p="sm" style={POPOVER_THEME_STYLE}>
-                        <div dir={t.uiDirection}>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--mantine-spacing-sm)' }}>
-                            <Text fw={700} size="lg">
-                              {t.readingSettings}
-                            </Text>
+                        {textSettingsContent}
+                      </Popover.Dropdown>
+                    </Popover>
+                  )}
+
+                  {/* Mobile-only "⋯" overflow popover — replaces the three
+                      desktop items above (Theme, Layout, "Aa" text
+                      settings) with one icon, so a narrow header doesn't
+                      have to fit all of them plus ☰/bookmark/fullscreen/
+                      close side by side. Opens on a menu of those three
+                      rows; tapping one swaps this *same* popover's content
+                      to that row's own panel (reusing the exact
+                      `themePanelContent`/`layoutPanelContent`/
+                      `textSettingsContent` the desktop Popovers render, not
+                      a separate copy) with a "back" row of its own to
+                      return to the menu, rather than opening a second,
+                      separately-anchored popover on top of this one. */}
+                  {isMobileViewport && (
+                    <Popover
+                      opened={mobileMoreOpen}
+                      onChange={(opened) => { setMobileMoreOpen(opened); if (!opened) setMobileMoreView('menu'); }}
+                      position={t.uiDirection === 'rtl' ? 'bottom-start' : 'bottom-end'}
+                      withinPortal
+                      portalProps={{ target: mantinePortalTarget }}
+                      shadow="md"
+                      radius="lg"
+                      width={280}
+                      trapFocus
+                      closeOnClickOutside={!fontDropdownOpen}
+                    >
+                      <Popover.Target>
+                        <ActionIcon
+                          variant={mobileMoreOpen ? 'filled' : 'transparent'}
+                          size={headerIconSize}
+                          onClick={() => setMobileMoreOpen((open) => !open)}
+                          aria-label={t.moreOptions}
+                          aria-expanded={mobileMoreOpen}
+                          style={mobileMoreOpen
+                            ? { backgroundColor: 'var(--reader-fg, #1a1a1a)', color: 'var(--reader-bg, #ffffff)' }
+                            : { color: 'var(--reader-fg, #1a1a1a)' }}
+                        >
+                          <span aria-hidden="true" style={{ fontWeight: 700, letterSpacing: '-1px' }}>⋯</span>
+                        </ActionIcon>
+                      </Popover.Target>
+                      <Popover.Dropdown data-testid="mobile-more-panel" p="sm" style={POPOVER_THEME_STYLE}>
+                        {mobileMoreView === 'menu' && (
+                          <div dir={t.uiDirection} style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                            {!isPdfBook && (
+                              <Button variant="subtle" color="gray" size="sm" justify="space-between" onClick={() => setMobileMoreView('fontSize')}>
+                                {t.settingsFontSize}
+                              </Button>
+                            )}
+                            <Button variant="subtle" color="gray" size="sm" justify="space-between" onClick={() => setMobileMoreView('theme')}>
+                              {t.settingsTheme}
+                            </Button>
+                            <Button variant="subtle" color="gray" size="sm" justify="space-between" onClick={() => setMobileMoreView('layout')}>
+                              {t.settingsLayout}
+                            </Button>
+                            {!isPdfBook && (
+                              <Button variant="subtle" color="gray" size="sm" justify="space-between" onClick={() => setMobileMoreView('text')}>
+                                {t.readingSettings}
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                        {mobileMoreView !== 'menu' && (
+                          <div dir={t.uiDirection}>
                             <ActionIcon
                               variant="subtle"
+                              color="gray"
                               size="sm"
-                              aria-label={t.resetToDefaults}
-                              title={t.resetToDefaults}
-                              onClick={() => {
-                                const defaultFamily = fontOptions.find(o => o.name.toLowerCase() === 'serif')?.family
-                                  ?? fontOptions[0]?.family
-                                  ?? 'Georgia, "Times New Roman", serif';
-                                setSelectedFontFamily(defaultFamily);
-                                if (onSettingsChange) onSettingsChange({
-                                  theme: 'light',
-                                  fontFamily: 'serif',
-                                  fontSize: 16,
-                                  justify: true,
-                                  lineSpacing: 1.5,
-                                  letterSpacing: 0,
-                                  wordSpacing: 0,
-                                  margin: 32,
-                                  columns: 1,
-                                });
-                              }}
+                              aria-label={t.backToMenu}
+                              onClick={() => setMobileMoreView('menu')}
+                              mb="sm"
                             >
-                              ↺
+                              {t.uiDirection === 'rtl' ? <ChevronRightIcon size="1.1em" /> : <ChevronLeftIcon size="1.1em" />}
                             </ActionIcon>
+                            {mobileMoreView === 'fontSize' && fontSizePanelContent}
+                            {mobileMoreView === 'theme' && themePanelContent}
+                            {mobileMoreView === 'layout' && layoutPanelContent}
+                            {mobileMoreView === 'text' && textSettingsContent}
                           </div>
-
-                          {/* Typeface */}
-                          <div style={{ marginBottom: '1.1rem' }}>
-                            <Select
-                              size="xs"
-                              label={t.settingsFontFamily}
-                              value={selectedFontFamily}
-                              onChange={(family) => {
-                                if (!family) return;
-                                setSelectedFontFamily(family);
-                                const opt = fontOptions.find(o => o.family === family);
-                                if (onSettingsChange) onSettingsChange({ fontFamily: opt?.name ?? family });
-                              }}
-                              data={fontOptions.map(opt => ({ value: opt.family, label: t.fontNames[opt.name] ?? opt.name }))}
-                              allowDeselect={false}
-                              onDropdownOpen={() => setFontDropdownOpen(true)}
-                              onDropdownClose={() => setFontDropdownOpen(false)}
-                              comboboxProps={{ withinPortal: true, portalProps: { target: mantinePortalTarget } }}
-                              styles={{
-                                label: { fontSize: 'var(--mantine-font-size-xs)', color: 'var(--mantine-color-dimmed)', fontWeight: 500, marginBottom: 4 },
-                                input: { fontFamily: selectedFontFamily },
-                                // Its dropdown is portaled to `mantinePortalTarget` directly
-                                // (a sibling of the settings Popover.Dropdown above, not
-                                // nested inside it), so it needs the same theme override
-                                // independently rather than inheriting the popover's.
-                                dropdown: POPOVER_THEME_STYLE,
-                              }}
-                            />
-                          </div>
-
-                          {/* Line height */}
-                          <div style={{ marginBottom: '1.1rem' }}>
-                            <Text size="xs" c="dimmed" fw={500} mb={4}>
-                              {t.settingsLineSpacing}
-                            </Text>
-                            <Slider
-                              size="xs"
-                              min={1} max={3} step={0.25} value={lineSpacing}
-                              onChange={(value) => { if (onSettingsChange) onSettingsChange({ lineSpacing: value }); }}
-                              marks={[1, 2, 3].map(value => ({ value, label: value.toFixed(1) }))}
-                              label={(value) => `${value}×`}
-                              aria-label={t.settingsLineSpacing}
-                              mb="0.6rem"
-                            />
-                          </div>
-
-                          {/* Margin */}
-                          <div style={{ marginBottom: '1.1rem' }}>
-                            <Text size="xs" c="dimmed" fw={500} mb={4}>
-                              {t.settingsMargin}
-                            </Text>
-                            <Slider
-                              size="xs"
-                              min={0} max={100} step={8} value={margin}
-                              onChange={(value) => { if (onSettingsChange) onSettingsChange({ margin: value }); }}
-                              marks={[0, 50, 100].map(value => ({ value, label: String(value) }))}
-                              label={(value) => `${value}px`}
-                              aria-label={t.settingsMargin}
-                              mb="0.6rem"
-                            />
-                          </div>
-
-                          {/* Justify text */}
-                          <div style={{ marginBottom: '1.1rem' }}>
-                            <Switch
-                              size="sm"
-                              checked={justify}
-                              onChange={(e) => { if (onSettingsChange) onSettingsChange({ justify: e.currentTarget.checked }); }}
-                              label={t.settingsJustify}
-                              aria-label={t.settingsJustify}
-                              labelPosition="left"
-                              styles={{ body: { justifyContent: 'space-between' }, label: { fontSize: 'var(--mantine-font-size-xs)', fontWeight: 600 } }}
-                            />
-                          </div>
-
-                          {/* Advanced — collapsed by default. Letter/word
-                            spacing are finer-grained than the mockup's own
-                            settings panel shows, so they stay tucked away
-                            here instead of crowding the primary at-a-glance
-                            controls above (font, size, line spacing, margin,
-                            justify) that now mirror it directly. Theme and
-                            layout are their own title-bar items. */}
-                          <Button
-                            variant="subtle"
-                            size="xs"
-                            color="gray"
-                            fullWidth
-                            justify="space-between"
-                            rightSection={<span aria-hidden="true" style={{ transform: moreSettingsOpen ? 'rotate(180deg)' : undefined, transition: 'transform 150ms', display: 'inline-block' }}>⌄</span>}
-                            onClick={() => setMoreSettingsOpen((open) => !open)}
-                            aria-expanded={moreSettingsOpen}
-                          >
-                            {t.settingsMore}
-                          </Button>
-                          {moreSettingsOpen && (
-                            <div style={{ marginTop: '1.1rem' }}>
-                              {/* Letter spacing */}
-                              <div style={{ marginBottom: '1.1rem' }}>
-                                <Text size="xs" c="dimmed" fw={500} mb={4}>
-                                  {t.settingsLetterSpacing}
-                                </Text>
-                                <Slider
-                                  size="xs"
-                                  min={0} max={5} step={0.5} value={letterSpacing}
-                                  onChange={(value) => { if (onSettingsChange) onSettingsChange({ letterSpacing: value }); }}
-                                  marks={[0, 2.5, 5].map(value => ({ value, label: String(value) }))}
-                                  label={(value) => `${value}px`}
-                                  aria-label={t.settingsLetterSpacing}
-                                  mb="0.6rem"
-                                />
-                              </div>
-
-                              {/* Word spacing */}
-                              <div style={{ marginBottom: '1.1rem' }}>
-                                <Text size="xs" c="dimmed" fw={500} mb={4}>
-                                  {t.settingsWordSpacing}
-                                </Text>
-                                <Slider
-                                  size="xs"
-                                  min={0} max={10} step={1} value={wordSpacing}
-                                  onChange={(value) => { if (onSettingsChange) onSettingsChange({ wordSpacing: value }); }}
-                                  marks={[0, 5, 10].map(value => ({ value, label: String(value) }))}
-                                  label={(value) => `${value}px`}
-                                  aria-label={t.settingsWordSpacing}
-                                  mb="0.6rem"
-                                />
-                              </div>
-                            </div>
-                          )}
-                        </div>
+                        )}
                       </Popover.Dropdown>
                     </Popover>
                   )}
@@ -4107,7 +4292,7 @@ export const Reader: React.FC<ReaderProps> = ({
                     >
                       <ActionIcon
                         variant="transparent"
-                        size="lg"
+                        size={headerIconSize}
                         onClick={() => setPdfZoom(z => clampZoom(z - 10))}
                         disabled={pdfZoom <= 50}
                         aria-label={`${t.zoomOut}. Current zoom ${pdfZoom}%`}
@@ -4121,7 +4306,7 @@ export const Reader: React.FC<ReaderProps> = ({
                       </Text>
                       <ActionIcon
                         variant="transparent"
-                        size="lg"
+                        size={headerIconSize}
                         onClick={() => setPdfZoom(z => clampZoom(z + 10))}
                         disabled={pdfZoom >= 300}
                         aria-label={`${t.zoomIn}. Current zoom ${pdfZoom}%`}
@@ -4136,7 +4321,7 @@ export const Reader: React.FC<ReaderProps> = ({
                   {/* Fullscreen toggle */}
                   <ActionIcon
                     variant={isFullscreen || isFakeFullscreen ? 'filled' : 'transparent'}
-                    size="lg"
+                    size={headerIconSize}
                     onClick={toggleFullscreen}
                     aria-label={isFullscreen || isFakeFullscreen ? t.exitFullscreen : t.enterFullscreen}
                     style={isFullscreen || isFakeFullscreen
@@ -4149,7 +4334,7 @@ export const Reader: React.FC<ReaderProps> = ({
                   {showCloseButton && (
                     <ActionIcon
                       variant="transparent"
-                      size="lg"
+                      size={headerIconSize}
                       onClick={() => onClose?.()}
                       aria-label={t.closeReader}
                       style={{ color: 'var(--reader-fg, #1a1a1a)' }}
@@ -4508,27 +4693,6 @@ export const Reader: React.FC<ReaderProps> = ({
                         the way an actual gutter shadow does. */}
                     {!scroll && effectiveColumns === 2 && !isTrailingLoneColumnPage && showPageDivider && <div data-testid="page-divider" style={PAGE_DIVIDER_STYLE} />}
                   </div>
-                )}
-              </div>
-
-              {/* Footer — page info */}
-              <div
-                className="ebook-reader__footer"
-                dir={t.uiDirection}
-                style={{
-                  textAlign: 'center',
-                  padding: '0.4rem 1rem',
-                  fontSize: '0.8rem',
-                  opacity: 0.6,
-                  borderTop: '1px solid var(--reader-border, #e0e0e0)',
-                  backgroundColor: 'var(--reader-surface, #f5f5f5)',
-                  color: 'var(--reader-fg, #1a1a1a)',
-                  flexShrink: 0,
-                }}
-              >
-                {interpolate(t.pageIndicator, { current: bookPageNumber, total: bookTotalPages, percent: overallProgress })}
-                {state.book && state.book.chapters.length > 1 && (
-                  <> · {interpolate(t.chapterIndicator, { current: currentChapterIdx + 1, total: state.book.chapters.length, title: chapterTitle })}</>
                 )}
               </div>
 
