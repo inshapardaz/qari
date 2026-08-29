@@ -69,7 +69,7 @@ describe('Large-book page-count measurement performance', () => {
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
 
     // 12 chapters * 2 pages/chapter = 24.
-    await waitForHeaderStatusText(container, 'Chapter 1 · Chapter 1 · Page 1 of 24');
+    await waitForHeaderStatusText(container, 'Chapter 1 · Page 1 of 24');
   });
 
   it('yields to the main thread between batches instead of measuring the whole book in one blocking loop', async () => {
@@ -84,7 +84,7 @@ describe('Large-book page-count measurement performance', () => {
     const { container } = render(<Reader source={createManyChapterSource(CHAPTER_COUNT)} />);
     await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
 
-    await waitForHeaderStatusText(container, 'Chapter 1 · Chapter 1 · Page 1 of 24');
+    await waitForHeaderStatusText(container, 'Chapter 1 · Page 1 of 24');
 
     expect(idleCallbackSpy.mock.calls.length).toBeGreaterThan(0);
   });
@@ -103,6 +103,6 @@ describe('Large-book page-count measurement performance', () => {
       rerender(<Reader source={createManyChapterSource(CHAPTER_COUNT)} fontSize={size} />);
     }
 
-    await waitForHeaderStatusText(container, 'Chapter 1 · Chapter 1 · Page 1 of 24');
+    await waitForHeaderStatusText(container, 'Chapter 1 · Page 1 of 24');
   });
 });

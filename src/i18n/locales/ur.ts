@@ -20,7 +20,7 @@ export const ur: TranslationStrings = {
   nextChapter: 'اگلا باب',
   pageIndicator: 'صفحہ {current} از {total}',
   chapterIndicator: 'باب {current} از {total}',
-  headerChapterTitle: 'باب {current} · {title}',
+  headerChapterTitle: '{title}',
   resetToDefaults: 'ڈیفالٹ پر واپس',
   closeReader: 'ریڈر بند کریں',
   moreOptions: 'مزید اختیارات',

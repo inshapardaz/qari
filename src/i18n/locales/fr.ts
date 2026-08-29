@@ -20,7 +20,7 @@ export const fr: TranslationStrings = {
   nextChapter: 'Chapitre suivant',
   pageIndicator: 'Page {current} sur {total}',
   chapterIndicator: 'Chapitre {current} sur {total}',
-  headerChapterTitle: 'Chapitre {current} · {title}',
+  headerChapterTitle: '{title}',
   resetToDefaults: 'Réinitialiser',
   closeReader: 'Fermer le lecteur',
   moreOptions: 'Plus d\'options',
