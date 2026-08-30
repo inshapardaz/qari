@@ -76,12 +76,13 @@ export function getChapterCharCount(chapter: Chapter): number {
 }
 
 /**
- * Resolves a chapter-relative character offset (a note's/search match's real
- * DOM-text offset, or a bookmark's) to a page index. Shared by
- * BookmarkPanel/NotePanel/SearchPanel (clicking to navigate) and Reader's own
- * "is the current page bookmarked" check, so the two always agree — a
- * bookmark that resolves to page 5 when clicked also lights up the toggle
- * button on page 5, never some other page.
+ * Resolves a *real* chapter-relative character offset — a note's
+ * `startOffset` or a search match's `offset`, both measured directly against
+ * the rendered DOM text (see `utils/text-highlight.ts`) — to a page index.
+ * Shared by NotePanel/SearchPanel's click-to-navigate handlers.
+ *
+ * Do not use this for bookmarks — see `resolveBookmarkPageIndex` below for
+ * why they need a different (exact-index, not proportional) resolver.
  *
  * When `measuredTotalPages` is available (the chapter has actually been
  * rendered and measured for real this session — see `pagesPerChapter` in
@@ -91,7 +92,10 @@ export function getChapterCharCount(chapter: Chapter): number {
  * page (depends on font size, margin, columns, viewport), and — critically —
  * doesn't survive a *later* layout change reflowing the whole chapter into a
  * different number of pages (issue #21). Proportional scaling recovers
- * approximately the same reading position regardless.
+ * approximately the same reading position regardless. This is sound
+ * specifically *because* the input is a real offset — proportionally
+ * rescaling a value that isn't (see `resolveBookmarkPageIndex`) recovers
+ * nothing meaningful.
  *
  * Without a real measured total (the chapter hasn't been visited this
  * session), falls back to the simple `offset / charsPerPage` estimate — the
@@ -118,6 +122,58 @@ export function resolveOffsetToPage(
     return totalPagesInChapter - 1;
   }
   return Math.floor(offset / charsPerPage);
+}
+
+/**
+ * Resolves a bookmark's `position` to a page index. Shared by
+ * `BookmarkPanel`'s click-to-navigate handler and Reader's own "is the
+ * current page bookmarked" toggle-button check, so the two always agree — a
+ * bookmark that resolves to page 5 when clicked also lights up the toggle
+ * button on page 5, never some other page.
+ *
+ * Unlike notes/search (`resolveOffsetToPage`), a bookmark's `position` is
+ * *not* a real character offset — it's recorded as `page * charsPerPage` at
+ * creation time (see `handleToggleBookmark` in Reader.tsx), using whatever
+ * page the reader really was on. Recovering that exact page back via a
+ * plain `floor(position / charsPerPage)` is therefore *exact* as long as
+ * pagination hasn't changed since, which is what makes the toggle-button
+ * check reliable in the overwhelmingly common case: checking whether the
+ * page you're on *right now*, in the *same reading session*, is the one you
+ * just bookmarked. (Proportionally rescaling this value the way
+ * `resolveOffsetToPage` does for real offsets was tried and reverted — the
+ * position isn't a fraction of the chapter's real character count, so
+ * treating it as one produces a *different* page even with no layout change
+ * at all whenever the chapter's real characters-per-page differs from the
+ * fixed `charsPerPage` assumption, which is almost always — surfacing as
+ * the toggle never recognizing its own just-created bookmark and letting
+ * the user create several more on repeated clicks.) The trade-off is that a
+ * bookmark can still land on a different-but-nearby page after a later
+ * font-size/margin/column change reflows the chapter — a real limitation,
+ * but a far less common and less confusing one than breaking same-session
+ * identification entirely.
+ *
+ * `measuredTotalPages`, when available, only clamps the recovered index
+ * down to a valid page for the chapter's *current* real measurement (e.g. if
+ * the chapter got shorter since) — it does not attempt to rescale the
+ * position itself.
+ */
+export function resolveBookmarkPageIndex(
+  position: number,
+  chapterCharCount: number,
+  measuredTotalPages: number | undefined,
+  charsPerPage: number
+): number {
+  const exactPage = Math.floor(position / charsPerPage);
+  if (measuredTotalPages) {
+    return Math.max(0, Math.min(exactPage, measuredTotalPages - 1));
+  }
+  if (position > chapterCharCount) {
+    const totalPagesInChapter = chapterCharCount === 0
+      ? 1
+      : Math.ceil(chapterCharCount / charsPerPage);
+    return totalPagesInChapter - 1;
+  }
+  return exactPage;
 }
 
 /**

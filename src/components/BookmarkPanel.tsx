@@ -14,7 +14,7 @@ import React, { useState, useCallback } from 'react';
 import { Button, ActionIcon, Alert, Title, Group } from '@mantine/core';
 import { useReaderContext } from './Reader';
 import { useTranslations } from '../i18n';
-import { getChapterCharCount, resolveOffsetToPage } from '../services/chapter-navigator';
+import { getChapterCharCount, resolveBookmarkPageIndex } from '../services/chapter-navigator';
 import type { Bookmark } from '../models/bookmark';
 import type { PageChangeEvent } from '../models/events';
 
@@ -59,7 +59,7 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
    * Handles clicking a bookmark to navigate to its position.
    * 1. Look up chapterId in book.chapters
    * 2. If chapter not found → show error, stay on current page
-   * 3. Resolve the target page via `resolveOffsetToPage` (see its own
+   * 3. Resolve the target page via `resolveBookmarkPageIndex` (see its own
    *    comment in chapter-navigator.ts)
    * 4. Update state via onNavigate callback
    * 5. Fire onPageChange callback with new position
@@ -85,11 +85,12 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
       const chapterCharCount = getChapterCharCount(chapter);
       const measuredTotalPages = pagesPerChapter[chapterIdx];
 
-      // 3. Calculate target page — see `resolveOffsetToPage`'s own comment
-      // (chapter-navigator.ts) for why this prefers the chapter's real,
-      // already-measured page count over a fixed charsPerPage guess
-      // whenever it's available (issue #21).
-      const targetPage = resolveOffsetToPage(bookmark.position, chapterCharCount, measuredTotalPages, charsPerPage);
+      // 3. Calculate target page — see `resolveBookmarkPageIndex`'s own
+      // comment (chapter-navigator.ts) for why a bookmark's position is
+      // recovered as an exact page index (clamped to the chapter's real,
+      // already-measured page count when available) rather than
+      // proportionally rescaled the way notes/search offsets are.
+      const targetPage = resolveBookmarkPageIndex(bookmark.position, chapterCharCount, measuredTotalPages, charsPerPage);
       const effectivePosition = Math.min(bookmark.position, chapterCharCount || bookmark.position);
 
       // 7. Calculate reading progress

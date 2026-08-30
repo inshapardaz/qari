@@ -6,16 +6,14 @@
  * bookmarks too") to check whether the bug reproduces even without any
  * cross-chapter measurement race.
  *
- * The chapter's own text is long enough (~3200 real characters) that the
- * stubbed 3-page scrollWidth below is a realistic page count for it —
- * BookmarkPanel now resolves a bookmark's page proportionally against the
- * chapter's real character count rather than by an exact page-index
- * round-trip (see BookmarkPanel.tsx's own comment on why — a later
- * font/layout change can't be allowed to preserve the raw page *number*
- * verbatim), so the test content needs to actually support that: an
- * unrealistically short chapter forced into an inflated page count (as an
- * earlier version of this test used) would make the proportional and
- * absolute answers disagree even with *no* layout change at all.
+ * Bookmarks resolve their page as an exact index clamped to the chapter's
+ * real, already-measured page count (see `resolveBookmarkPageIndex`'s own
+ * comment in chapter-navigator.ts for why — unlike notes/search, a
+ * bookmark's `position` isn't a real text offset, so proportionally
+ * rescaling it against the chapter's character count was tried and
+ * reverted: it produced a *different* page even with no layout change at
+ * all). That makes this scenario — same session, no layout change —
+ * exactly the case where the recovered page must match precisely.
  */
 
 import React from 'react';
@@ -27,7 +25,7 @@ import type { ReaderSource } from '../Reader';
 function createSource(): ReaderSource {
   return {
     type: 'markdown',
-    content: `# Book\n\n## Chapter 1\n\nch0-marker ${'x'.repeat(3200)} end of chapter.`,
+    content: '# Book\n\n## Chapter 1\n\nch0-marker content spanning several pages of this single chapter.',
   };
 }
 

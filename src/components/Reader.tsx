@@ -62,9 +62,9 @@ import { BookmarkStore } from '../services/bookmark-store';
 import { LocalStorageStore } from '../services/local-storage-store';
 import { NoteStore } from '../services/note-store';
 import { ProgressStore } from '../services/progress-store';
-import { ChapterNavigator, getChapterCharCount, resolveOffsetToPage } from '../services/chapter-navigator';
+import { ChapterNavigator, getChapterCharCount, resolveBookmarkPageIndex } from '../services/chapter-navigator';
 import { URDU_WEB_FONT_OPTIONS, injectUrduWebFontsCss } from '../services/urdu-web-fonts';
-import { getTextOffset, getRangeOffsets, applyHighlights, clearHighlights, findTextRange, NOTE_COLOR_ORDER, NOTE_HIGHLIGHT_COLORS } from '../utils/text-highlight';
+import { getRangeOffsets, applyHighlights, clearHighlights, findTextRange, NOTE_COLOR_ORDER, NOTE_HIGHLIGHT_COLORS } from '../utils/text-highlight';
 
 import { BookmarkPanel } from './BookmarkPanel';
 import { NotePanel } from './NotePanel';
@@ -588,63 +588,6 @@ function getSourceFormat(source: ReaderSource): string {
     case 'pdf':
       return 'pdf';
   }
-}
-
-/**
- * Finds the real character offset (within `contentEl`'s rendered text — see
- * `getTextOffset`) of the first character visible on whatever page is
- * *currently* transformed into view inside `pageBoxEl`. Used to give a new
- * bookmark a genuine DOM-text position instead of a `page * charsPerPage`
- * guess — that guess only round-trips back to the same page while pagination
- * stays exactly as it was; a later font-size, margin, or column change
- * reflows the whole chapter, after which "page 5" can mean a completely
- * different stretch of text (issue #21). A real offset, like a note's own
- * `startOffset`, survives that because it's anchored to the text itself, not
- * to a page count that changes size out from under it.
- *
- * Implemented as a real-DOM hit test (`caretRangeFromPoint`/
- * `caretPositionFromPoint`) at a point just inside the page's visible
- * top-start corner, adjusted for reading direction — the same "point on
- * screen -> DOM position" trick browsers' own right-click/selection
- * handling uses internally. Neither API exists in jsdom (or a handful of
- * older/unusual browsers), so this returns `null` when unavailable; callers
- * must fall back to the coarser page-based estimate in that case.
- */
-function findVisiblePageStartOffset(
-  contentEl: HTMLElement,
-  pageBoxEl: HTMLElement,
-  margin: number,
-  direction: 'ltr' | 'rtl'
-): number | null {
-  const docWithCaretApis = document as Document & {
-    caretRangeFromPoint?: (x: number, y: number) => Range | null;
-    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
-  };
-  if (!docWithCaretApis.caretRangeFromPoint && !docWithCaretApis.caretPositionFromPoint) return null;
-
-  const rect = pageBoxEl.getBoundingClientRect();
-  // A few pixels inset from the page's own top-padding/side-margin corner
-  // (see `contentRef`'s own `padding: 2rem ${margin}px` style) so the hit
-  // test lands on real text, not the padding around it.
-  const x = direction === 'rtl' ? rect.right - margin - 4 : rect.left + margin + 4;
-  const y = rect.top + 40;
-
-  let node: Node | null = null;
-  let offset = 0;
-  if (docWithCaretApis.caretRangeFromPoint) {
-    const range = docWithCaretApis.caretRangeFromPoint(x, y);
-    if (!range) return null;
-    node = range.startContainer;
-    offset = range.startOffset;
-  } else if (docWithCaretApis.caretPositionFromPoint) {
-    const pos = docWithCaretApis.caretPositionFromPoint(x, y);
-    if (!pos) return null;
-    node = pos.offsetNode;
-    offset = pos.offset;
-  }
-  if (!node || !contentEl.contains(node)) return null;
-
-  return getTextOffset(contentEl, node, offset);
 }
 
 // Shared between the real code-block render (ContentNodeRenderer) and its
@@ -3141,13 +3084,14 @@ export const Reader: React.FC<ReaderProps> = ({
 
   // The header's Bookmarks button bookmarks/unbookmarks the current page
   // directly rather than opening a picker — it toggles a bookmark using the
-  // same convention BookmarkPanel's own click-to-navigate handler expects
-  // (see handleToggleBookmark below and BookmarkPanel.tsx's own comment),
-  // so a bookmark placed here shows up in the drawer's Bookmarks tab (and
-  // vice versa) and resolves back to the same page on navigation either
-  // way. Uses `resolveOffsetToPage` — the same resolver BookmarkPanel's own
-  // click-to-navigate uses — so "is this page bookmarked" and "which page
-  // does this bookmark open to" can never disagree with each other.
+  // same `page * charsPerPage` convention BookmarkPanel's own
+  // click-to-navigate handler expects (see `resolveBookmarkPageIndex`'s own
+  // comment in chapter-navigator.ts for why bookmarks use this exact
+  // encoding rather than a real DOM offset), so a bookmark placed here shows
+  // up in the drawer's Bookmarks tab (and vice versa) and resolves back to
+  // the same page on navigation either way. Uses the same resolver
+  // BookmarkPanel's own click-to-navigate uses, so "is this page bookmarked"
+  // and "which page does this bookmark open to" can never disagree.
   const currentBookId = state.book?.metadata.identifier || '';
   const currentChapterForBookmark = state.book?.chapters[currentChapterIdx];
   const currentChapterBookmarkId = currentChapterForBookmark?.id || '';
@@ -3155,7 +3099,7 @@ export const Reader: React.FC<ReaderProps> = ({
   const currentPageBookmark = state.bookmarks.find(
     (b) => b.bookId === currentBookId
       && b.chapterId === currentChapterBookmarkId
-      && resolveOffsetToPage(b.position, currentChapterCharCountForBookmark, pagesPerChapter[currentChapterIdx], DEFAULT_CHARS_PER_PAGE) === currentPage
+      && resolveBookmarkPageIndex(b.position, currentChapterCharCountForBookmark, pagesPerChapter[currentChapterIdx], DEFAULT_CHARS_PER_PAGE) === currentPage
   );
   const isCurrentPageBookmarked = !!currentPageBookmark;
 
@@ -3170,14 +3114,7 @@ export const Reader: React.FC<ReaderProps> = ({
     }
 
     const chapterId = state.book.chapters[currentChapterIdx]?.id || '';
-    // A real DOM-text offset (see `findVisiblePageStartOffset`'s own
-    // comment) survives a later font/layout change; the coarse
-    // `page * charsPerPage` guess is only a fallback for the handful of
-    // environments without the caret-hit-test APIs it needs (issue #21).
-    const realOffset = !scroll && contentRef.current && pageBoxRef.current
-      ? findVisiblePageStartOffset(contentRef.current, pageBoxRef.current, margin, state.direction)
-      : null;
-    const position = realOffset ?? currentPage * DEFAULT_CHARS_PER_PAGE;
+    const position = currentPage * DEFAULT_CHARS_PER_PAGE;
     const name = interpolate(t.bookmarkAutoName, { chapter: currentChapterIdx + 1, page: currentPage + 1 });
     try {
       const bookmark = await store.create(currentBookId, chapterId, position, name);
@@ -3189,7 +3126,7 @@ export const Reader: React.FC<ReaderProps> = ({
       // e.g. the per-book bookmark limit was reached — nothing to recover
       // into here, same as the equivalent failure in BookmarkPanel.
     }
-  }, [state.book, state.direction, currentPageBookmark, currentChapterIdx, currentPage, currentBookId, scroll, margin, t, addBookmark, removeBookmark, onBookmarkCreate]);
+  }, [state.book, currentPageBookmark, currentChapterIdx, currentPage, currentBookId, t, addBookmark, removeBookmark, onBookmarkCreate]);
 
   // ---------------------------------------------------------------------------
   // Context value (memoized)

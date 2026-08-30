@@ -6,11 +6,10 @@
  */
 
 import React from 'react';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { Reader } from '../Reader';
 import type { ReaderSource } from '../Reader';
-import { getTextOffset } from '../../utils/text-highlight';
 
 function createMarkdownSource(): ReaderSource {
   return {
@@ -85,48 +84,57 @@ describe('Bookmarks button toggles a bookmark for the current page', () => {
     expect(screen.queryByRole('button', { name: 'Bookmarks' })).not.toBeInTheDocument();
   });
 
-  describe('real DOM-offset positioning (issue #21)', () => {
-    afterEach(() => {
-      delete (document as unknown as { caretRangeFromPoint?: unknown }).caretRangeFromPoint;
-    });
+  it('stores the bookmark at exactly page * charsPerPage, and recognizes it as pressed on the same page — not a different one, and not a duplicate on a repeated click', async () => {
+    // Regression test: bookmark creation and the toggle-button's "is this
+    // page bookmarked" check must resolve a bookmark's page identically
+    // (see `resolveBookmarkPageIndex` in chapter-navigator.ts). A brief
+    // regression scaled a bookmark's position *proportionally* against the
+    // chapter's character count (correct for notes/search, which anchor to
+    // a real text offset, but not for bookmarks — see that function's own
+    // comment) — the button then failed to recognize its own just-created
+    // bookmark as belonging to the current (non-zero, mid-chapter) page, so
+    // every click created yet another bookmark instead of toggling the
+    // existing one off. A single-page chapter can't catch this: the
+    // proportional formula degenerates to always page 0 whenever there's
+    // only one real page, coincidentally matching regardless of the bug —
+    // this needs a real multi-page chapter and a *non-zero* page.
+    const source: ReaderSource = {
+      type: 'markdown',
+      content: '# Book\n\n## Chapter 1\n\nch0-marker chapter content spanning a few pages.',
+    };
+    const { container } = render(<Reader source={source} />);
+    await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
 
-    it('stores a real DOM-text offset as the bookmark position when caretRangeFromPoint is available', async () => {
-      render(<Reader source={createMarkdownSource()} />);
-      await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
+    const pageBoxEl = container.querySelector('.ebook-reader__page-box') as HTMLElement;
+    const columnsEl = container.querySelector('.ebook-reader__columns') as HTMLElement;
+    const measurerEl = screen.getByTestId('page-count-measurer');
 
-      const contentEl = document.querySelector('.ebook-reader__columns') as HTMLElement;
-      const textNode = document.createTreeWalker(contentEl, NodeFilter.SHOW_TEXT).nextNode() as Text;
-      // A real, non-zero offset partway into the first text node — chosen
-      // specifically so it can't be confused with the old `page * 1500`
-      // fallback, which is 0 on the book's very first page.
-      const fakeRange = document.createRange();
-      fakeRange.setStart(textNode, 5);
-      fakeRange.setEnd(textNode, 5);
-      const expectedOffset = getTextOffset(contentEl, textNode, 5);
-      expect(expectedOffset).not.toBe(0);
+    // Single column, default margin=32: pagePitch = 1000-64+64 = 1000.
+    // scrollWidth=3000 -> 3 real pages for this one chapter.
+    Object.defineProperty(pageBoxEl, 'clientWidth', { value: 1000, configurable: true });
+    Object.defineProperty(columnsEl, 'scrollWidth', { value: 3000, configurable: true });
+    Object.defineProperty(measurerEl, 'scrollWidth', { value: 3000, configurable: true });
+    fireEvent(window, new Event('resize'));
+    await waitFor(() => expect(screen.getByTestId('reader-content').textContent).toContain('Page 1 of 3'));
 
-      (document as unknown as { caretRangeFromPoint: () => Range }).caretRangeFromPoint = () => fakeRange;
+    // Move to the middle page (index 1) before bookmarking.
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    await waitFor(() => expect(screen.getByTestId('reader-content').textContent).toContain('Page 2 of 3'));
 
-      fireEvent.click(screen.getByRole('button', { name: 'Bookmarks' }));
-      await waitFor(() => expect(screen.getByRole('button', { name: 'Bookmarks' })).toHaveAttribute('aria-pressed', 'true'));
+    const button = screen.getByRole('button', { name: 'Bookmarks' });
+    fireEvent.click(button);
+    await waitFor(() => expect(button).toHaveAttribute('aria-pressed', 'true'));
 
-      const stored = readStoredBookmarks();
-      expect(stored).toHaveLength(1);
-      expect(stored[0].position).toBe(expectedOffset);
-    });
+    let stored = readStoredBookmarks();
+    expect(stored).toHaveLength(1);
+    expect(stored[0].position).toBe(1500); // page 1 * charsPerPage
 
-    it('falls back to the page-based estimate when no caret-hit-test API is available (e.g. this jsdom test environment)', async () => {
-      render(<Reader source={createMarkdownSource()} />);
-      await waitFor(() => expect(screen.getByTestId('reader-content')).toBeInTheDocument());
+    // Clicking again while still on the same page must toggle it back off
+    // (delete), never add a second one.
+    fireEvent.click(button);
+    await waitFor(() => expect(button).toHaveAttribute('aria-pressed', 'false'));
 
-      // No caretRangeFromPoint/caretPositionFromPoint stubbed — matches
-      // plain jsdom, which implements neither.
-      fireEvent.click(screen.getByRole('button', { name: 'Bookmarks' }));
-      await waitFor(() => expect(screen.getByRole('button', { name: 'Bookmarks' })).toHaveAttribute('aria-pressed', 'true'));
-
-      const stored = readStoredBookmarks();
-      expect(stored).toHaveLength(1);
-      expect(stored[0].position).toBe(0); // page 0 * charsPerPage
-    });
+    stored = readStoredBookmarks();
+    expect(stored).toHaveLength(0);
   });
 });
