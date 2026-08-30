@@ -45,7 +45,7 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
   onPageChange,
   charsPerPage = DEFAULT_CHARS_PER_PAGE,
 }) => {
-  const { state, bookmarkStore, chapterNavigator, removeBookmark } = useReaderContext();
+  const { state, bookmarkStore, chapterNavigator, removeBookmark, pagesPerChapter = [] } = useReaderContext();
   const t = useTranslations();
   const { bookmarks, book } = state;
 
@@ -84,12 +84,37 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
 
       const chapter = book.chapters[chapterIdx];
       const chapterCharCount = getChapterCharCount(chapter);
+      const measuredTotalPages = pagesPerChapter[chapterIdx];
 
       // 3. Calculate target page
       let targetPage: number;
       let effectivePosition: number;
 
-      if (bookmark.position > chapterCharCount) {
+      if (measuredTotalPages && chapterCharCount > 0) {
+        // This chapter has already been measured for real (it's the one
+        // currently open, or one visited earlier this session) — trust that
+        // over the char-count heuristic below.
+        //
+        // Recovering the page via a plain `floor(position / charsPerPage)`
+        // (position was encoded as `page * charsPerPage` at creation time)
+        // is only exact as long as pagination hasn't changed since the
+        // bookmark was created — but a later font-size, margin, or column
+        // change reflows the *whole* chapter, so "page 5" can end up
+        // covering a completely different, much smaller or larger, stretch
+        // of text than it did before. Landing back on literally "page 5" of
+        // the new layout would then miss the bookmarked passage entirely
+        // (issue #21). Scaling `position` proportionally across the
+        // chapter's real character count instead recovers approximately
+        // the same *reading position* regardless of how pagination has
+        // changed since — the same fix already applied to Notes/Search,
+        // which anchor to a real DOM-text offset for the same reason.
+        const clampedPosition = Math.min(bookmark.position, chapterCharCount);
+        targetPage = Math.max(0, Math.min(
+          Math.round((clampedPosition / chapterCharCount) * (measuredTotalPages - 1)),
+          measuredTotalPages - 1
+        ));
+        effectivePosition = clampedPosition;
+      } else if (bookmark.position > chapterCharCount) {
         // 4. If position > chapter char count → navigate to last page
         const totalPagesInChapter = chapterCharCount === 0
           ? 1
@@ -142,7 +167,7 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
         onBookmarkSelect(bookmark);
       }
     },
-    [book, charsPerPage, onNavigate, onPageChange, onBookmarkSelect]
+    [book, charsPerPage, pagesPerChapter, onNavigate, onPageChange, onBookmarkSelect]
   );
 
   const handleDelete = useCallback(

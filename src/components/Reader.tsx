@@ -318,6 +318,17 @@ export interface ReaderContextValue {
   addNote: (note: Note) => void;
   removeNote: (noteId: string) => void;
   updateNote: (note: Note) => void;
+  /**
+   * Real, already-measured page counts per chapter (see `pagesPerChapter`'s
+   * own declaration in Reader.tsx) — sparse/partial until every chapter has
+   * actually been visited. Bookmarks/Notes/Search prefer this over their own
+   * char-count-based page-resolution heuristic whenever a target chapter's
+   * entry is available, since that heuristic assumes a fixed characters-per-
+   * page figure that rarely matches the chapter's *real* rendered capacity
+   * (depends on font size, margin, columns, viewport) and can otherwise
+   * clamp a perfectly valid bookmark/note back to an early page (issue #21).
+   */
+  pagesPerChapter?: number[];
 }
 
 export const ReaderContext = createContext<ReaderContextValue | null>(null);
@@ -1075,7 +1086,30 @@ export const Reader: React.FC<ReaderProps> = ({
   // for a different reason clears this flag first, so a stale pending flag
   // never hijacks unrelated navigation.
   const goToLastPageRef = useRef(false);
+  // Same rationale as `goToLastPageRef` immediately above, for the other
+  // shape of cross-chapter jump: the Bookmarks/Notes/Search panels resolve a
+  // target page via a cheap char-offset heuristic (see `NotePanel`'s own
+  // comment) *before* the target chapter has ever been really measured, so
+  // `totalPages` at that moment can still describe the chapter being left.
+  // Without this, the generic clamp effect below would silently force the
+  // jump back down to whatever that stale, possibly much-smaller total
+  // allowed — landing on an early/first page instead of the requested one
+  // (issue #21). Holds the *requested* page (not a boolean) since — unlike
+  // "last page", which is only ever resolved from the fresh measurement —
+  // this target is meaningful on its own and just needs clamping into
+  // whatever range the freshly-measured chapter turns out to support.
+  const pendingTargetPageRef = useRef<number | null>(null);
   const [pagesPerChapter, setPagesPerChapter] = useState<number[]>([]); // cached page counts per chapter
+  // Bumped by the window `resize` listener (see its own effect) so the bulk
+  // `measureAllChapters` pass below re-runs on resize too — that pass's own
+  // dependency array only reacts to layout/font *settings* changes, not to
+  // the container simply getting wider/narrower, so `pagesPerChapter` for
+  // every chapter *other* than the one currently open used to go stale
+  // (and stay stale indefinitely — nothing else ever re-triggers it)
+  // whenever the window was resized. Bookmarks/Notes/Search then resolved
+  // navigation to those other chapters against an outdated real page count
+  // (issue #21).
+  const [resizeTick, setResizeTick] = useState(0);
   // Whether a chapter's *last* page, in two-column mode, only has content in
   // the first of its two columns (the second sits empty) — see where this is
   // consumed near `isTrailingLoneColumnPage` for why that page gets
@@ -2323,7 +2357,7 @@ export const Reader: React.FC<ReaderProps> = ({
         updated[currentChapterIdx] = 1;
         return updated;
       });
-      if (goToLastPageRef.current) {
+      if (goToLastPageRef.current || pendingTargetPageRef.current !== null) {
         setCurrentPage(0);
       }
       return;
@@ -2376,6 +2410,11 @@ export const Reader: React.FC<ReaderProps> = ({
       // currentPage/currentChapterIdx for a different reason (see its
       // declaration) — never here.
       setCurrentPage(computed - 1);
+    } else if (pendingTargetPageRef.current !== null) {
+      // Same re-clamp-on-every-pass treatment as `goToLastPageRef` above,
+      // and likewise deliberately not cleared here — see
+      // `pendingTargetPageRef`'s own declaration for why.
+      setCurrentPage(Math.max(0, Math.min(pendingTargetPageRef.current, computed - 1)));
     }
     // Update cached pages for current chapter
     setPagesPerChapter(prev => {
@@ -2425,7 +2464,15 @@ export const Reader: React.FC<ReaderProps> = ({
   }, [currentChapterIdx, state.book, state.preferences.fontSize, state.preferences.fontFamily, state.zoom, effectiveColumns, margin, scroll, lineSpacing, letterSpacing, wordSpacing, recalcPages, isFullscreen, isFakeFullscreen]);
 
   useEffect(() => {
-    const handleResize = () => recalcPages();
+    // `recalcPages` covers the chapter on screen right now; `resizeTick`
+    // (see its own declaration) additionally re-runs the bulk
+    // `measureAllChapters` pass so every *other* chapter's cached page
+    // count in `pagesPerChapter` doesn't go — and stay — stale after a
+    // resize too.
+    const handleResize = () => {
+      recalcPages();
+      setResizeTick(t => t + 1);
+    };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [recalcPages]);
@@ -2618,7 +2665,7 @@ export const Reader: React.FC<ReaderProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [state.book, effectiveColumns, margin, scroll, fontSize, lineSpacing, letterSpacing, wordSpacing, selectedFontFamily]);
+  }, [state.book, effectiveColumns, margin, scroll, fontSize, lineSpacing, letterSpacing, wordSpacing, selectedFontFamily, resizeTick]);
 
   // ---------------------------------------------------------------------------
   // Render a pending PDF page on demand if the reader navigates to it before
@@ -2674,8 +2721,10 @@ export const Reader: React.FC<ReaderProps> = ({
   // ---------------------------------------------------------------------------
   const goToNextPage = useCallback(() => {
     // Any forward navigation supersedes a still-pending "land on the
-    // previous chapter's last page" request from goToPrevPage.
+    // previous chapter's last page" request from goToPrevPage, or a pending
+    // Bookmarks/Notes/Search target page.
     goToLastPageRef.current = false;
+    pendingTargetPageRef.current = null;
     // A PDF spread shows two chapters (pages) at once — see `spreadStart` —
     // so turning the page steps by two chapters instead of one, landing on
     // the start of the next pair, regardless of `totalPages` (always 1 per
@@ -2720,6 +2769,7 @@ export const Reader: React.FC<ReaderProps> = ({
     // Cleared unconditionally up front; the one branch below that wants to
     // land on the previous chapter's last page re-sets it immediately after.
     goToLastPageRef.current = false;
+    pendingTargetPageRef.current = null;
     if (pdfSpread) {
       if (spreadStart - 2 >= 0) {
         const prevChapter = spreadStart - 2;
@@ -2761,12 +2811,13 @@ export const Reader: React.FC<ReaderProps> = ({
 
   // Clamp currentPage when totalPages changes (e.g., font-size change shrinking
   // the current chapter's page count below where the reader currently is).
-  // Skipped while `goToLastPageRef` is pending: that transition owns
-  // `currentPage` itself (see its declaration) using the freshly-measured
-  // total for the *new* chapter, not whatever stale `totalPages` this effect
-  // would otherwise see left over from the chapter just departed.
+  // Skipped while `goToLastPageRef`/`pendingTargetPageRef` is pending: that
+  // transition owns `currentPage` itself (see their declarations) using the
+  // freshly-measured total for the *new* chapter, not whatever stale
+  // `totalPages` this effect would otherwise see left over from the chapter
+  // just departed.
   useEffect(() => {
-    if (goToLastPageRef.current) return;
+    if (goToLastPageRef.current || pendingTargetPageRef.current !== null) return;
     if (currentPage >= totalPages && totalPages > 0) {
       setCurrentPage(totalPages - 1);
     }
@@ -3063,7 +3114,8 @@ export const Reader: React.FC<ReaderProps> = ({
     addNote,
     removeNote,
     updateNote: updateNoteInState,
-  }), [state, addBookmark, removeBookmark, updateBookmarkInState, addNote, removeNote, updateNoteInState]);
+    pagesPerChapter,
+  }), [state, addBookmark, removeBookmark, updateBookmarkInState, addNote, removeNote, updateNoteInState, pagesPerChapter]);
 
   // ---------------------------------------------------------------------------
   // Chapter drawer list (deduplicated)
@@ -3939,6 +3991,7 @@ export const Reader: React.FC<ReaderProps> = ({
                                 type="button"
                                 onClick={() => {
                                   goToLastPageRef.current = false;
+                                  pendingTargetPageRef.current = null;
                                   setCurrentChapterIdx(entry.chapterIdx);
                                   setCurrentPage(0);
                                   setChapterMenuOpen(false);
@@ -3976,6 +4029,13 @@ export const Reader: React.FC<ReaderProps> = ({
                             <BookmarkPanel
                               onNavigate={(chapterIdx, page) => {
                                 goToLastPageRef.current = false;
+                                // See `pendingTargetPageRef`'s own
+                                // declaration (issue #21): without this, a
+                                // bookmark that lands on a different chapter
+                                // whose measured page count hasn't been
+                                // computed yet gets silently clamped back to
+                                // an early/first page instead.
+                                pendingTargetPageRef.current = page;
                                 setCurrentChapterIdx(chapterIdx);
                                 setCurrentPage(page);
                                 setChapterMenuOpen(false);
@@ -3990,6 +4050,13 @@ export const Reader: React.FC<ReaderProps> = ({
                             <NotePanel
                               onNavigate={(chapterIdx, page) => {
                                 goToLastPageRef.current = false;
+                                // See `pendingTargetPageRef`'s own
+                                // declaration (issue #21): without this, a
+                                // note in the middle of a different chapter
+                                // gets silently clamped back to an
+                                // early/first page instead of showing the
+                                // highlighted portion.
+                                pendingTargetPageRef.current = page;
                                 setCurrentChapterIdx(chapterIdx);
                                 setCurrentPage(page);
                                 setChapterMenuOpen(false);
@@ -4006,6 +4073,11 @@ export const Reader: React.FC<ReaderProps> = ({
                               onQueryChange={setSearchQuery}
                               onNavigate={(chapterIdx, page) => {
                                 goToLastPageRef.current = false;
+                                // See `pendingTargetPageRef`'s own
+                                // declaration (issue #21) — same fix as
+                                // Bookmarks/Notes above, for a search result
+                                // landing on a different chapter.
+                                pendingTargetPageRef.current = page;
                                 setCurrentChapterIdx(chapterIdx);
                                 setCurrentPage(page);
                                 setChapterMenuOpen(false);

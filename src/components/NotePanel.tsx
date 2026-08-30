@@ -48,7 +48,7 @@ export const NotePanel: React.FC<NotePanelProps> = ({
   onPageChange,
   charsPerPage = DEFAULT_CHARS_PER_PAGE,
 }) => {
-  const { state, noteStore, removeNote, updateNote } = useReaderContext();
+  const { state, noteStore, removeNote, updateNote, pagesPerChapter = [] } = useReaderContext();
   const t = useTranslations();
   const { notes, book } = state;
 
@@ -76,11 +76,27 @@ export const NotePanel: React.FC<NotePanelProps> = ({
 
       const chapter = book.chapters[chapterIdx];
       const chapterCharCount = getChapterCharCount(chapter);
+      const measuredTotalPages = pagesPerChapter[chapterIdx];
 
       let targetPage: number;
       let effectivePosition: number;
 
-      if (note.startOffset > chapterCharCount) {
+      if (measuredTotalPages && chapterCharCount > 0) {
+        // This chapter has already been measured for real (it's the one
+        // currently open, or one visited earlier this session) — scale the
+        // note's real DOM-text offset proportionally across the chapter's
+        // *real* page count instead of assuming a fixed charsPerPage: that
+        // fixed assumption rarely matches how many characters actually fit
+        // on a rendered page (depends on font size, margin, columns,
+        // viewport), and can otherwise land on an early page instead of the
+        // one the note is really on (issue #21).
+        const clampedOffset = Math.min(note.startOffset, chapterCharCount);
+        targetPage = Math.max(0, Math.min(
+          Math.round((clampedOffset / chapterCharCount) * (measuredTotalPages - 1)),
+          measuredTotalPages - 1
+        ));
+        effectivePosition = clampedOffset;
+      } else if (note.startOffset > chapterCharCount) {
         const totalPagesInChapter = chapterCharCount === 0
           ? 1
           : Math.ceil(chapterCharCount / charsPerPage);
@@ -120,7 +136,7 @@ export const NotePanel: React.FC<NotePanelProps> = ({
         onNoteSelect(note);
       }
     },
-    [book, charsPerPage, onNavigate, onPageChange, onNoteSelect]
+    [book, charsPerPage, pagesPerChapter, onNavigate, onPageChange, onNoteSelect]
   );
 
   const handleDelete = useCallback(

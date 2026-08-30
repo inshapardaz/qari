@@ -61,7 +61,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({
   onPageChange,
   charsPerPage = DEFAULT_CHARS_PER_PAGE,
 }) => {
-  const { state } = useReaderContext();
+  const { state, pagesPerChapter = [] } = useReaderContext();
   const t = useTranslations();
   const { book } = state;
 
@@ -87,11 +87,26 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({
       const chapter = book.chapters[result.chapterIdx];
       if (!chapter) return;
       const chapterCharCount = getChapterCharCount(chapter);
+      const measuredTotalPages = pagesPerChapter[result.chapterIdx];
 
       let targetPage: number;
       let effectivePosition: number;
 
-      if (result.offset > chapterCharCount) {
+      if (measuredTotalPages && chapterCharCount > 0) {
+        // This chapter has already been measured for real — scale the
+        // match's real text offset proportionally across the chapter's
+        // *real* page count instead of assuming a fixed charsPerPage. See
+        // the identical fix in NotePanel.tsx (issue #21) for why: that
+        // fixed assumption rarely matches how many characters actually fit
+        // on a rendered page (depends on font size, margin, columns,
+        // viewport).
+        const clampedOffset = Math.min(result.offset, chapterCharCount);
+        targetPage = Math.max(0, Math.min(
+          Math.round((clampedOffset / chapterCharCount) * (measuredTotalPages - 1)),
+          measuredTotalPages - 1
+        ));
+        effectivePosition = clampedOffset;
+      } else if (result.offset > chapterCharCount) {
         const totalPagesInChapter = chapterCharCount === 0
           ? 1
           : Math.ceil(chapterCharCount / charsPerPage);
@@ -129,7 +144,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({
         onResultSelect(result);
       }
     },
-    [book, charsPerPage, onNavigate, onPageChange, onResultSelect]
+    [book, charsPerPage, pagesPerChapter, onNavigate, onPageChange, onResultSelect]
   );
 
   return (
