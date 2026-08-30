@@ -3,10 +3,12 @@
  * Parses CommonMark-compliant Markdown into the internal Book representation.
  *
  * Mapping rules:
- * - H1 → book title (metadata)
- * - H2 → chapter boundaries (each H2 starts a new chapter)
+ * - H1 → book title (metadata), and chapter boundaries when 2+ H1s exist
+ *   (each H1 starts a new chapter — see `buildChapters`'s own comment)
+ * - H2 → chapter boundaries (each H2 starts a new chapter) when the
+ *   document doesn't use H1 that way (0 or 1 H1 present)
  * - Paragraphs, inline formatting, images, code blocks, lists → ContentNode types
- * - No H2 headings → single chapter, title from H1 or "Untitled"
+ * - No H2 headings (and fewer than 2 H1s) → single chapter, title from H1 or "Untitled"
  */
 
 import MarkdownIt from 'markdown-it';
@@ -96,6 +98,14 @@ function extractTitle(tokens: Token[]): string | null {
 }
 
 /**
+ * Counts H1 headings — determines whether H1 itself is the chapter-boundary
+ * level for this document (see `buildChapters`'s own comment).
+ */
+function countH1Headings(tokens: Token[]): number {
+  return tokens.filter(t => t.type === 'heading_open' && t.tag === 'h1').length;
+}
+
+/**
  * Checks whether the tokens contain any H2 headings.
  */
 function hasH2Headings(tokens: Token[]): boolean {
@@ -103,47 +113,68 @@ function hasH2Headings(tokens: Token[]): boolean {
 }
 
 /**
- * Builds chapters from tokens. If no H2 headings exist, returns a single chapter.
+ * Builds chapters from tokens.
+ *
+ * The chapter-boundary heading level is normally H2, with a single H1 used
+ * only as the book title (stripped from rendered content, same as any
+ * metadata field). But a single markdown file with one H1 *per chapter*
+ * (`# Chapter One`, `# Chapter Two`, ...) is at least as common a convention
+ * as the H2 one — so when the document has *two or more* H1 headings, H1 is
+ * treated as the chapter-boundary level instead of H2 (any H2 occurring
+ * inside such a chapter renders as an ordinary in-content heading, the same
+ * treatment H3-H6 already get within an H2-delimited chapter). A document
+ * with zero or one H1 keeps the original H1-title/H2-chapter behavior
+ * unchanged, so existing single-H1 books aren't affected.
  */
 function buildChapters(tokens: Token[], bookTitle: string | null, footnoteDefinitions: Map<string, string>): Chapter[] {
   // Shared counter across entire document for sequential footnote numbering
   const footnoteCounter = { value: 0 };
+  const splitTag: 'h1' | 'h2' = countH1Headings(tokens) >= 2 ? 'h1' : 'h2';
 
-  if (!hasH2Headings(tokens)) {
-    // Single chapter: all content (excluding H1)
+  if (splitTag === 'h2' && !hasH2Headings(tokens)) {
+    // Single chapter: all content (excluding H1) — with the H1's own text
+    // re-rendered as the chapter's opening heading (see `createChapter`'s
+    // own comment on why a chapter's title heading is shown in its content,
+    // not just carried as the `chapter.title` metadata field).
     const content = parseContentNodes(tokens, true, footnoteDefinitions, footnoteCounter);
+    const resolvedTitle = bookTitle || 'Untitled';
     return [
       {
         id: 'chapter-0',
-        title: bookTitle || 'Untitled',
+        title: resolvedTitle,
         order: 0,
-        content,
+        content: bookTitle
+          ? [{ type: 'heading', level: 1, children: [{ type: 'text', content: bookTitle }] }, ...content]
+          : content,
       },
     ];
   }
 
   const chapters: Chapter[] = [];
   let currentChapterTitle: string | null = null;
+  let currentChapterTitleInline: Token[] | undefined;
   let currentChapterTokens: Token[] = [];
   let chapterIndex = 0;
+  const splitLevel = splitTag === 'h1' ? 1 : 2;
 
-  // Track whether we're before the first H2
-  let beforeFirstH2 = true;
+  // Track whether we're before the first chapter-boundary heading
+  let beforeFirstSplit = true;
 
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
 
-    if (token.type === 'heading_open' && token.tag === 'h2') {
+    if (token.type === 'heading_open' && token.tag === splitTag) {
       // Save previous chapter if there was one
       if (currentChapterTitle !== null) {
-        chapters.push(createChapter(currentChapterTitle, currentChapterTokens, chapterIndex, footnoteDefinitions, footnoteCounter));
+        chapters.push(createChapter(currentChapterTitle, currentChapterTitleInline, splitLevel, currentChapterTokens, chapterIndex, footnoteDefinitions, footnoteCounter));
         chapterIndex++;
       }
 
       // Start new chapter
-      beforeFirstH2 = false;
+      beforeFirstSplit = false;
       const inlineToken = tokens[i + 1];
       currentChapterTitle = inlineToken && inlineToken.type === 'inline' ? inlineToken.content : '';
+      currentChapterTitleInline = inlineToken && inlineToken.type === 'inline' ? inlineToken.children || [] : undefined;
       currentChapterTokens = [];
 
       // Skip inline and heading_close tokens
@@ -151,32 +182,50 @@ function buildChapters(tokens: Token[], bookTitle: string | null, footnoteDefini
       continue;
     }
 
-    // Skip H1 heading tokens (title already extracted)
-    if (token.type === 'heading_open' && token.tag === 'h1') {
+    // When H1 isn't the chapter-boundary level, the single H1 heading (its
+    // text already captured as the book title) is still stripped from
+    // content — same as before.
+    if (splitTag !== 'h1' && token.type === 'heading_open' && token.tag === 'h1') {
       i += 2; // skip inline + heading_close
       continue;
     }
 
-    // Only collect tokens after the first H2
-    if (!beforeFirstH2) {
+    // Only collect tokens after the first chapter-boundary heading
+    if (!beforeFirstSplit) {
       currentChapterTokens.push(token);
     }
   }
 
   // Push the last chapter
   if (currentChapterTitle !== null) {
-    chapters.push(createChapter(currentChapterTitle, currentChapterTokens, chapterIndex, footnoteDefinitions, footnoteCounter));
+    chapters.push(createChapter(currentChapterTitle, currentChapterTitleInline, splitLevel, currentChapterTokens, chapterIndex, footnoteDefinitions, footnoteCounter));
   }
 
   return chapters;
 }
 
-function createChapter(title: string, tokens: Token[], order: number, footnoteDefinitions: Map<string, string>, footnoteCounter: { value: number }): Chapter {
+/**
+ * Builds a chapter, re-rendering its chapter-boundary heading (the one whose
+ * text became `title`, stripped out of `tokens` by the caller) as an actual
+ * `HeadingNode` at the start of the chapter's own content — so a reader
+ * opening the chapter sees its name the same way an EPUB chapter's own
+ * heading already shows, rather than the name only surfacing in the header
+ * status line/chapter menu. `titleInline` (the heading's original inline
+ * child tokens, when available) preserves any inline formatting — bold,
+ * italic, etc. — in the rendered heading; a plain-text fallback covers the
+ * one caller (the single-chapter path) that only has the flattened string.
+ */
+function createChapter(title: string, titleInline: Token[] | undefined, headingLevel: 1 | 2, tokens: Token[], order: number, footnoteDefinitions: Map<string, string>, footnoteCounter: { value: number }): Chapter {
+  const content = parseContentNodes(tokens, false, footnoteDefinitions, footnoteCounter);
+  const titleChildren = titleInline && titleInline.length > 0
+    ? parseInlineNodes(titleInline, footnoteDefinitions, footnoteCounter)
+    : [{ type: 'text' as const, content: title }];
+  const titleHeading: HeadingNode = { type: 'heading', level: headingLevel, children: titleChildren };
   return {
     id: `chapter-${order}`,
     title,
     order,
-    content: parseContentNodes(tokens, false, footnoteDefinitions, footnoteCounter),
+    content: title ? [titleHeading, ...content] : content,
   };
 }
 

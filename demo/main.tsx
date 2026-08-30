@@ -7,6 +7,11 @@ import { LOCALES } from '../src/i18n';
 import type { LocaleCode } from '../src/i18n';
 import type { PdfChapterMapEntry } from '../src/interfaces/parser';
 import type { StarDictDictionaryConfig } from '../src/services/stardict-provider';
+// Vite's `?raw` suffix inlines the file's text content at build/dev time —
+// no runtime fetch, no need to also copy the README into demo/public. Lets
+// the "Load README" button exercise the reader against a large, real-world,
+// multi-heading Markdown document instead of just the short hand-written sample.
+import README_CONTENT from '../README.md?raw';
 
 type SourceType = 'markdown' | 'epub' | 'pdf' | 'url';
 
@@ -229,6 +234,7 @@ interface ViewSettings {
   columns: 1 | 2;
   scroll: boolean;
   showPageDivider: boolean;
+  invertImagesInDarkMode: boolean;
 }
 
 const DEFAULT_SETTINGS: ViewSettings = {
@@ -243,6 +249,7 @@ const DEFAULT_SETTINGS: ViewSettings = {
   columns: 1,
   scroll: false,
   showPageDivider: false,
+  invertImagesInDarkMode: true,
 };
 
 function loadSettings(): ViewSettings {
@@ -269,6 +276,7 @@ function loadSettings(): ViewSettings {
       columns: [1, 2].includes(parsed.columns) ? parsed.columns : DEFAULT_SETTINGS.columns,
       scroll: typeof parsed.scroll === 'boolean' ? parsed.scroll : DEFAULT_SETTINGS.scroll,
       showPageDivider: typeof parsed.showPageDivider === 'boolean' ? parsed.showPageDivider : DEFAULT_SETTINGS.showPageDivider,
+      invertImagesInDarkMode: typeof parsed.invertImagesInDarkMode === 'boolean' ? parsed.invertImagesInDarkMode : DEFAULT_SETTINGS.invertImagesInDarkMode,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -398,7 +406,7 @@ function App() {
     setSettings(prev => ({ ...prev, [key]: value }));
   }, []);
 
-  const { theme, fontFamily, fontSize, justify, lineSpacing, letterSpacing, wordSpacing, margin, columns, scroll, showPageDivider } = settings;
+  const { theme, fontFamily, fontSize, justify, lineSpacing, letterSpacing, wordSpacing, margin, columns, scroll, showPageDivider, invertImagesInDarkMode } = settings;
 
   const [progress, setProgress] = useState<{
     currentPage: number;
@@ -522,6 +530,13 @@ function App() {
     setSource({ type: 'markdown', content: SAMPLE_MARKDOWN });
     setSourceLabel('Sample Markdown');
     setBookIdentifier('sample-markdown');
+    setSourceModalOpen(false);
+  };
+
+  const handleLoadReadme = () => {
+    setSource({ type: 'markdown', content: README_CONTENT });
+    setSourceLabel('Project README');
+    setBookIdentifier('project-readme');
     setSourceModalOpen(false);
   };
 
@@ -659,6 +674,23 @@ function App() {
             }}
           >
             Load Sample
+          </button>
+
+          {/* README button — a large, real-world Markdown document (multiple
+              headings, code blocks, tables, links) to exercise the reader
+              against something bigger than the short hand-written sample. */}
+          <button
+            onClick={handleLoadReadme}
+            style={{
+              padding: '0.5rem 1rem',
+              background: '#f3f4f6',
+              border: '1px solid #d1d5db',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '0.9rem',
+            }}
+          >
+            Load README
           </button>
 
           {/* Language selector */}
@@ -1035,6 +1067,7 @@ function App() {
           columns={columns}
           scroll={scroll}
           showPageDivider={showPageDivider}
+          invertImagesInDarkMode={invertImagesInDarkMode}
           translations={LOCALES[language]}
           pdfChapters={source.type === 'pdf' ? pdfChapters : undefined}
           onPageChange={(e) => console.log('Page change:', e)}
@@ -1054,6 +1087,7 @@ function App() {
             if (s.columns !== undefined) updateSetting('columns', s.columns);
             if (s.scroll !== undefined) updateSetting('scroll', s.scroll);
             if (s.showPageDivider !== undefined) updateSetting('showPageDivider', s.showPageDivider);
+            if (s.invertImagesInDarkMode !== undefined) updateSetting('invertImagesInDarkMode', s.invertImagesInDarkMode);
           }}
           onProgressChange={setProgress}
           onProgressSave={() => setLastProgressSave(new Date().toLocaleTimeString())}

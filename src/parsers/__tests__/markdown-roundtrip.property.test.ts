@@ -388,10 +388,24 @@ describe('Property 2: Markdown Round-Trip Preservation', () => {
           const parsedChapter = normalizedParsed.chapters[i];
 
           expect(parsedChapter.title).toBe(origChapter.title);
-          expect(parsedChapter.content.length).toBe(origChapter.content.length);
+
+          // A chapter with a title gets that title re-rendered as an actual
+          // heading at the start of its own content on parse (see
+          // `createChapter` in markdown-parser.ts) — printed markdown always
+          // has the title on its own `## ...` line, so a titled chapter's
+          // parsed content always gains this one extra leading node versus
+          // the original Book that was printed. Peel it off before
+          // comparing the rest of the content, which round-trips exactly.
+          const expectsTitleHeading = origChapter.title !== '';
+          if (expectsTitleHeading) {
+            expect(parsedChapter.content[0]?.type).toBe('heading');
+          }
+          const parsedBody = expectsTitleHeading ? parsedChapter.content.slice(1) : parsedChapter.content;
+
+          expect(parsedBody.length).toBe(origChapter.content.length);
 
           for (let j = 0; j < origChapter.content.length; j++) {
-            expect(parsedChapter.content[j]).toEqual(origChapter.content[j]);
+            expect(parsedBody[j]).toEqual(origChapter.content[j]);
           }
         }
       }),

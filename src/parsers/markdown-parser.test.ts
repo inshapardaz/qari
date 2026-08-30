@@ -57,13 +57,53 @@ describe('MarkdownParser', () => {
       expect(book.chapters).toHaveLength(1);
       expect(book.chapters[0].title).toBe('Untitled');
     });
+
+    it('treats each H1 as a chapter boundary when 2+ H1 headings are present', () => {
+      const md = '# Chapter One\n\nFirst chapter text.\n\n# Chapter Two\n\nSecond chapter text.';
+      const book = parser.parse(md);
+      expect(book.chapters).toHaveLength(2);
+      expect(book.chapters[0].title).toBe('Chapter One');
+      expect(book.chapters[1].title).toBe('Chapter Two');
+      // content[0] of each chapter is its own re-rendered title heading.
+      const para0 = book.chapters[0].content[1] as ParagraphNode;
+      const para1 = book.chapters[1].content[1] as ParagraphNode;
+      expect(para0.children).toEqual([{ type: 'text', content: 'First chapter text.' }]);
+      expect(para1.children).toEqual([{ type: 'text', content: 'Second chapter text.' }]);
+    });
+
+    it('uses the first H1 as the book title even when H1 also delimits chapters', () => {
+      const md = '# Chapter One\n\nText.\n\n# Chapter Two\n\nText.';
+      const book = parser.parse(md);
+      expect(book.metadata.title).toBe('Chapter One');
+    });
+
+    it('renders an H2 inside an H1-delimited chapter as an ordinary in-content heading, not a further split', () => {
+      const md = '# Chapter One\n\n## A Subsection\n\nText.\n\n# Chapter Two\n\nMore text.';
+      const book = parser.parse(md);
+      expect(book.chapters).toHaveLength(2);
+      // content[0] is chapter 0's own title heading (level 1, "Chapter One");
+      // the H2 "A Subsection" is the ordinary in-content heading after it.
+      const heading = book.chapters[0].content[1] as HeadingNode;
+      expect(heading.type).toBe('heading');
+      expect(heading.level).toBe(2);
+      expect(heading.children).toEqual([{ type: 'text', content: 'A Subsection' }]);
+    });
+
+    it('keeps single-H1-as-title/H2-as-chapter behavior unchanged when only one H1 is present', () => {
+      const md = '# My Book\n\n## Intro\n\nHello.\n\n## Part Two\n\nWorld.';
+      const book = parser.parse(md);
+      expect(book.metadata.title).toBe('My Book');
+      expect(book.chapters).toHaveLength(2);
+      expect(book.chapters[0].title).toBe('Intro');
+      expect(book.chapters[1].title).toBe('Part Two');
+    });
   });
 
   describe('paragraphs and inline formatting', () => {
     it('parses plain paragraphs', () => {
       const md = '# Title\n\n## Ch1\n\nHello world.';
       const book = parser.parse(md);
-      const para = book.chapters[0].content[0] as ParagraphNode;
+      const para = book.chapters[0].content[1] as ParagraphNode;
       expect(para.type).toBe('paragraph');
       expect(para.children).toHaveLength(1);
       expect(para.children[0]).toEqual({ type: 'text', content: 'Hello world.' });
@@ -72,7 +112,7 @@ describe('MarkdownParser', () => {
     it('parses bold text', () => {
       const md = '# T\n\n## C\n\nThis is **bold** text.';
       const book = parser.parse(md);
-      const para = book.chapters[0].content[0] as ParagraphNode;
+      const para = book.chapters[0].content[1] as ParagraphNode;
       expect(para.children).toEqual([
         { type: 'text', content: 'This is ' },
         { type: 'bold', children: [{ type: 'text', content: 'bold' }] },
@@ -83,7 +123,7 @@ describe('MarkdownParser', () => {
     it('parses italic text', () => {
       const md = '# T\n\n## C\n\nThis is *italic* text.';
       const book = parser.parse(md);
-      const para = book.chapters[0].content[0] as ParagraphNode;
+      const para = book.chapters[0].content[1] as ParagraphNode;
       expect(para.children).toEqual([
         { type: 'text', content: 'This is ' },
         { type: 'italic', children: [{ type: 'text', content: 'italic' }] },
@@ -94,7 +134,7 @@ describe('MarkdownParser', () => {
     it('parses inline code', () => {
       const md = '# T\n\n## C\n\nUse `console.log` here.';
       const book = parser.parse(md);
-      const para = book.chapters[0].content[0] as ParagraphNode;
+      const para = book.chapters[0].content[1] as ParagraphNode;
       expect(para.children).toEqual([
         { type: 'text', content: 'Use ' },
         { type: 'code', content: 'console.log' },
@@ -105,7 +145,7 @@ describe('MarkdownParser', () => {
     it('parses links', () => {
       const md = '# T\n\n## C\n\nVisit [Google](https://google.com) now.';
       const book = parser.parse(md);
-      const para = book.chapters[0].content[0] as ParagraphNode;
+      const para = book.chapters[0].content[1] as ParagraphNode;
       expect(para.children).toEqual([
         { type: 'text', content: 'Visit ' },
         { type: 'link', href: 'https://google.com', children: [{ type: 'text', content: 'Google' }] },
@@ -116,7 +156,7 @@ describe('MarkdownParser', () => {
     it('parses nested bold inside italic', () => {
       const md = '# T\n\n## C\n\n*italic and **bold***';
       const book = parser.parse(md);
-      const para = book.chapters[0].content[0] as ParagraphNode;
+      const para = book.chapters[0].content[1] as ParagraphNode;
       expect(para.children[0].type).toBe('italic');
     });
   });
@@ -125,7 +165,7 @@ describe('MarkdownParser', () => {
     it('parses standalone images as ImageNode', () => {
       const md = '# T\n\n## C\n\n![Alt text](image.png)';
       const book = parser.parse(md);
-      const img = book.chapters[0].content[0] as ImageNode;
+      const img = book.chapters[0].content[1] as ImageNode;
       expect(img.type).toBe('image');
       expect(img.src).toBe('image.png');
       expect(img.alt).toBe('Alt text');
@@ -134,7 +174,7 @@ describe('MarkdownParser', () => {
     it('handles image with empty alt text', () => {
       const md = '# T\n\n## C\n\n![](photo.jpg)';
       const book = parser.parse(md);
-      const img = book.chapters[0].content[0] as ImageNode;
+      const img = book.chapters[0].content[1] as ImageNode;
       expect(img.type).toBe('image');
       expect(img.src).toBe('photo.jpg');
       expect(img.alt).toBeUndefined();
@@ -145,7 +185,7 @@ describe('MarkdownParser', () => {
     it('parses fenced code blocks with language', () => {
       const md = '# T\n\n## C\n\n```typescript\nconst x = 1;\n```';
       const book = parser.parse(md);
-      const code = book.chapters[0].content[0] as CodeBlockNode;
+      const code = book.chapters[0].content[1] as CodeBlockNode;
       expect(code.type).toBe('code-block');
       expect(code.language).toBe('typescript');
       expect(code.content).toBe('const x = 1;\n');
@@ -154,7 +194,7 @@ describe('MarkdownParser', () => {
     it('parses fenced code blocks without language', () => {
       const md = '# T\n\n## C\n\n```\nhello\n```';
       const book = parser.parse(md);
-      const code = book.chapters[0].content[0] as CodeBlockNode;
+      const code = book.chapters[0].content[1] as CodeBlockNode;
       expect(code.type).toBe('code-block');
       expect(code.language).toBeUndefined();
       expect(code.content).toBe('hello\n');
@@ -165,7 +205,7 @@ describe('MarkdownParser', () => {
     it('parses unordered lists', () => {
       const md = '# T\n\n## C\n\n- Item 1\n- Item 2\n- Item 3';
       const book = parser.parse(md);
-      const list = book.chapters[0].content[0] as ListNode;
+      const list = book.chapters[0].content[1] as ListNode;
       expect(list.type).toBe('list');
       expect(list.ordered).toBe(false);
       expect(list.items).toHaveLength(3);
@@ -174,7 +214,7 @@ describe('MarkdownParser', () => {
     it('parses ordered lists', () => {
       const md = '# T\n\n## C\n\n1. First\n2. Second\n3. Third';
       const book = parser.parse(md);
-      const list = book.chapters[0].content[0] as ListNode;
+      const list = book.chapters[0].content[1] as ListNode;
       expect(list.type).toBe('list');
       expect(list.ordered).toBe(true);
       expect(list.items).toHaveLength(3);
@@ -183,7 +223,7 @@ describe('MarkdownParser', () => {
     it('parses list items with inline formatting', () => {
       const md = '# T\n\n## C\n\n- **bold item**\n- *italic item*';
       const book = parser.parse(md);
-      const list = book.chapters[0].content[0] as ListNode;
+      const list = book.chapters[0].content[1] as ListNode;
       const firstItemPara = list.items[0].children[0] as ParagraphNode;
       expect(firstItemPara.type).toBe('paragraph');
       expect(firstItemPara.children[0].type).toBe('bold');
@@ -194,7 +234,8 @@ describe('MarkdownParser', () => {
     it('maps H3-H6 headings as HeadingNode within chapter content', () => {
       const md = '# Title\n\n## Chapter\n\n### Subsection\n\nText.\n\n#### Deep section';
       const book = parser.parse(md);
-      const h3 = book.chapters[0].content[0] as HeadingNode;
+      // content[0] is the chapter's own title heading ("Chapter", level 2).
+      const h3 = book.chapters[0].content[1] as HeadingNode;
       expect(h3.type).toBe('heading');
       expect(h3.level).toBe(3);
       expect(h3.children).toEqual([{ type: 'text', content: 'Subsection' }]);
@@ -233,13 +274,16 @@ function hello() {
       expect(book.chapters[1].title).toBe('Chapter 1: Basics');
       expect(book.chapters[2].title).toBe('Chapter 2: Advanced');
 
-      // Chapter 1 has paragraph + code block
-      expect(book.chapters[1].content[0].type).toBe('paragraph');
-      expect(book.chapters[1].content[1].type).toBe('code-block');
+      // content[0] of each chapter is its own title heading.
+      // Chapter 1 has paragraph + code block after it
+      expect(book.chapters[1].content[0].type).toBe('heading');
+      expect(book.chapters[1].content[1].type).toBe('paragraph');
+      expect(book.chapters[1].content[2].type).toBe('code-block');
 
-      // Chapter 2 has list + image
-      expect(book.chapters[2].content[0].type).toBe('list');
-      expect(book.chapters[2].content[1].type).toBe('image');
+      // Chapter 2 has list + image after it
+      expect(book.chapters[2].content[0].type).toBe('heading');
+      expect(book.chapters[2].content[1].type).toBe('list');
+      expect(book.chapters[2].content[2].type).toBe('image');
     });
 
     it('handles empty content', () => {
@@ -255,6 +299,7 @@ function hello() {
     it('reference with matching definition produces FootnoteRefSpan', () => {
       const md = 'This has a footnote[^1] in it.\n\n[^1]: This is the footnote content.';
       const book = parser.parse(md);
+      // No H1 in this source, so no title heading is prepended.
       const para = book.chapters[0].content[0] as ParagraphNode;
 
       const footnoteNode = para.children.find(n => n.type === 'footnote-ref') as FootnoteRefSpan;

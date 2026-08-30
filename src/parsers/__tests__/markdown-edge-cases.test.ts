@@ -33,11 +33,15 @@ describe('MarkdownParser - Edge Cases', () => {
 
       expect(book.chapters).toHaveLength(1);
       expect(book.chapters[0].title).toBe('Title');
-      // H3 and H4 should appear as heading nodes in the content
-      const h3 = book.chapters[0].content[0] as HeadingNode;
+      // content[0] is the chapter's own re-rendered title heading (from the
+      // H1) — H3 and H4 appear as heading nodes after it.
+      const titleHeading = book.chapters[0].content[0] as HeadingNode;
+      expect(titleHeading.type).toBe('heading');
+      expect(titleHeading.level).toBe(1);
+      const h3 = book.chapters[0].content[1] as HeadingNode;
       expect(h3.type).toBe('heading');
       expect(h3.level).toBe(3);
-      const h4 = book.chapters[0].content[2] as HeadingNode;
+      const h4 = book.chapters[0].content[3] as HeadingNode;
       expect(h4.type).toBe('heading');
       expect(h4.level).toBe(4);
     });
@@ -60,7 +64,9 @@ describe('MarkdownParser - Edge Cases', () => {
       expect(book.metadata.title).toBe('My Document Title');
       expect(book.chapters).toHaveLength(1);
       expect(book.chapters[0].title).toBe('My Document Title');
-      expect(book.chapters[0].content).toHaveLength(0);
+      // Just the chapter's own re-rendered title heading — no body content.
+      expect(book.chapters[0].content).toHaveLength(1);
+      expect(book.chapters[0].content[0].type).toBe('heading');
     });
 
     it('extracts title from H1 followed only by whitespace', () => {
@@ -69,7 +75,8 @@ describe('MarkdownParser - Edge Cases', () => {
 
       expect(book.metadata.title).toBe('Standalone Title');
       expect(book.chapters).toHaveLength(1);
-      expect(book.chapters[0].content).toHaveLength(0);
+      expect(book.chapters[0].content).toHaveLength(1);
+      expect(book.chapters[0].content[0].type).toBe('heading');
     });
   });
 
@@ -77,7 +84,7 @@ describe('MarkdownParser - Edge Cases', () => {
     it('parses a nested unordered list (list within list)', () => {
       const md = '# T\n\n## C\n\n- Item 1\n  - Nested A\n  - Nested B\n- Item 2';
       const book = parser.parse(md);
-      const list = book.chapters[0].content[0] as ListNode;
+      const list = book.chapters[0].content[1] as ListNode;
 
       expect(list.type).toBe('list');
       expect(list.ordered).toBe(false);
@@ -98,7 +105,7 @@ describe('MarkdownParser - Edge Cases', () => {
     it('parses a nested ordered list inside unordered list', () => {
       const md = '# T\n\n## C\n\n- Outer item\n  1. Inner one\n  2. Inner two\n- Another outer';
       const book = parser.parse(md);
-      const list = book.chapters[0].content[0] as ListNode;
+      const list = book.chapters[0].content[1] as ListNode;
 
       expect(list.type).toBe('list');
       expect(list.ordered).toBe(false);
@@ -117,7 +124,7 @@ describe('MarkdownParser - Edge Cases', () => {
     it('parses deeply nested lists (3 levels)', () => {
       const md = '# T\n\n## C\n\n- Level 1\n  - Level 2\n    - Level 3';
       const book = parser.parse(md);
-      const list = book.chapters[0].content[0] as ListNode;
+      const list = book.chapters[0].content[1] as ListNode;
 
       expect(list.type).toBe('list');
       expect(list.items).toHaveLength(1);
@@ -145,7 +152,7 @@ describe('MarkdownParser - Edge Cases', () => {
     it('parses bold inside italic', () => {
       const md = '# T\n\n## C\n\n*This is **bold inside** italic*';
       const book = parser.parse(md);
-      const para = book.chapters[0].content[0] as ParagraphNode;
+      const para = book.chapters[0].content[1] as ParagraphNode;
 
       expect(para.type).toBe('paragraph');
       const italic = para.children[0] as ItalicSpan;
@@ -161,7 +168,7 @@ describe('MarkdownParser - Edge Cases', () => {
     it('parses link with bold text inside', () => {
       const md = '# T\n\n## C\n\n[**Bold link**](https://example.com)';
       const book = parser.parse(md);
-      const para = book.chapters[0].content[0] as ParagraphNode;
+      const para = book.chapters[0].content[1] as ParagraphNode;
 
       const link = para.children[0] as LinkSpan;
       expect(link.type).toBe('link');
@@ -174,7 +181,7 @@ describe('MarkdownParser - Edge Cases', () => {
     it('parses code inside a link', () => {
       const md = '# T\n\n## C\n\n[`code`](https://example.com)';
       const book = parser.parse(md);
-      const para = book.chapters[0].content[0] as ParagraphNode;
+      const para = book.chapters[0].content[1] as ParagraphNode;
 
       const link = para.children[0] as LinkSpan;
       expect(link.type).toBe('link');
@@ -185,7 +192,7 @@ describe('MarkdownParser - Edge Cases', () => {
     it('parses multiple inline formats in one paragraph', () => {
       const md = '# T\n\n## C\n\n**bold** and *italic* and `code` and [link](http://x.com)';
       const book = parser.parse(md);
-      const para = book.chapters[0].content[0] as ParagraphNode;
+      const para = book.chapters[0].content[1] as ParagraphNode;
 
       const types = para.children.map((c) => c.type);
       expect(types).toContain('bold');
@@ -199,7 +206,7 @@ describe('MarkdownParser - Edge Cases', () => {
     it('parses typescript code block', () => {
       const md = '# T\n\n## C\n\n```typescript\ninterface Foo { bar: string; }\n```';
       const book = parser.parse(md);
-      const code = book.chapters[0].content[0] as CodeBlockNode;
+      const code = book.chapters[0].content[1] as CodeBlockNode;
 
       expect(code.type).toBe('code-block');
       expect(code.language).toBe('typescript');
@@ -209,7 +216,7 @@ describe('MarkdownParser - Edge Cases', () => {
     it('parses python code block', () => {
       const md = '# T\n\n## C\n\n```python\ndef hello():\n    print("world")\n```';
       const book = parser.parse(md);
-      const code = book.chapters[0].content[0] as CodeBlockNode;
+      const code = book.chapters[0].content[1] as CodeBlockNode;
 
       expect(code.type).toBe('code-block');
       expect(code.language).toBe('python');
@@ -219,7 +226,7 @@ describe('MarkdownParser - Edge Cases', () => {
     it('parses code block with no language annotation', () => {
       const md = '# T\n\n## C\n\n```\nplain code\n```';
       const book = parser.parse(md);
-      const code = book.chapters[0].content[0] as CodeBlockNode;
+      const code = book.chapters[0].content[1] as CodeBlockNode;
 
       expect(code.type).toBe('code-block');
       expect(code.language).toBeUndefined();
@@ -229,7 +236,7 @@ describe('MarkdownParser - Edge Cases', () => {
     it('parses code block with uncommon language annotation', () => {
       const md = '# T\n\n## C\n\n```rust\nfn main() {}\n```';
       const book = parser.parse(md);
-      const code = book.chapters[0].content[0] as CodeBlockNode;
+      const code = book.chapters[0].content[1] as CodeBlockNode;
 
       expect(code.type).toBe('code-block');
       expect(code.language).toBe('rust');
@@ -238,7 +245,7 @@ describe('MarkdownParser - Edge Cases', () => {
     it('preserves code block content with special characters', () => {
       const md = '# T\n\n## C\n\n```html\n<div class="test">&amp;</div>\n```';
       const book = parser.parse(md);
-      const code = book.chapters[0].content[0] as CodeBlockNode;
+      const code = book.chapters[0].content[1] as CodeBlockNode;
 
       expect(code.type).toBe('code-block');
       expect(code.language).toBe('html');
@@ -274,68 +281,79 @@ describe('MarkdownParser - Edge Cases', () => {
   });
 
   describe('multiple H1 headings', () => {
-    it('uses only the first H1 as the book title', () => {
-      const md = '# First Title\n\n# Second Title\n\n## Chapter\n\nContent.';
+    // 2+ H1 headings makes H1 itself the chapter-boundary level (a single
+    // markdown file with one `# Chapter Title` per chapter is at least as
+    // common a convention as the H2-per-chapter one) — see `buildChapters`'s
+    // own comment in markdown-parser.ts. A single H1 keeps the original
+    // H1-title/H2-chapter behavior (covered elsewhere in this file/suite).
+    it('uses the first H1 as the book title even when H1 also delimits chapters', () => {
+      const md = '# First Title\n\n# Second Title\n\n## Subsection\n\nContent.';
       const book = parser.parse(md);
 
       expect(book.metadata.title).toBe('First Title');
     });
 
-    it('does not create additional chapters from extra H1s', () => {
-      const md = '# Title One\n\n# Title Two\n\n## Real Chapter\n\nText.';
+    it('creates a chapter per H1, rendering an inner H2 as an ordinary in-content heading rather than a further split', () => {
+      const md = '# Title One\n\n# Title Two\n\n## Subsection\n\nText.';
       const book = parser.parse(md);
 
-      // Only one chapter from the H2
-      expect(book.chapters).toHaveLength(1);
-      expect(book.chapters[0].title).toBe('Real Chapter');
+      expect(book.chapters).toHaveLength(2);
+      expect(book.chapters[0].title).toBe('Title One');
+      expect(book.chapters[1].title).toBe('Title Two');
+      const heading = book.chapters[1].content.find((n) => n.type === 'heading');
+      expect(heading).toBeDefined();
     });
 
-    it('does not include extra H1 content in single-chapter mode', () => {
+    it('splits chapters at each H1 and includes each one\'s own following content', () => {
       const md = '# First\n\n# Second\n\nParagraph text.';
       const book = parser.parse(md);
 
       expect(book.metadata.title).toBe('First');
-      expect(book.chapters).toHaveLength(1);
-      // The content should only have the paragraph (H1s are skipped)
-      const paragraphs = book.chapters[0].content.filter(
+      expect(book.chapters).toHaveLength(2);
+      // Just chapter 0's own re-rendered title heading — no body content.
+      expect(book.chapters[0].content).toHaveLength(1);
+      expect(book.chapters[0].content[0].type).toBe('heading');
+      const paragraphs = book.chapters[1].content.filter(
         (n) => n.type === 'paragraph'
       );
       expect(paragraphs).toHaveLength(1);
     });
   });
 
-  describe('H2 with no content between headings → empty chapter', () => {
-    it('creates chapter with empty content when H2 is immediately followed by another H2', () => {
+  describe('H2 with no content between headings → chapter with only its own title heading', () => {
+    it('creates chapter with just its title heading when H2 is immediately followed by another H2', () => {
       const md = '# Title\n\n## Empty Chapter\n\n## Non-empty Chapter\n\nSome text.';
       const book = parser.parse(md);
 
       expect(book.chapters).toHaveLength(2);
       expect(book.chapters[0].title).toBe('Empty Chapter');
-      expect(book.chapters[0].content).toHaveLength(0);
+      expect(book.chapters[0].content).toHaveLength(1);
+      expect(book.chapters[0].content[0].type).toBe('heading');
       expect(book.chapters[1].title).toBe('Non-empty Chapter');
-      expect(book.chapters[1].content.length).toBeGreaterThan(0);
+      expect(book.chapters[1].content.length).toBeGreaterThan(1);
     });
 
-    it('handles multiple consecutive empty H2 chapters', () => {
+    it('handles multiple consecutive body-less H2 chapters', () => {
       const md = '# Title\n\n## A\n\n## B\n\n## C\n\nFinal content.';
       const book = parser.parse(md);
 
       expect(book.chapters).toHaveLength(3);
       expect(book.chapters[0].title).toBe('A');
-      expect(book.chapters[0].content).toHaveLength(0);
+      expect(book.chapters[0].content).toHaveLength(1);
       expect(book.chapters[1].title).toBe('B');
-      expect(book.chapters[1].content).toHaveLength(0);
+      expect(book.chapters[1].content).toHaveLength(1);
       expect(book.chapters[2].title).toBe('C');
-      expect(book.chapters[2].content.length).toBeGreaterThan(0);
+      expect(book.chapters[2].content.length).toBeGreaterThan(1);
     });
 
-    it('handles last chapter being empty', () => {
+    it('handles the last chapter having no body content', () => {
       const md = '# Title\n\n## First\n\nContent here.\n\n## Last Empty';
       const book = parser.parse(md);
 
       expect(book.chapters).toHaveLength(2);
       expect(book.chapters[1].title).toBe('Last Empty');
-      expect(book.chapters[1].content).toHaveLength(0);
+      expect(book.chapters[1].content).toHaveLength(1);
+      expect(book.chapters[1].content[0].type).toBe('heading');
     });
   });
 });

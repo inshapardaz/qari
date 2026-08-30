@@ -139,6 +139,19 @@ describe('Reader with a PDF source', () => {
     expect(page.querySelector('img')?.style.filter).toBe('');
   });
 
+  it('does not invert the PDF page image colors under a dark theme when invertImagesInDarkMode is explicitly disabled', async () => {
+    const pdfjsLib = await import('pdfjs-dist');
+    (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+      promise: Promise.resolve(createFakePdfDocument(1)),
+    });
+
+    const source: ReaderSource = { type: 'pdf', data: new ArrayBuffer(8) };
+    render(<Reader source={source} theme="dark" invertImagesInDarkMode={false} />);
+    const page = await screen.findByTestId('pdf-page');
+
+    expect(page.querySelector('img')?.style.filter).toBe('');
+  });
+
   it('steps by two pages at a time when paging through a spread', async () => {
     const pdfjsLib = await import('pdfjs-dist');
     (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({

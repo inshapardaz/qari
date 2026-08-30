@@ -35,6 +35,7 @@ export const en: TranslationStrings = {
   themePaper: 'Paper',
   themeFocus: 'Focus',
   themeHighContrast: 'HC',
+  settingsInvertImages: 'Invert images in dark mode',
   settingsFontFamily: 'Font Family',
   settingsFontSize: 'Font Size',
   settingsFontSizeDecrease: 'Decrease font size',

@@ -37,6 +37,8 @@ export interface TranslationStrings {
   themePaper: string;
   themeFocus: string;
   themeHighContrast: string;
+  /** Theme panel toggle for inverting image colors (content images and PDF pages) under dark-background themes. Only shown while such a theme is active. */
+  settingsInvertImages: string;
   settingsFontFamily: string;
   settingsFontSize: string; // supports {size}
   /** Toolbar button that decreases font size — a distinct label from settingsFontSize since it names an action, not a value. */

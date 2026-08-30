@@ -116,6 +116,8 @@ export interface ReaderSettings {
   scroll?: boolean;
   /** Show a book-spine-style divider between the two pages in two-column (`columns: 2`) mode. Defaults to false. */
   showPageDivider?: boolean;
+  /** Invert image colors (content images and PDF pages alike) under the dark-background reading themes (dark/quiet/high-contrast). Defaults to true. */
+  invertImagesInDarkMode?: boolean;
 }
 
 export interface FontOption {
@@ -163,6 +165,20 @@ export interface ReaderProps {
   scroll?: boolean;
   /** Show a book-spine-style divider between the two pages in two-column (`columns: 2`) mode. Defaults to false. */
   showPageDivider?: boolean;
+  /**
+   * Invert image colors — both regular content images (EPUB/Markdown) and
+   * rasterized PDF pages — under the dark-background reading themes (dark,
+   * quiet, high-contrast). Rasterized/photographic images are baked-in
+   * pixels that the reading theme's CSS custom properties can't recolor on
+   * their own, so a bright image would otherwise glare against a dark
+   * background; this applies a CSS `invert()` (plus a compensating
+   * `hue-rotate()` to keep colors close to their originals rather than
+   * flipping to their complements) to counteract that. Has no effect under
+   * the light-background themes (light, calm, paper, focus) regardless of
+   * this setting. Defaults to true. Also settable per-reader from the
+   * theme settings panel; see `ReaderSettings.invertImagesInDarkMode`.
+   */
+  invertImagesInDarkMode?: boolean;
   /**
    * Override the PDF.js worker script URL used to render PDF pages.
    * Defaults to a version-pinned jsDelivr CDN URL; set this if you need to
@@ -731,15 +747,15 @@ function escapeHtml(text: string): string {
 // Content Renderers
 // ---------------------------------------------------------------------------
 
-const InlineNodeRenderer: React.FC<{ node: InlineNode; onImageClick?: (src: string, alt: string) => void; onFootnoteClick?: (node: FootnoteRefSpan, e: React.MouseEvent) => void; onLinkClick?: (href: string, e: React.MouseEvent) => void }> = ({ node, onImageClick, onFootnoteClick, onLinkClick }) => {
+const InlineNodeRenderer: React.FC<{ node: InlineNode; onImageClick?: (src: string, alt: string) => void; onFootnoteClick?: (node: FootnoteRefSpan, e: React.MouseEvent) => void; onLinkClick?: (href: string, e: React.MouseEvent) => void; invertImages?: boolean }> = ({ node, onImageClick, onFootnoteClick, onLinkClick, invertImages }) => {
   const t = useTranslations();
   switch (node.type) {
     case 'text':
       return <>{node.content}</>;
     case 'bold':
-      return <strong>{node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} onImageClick={onImageClick} onFootnoteClick={onFootnoteClick} onLinkClick={onLinkClick} />)}</strong>;
+      return <strong>{node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} onImageClick={onImageClick} onFootnoteClick={onFootnoteClick} onLinkClick={onLinkClick} invertImages={invertImages} />)}</strong>;
     case 'italic':
-      return <em>{node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} onImageClick={onImageClick} onFootnoteClick={onFootnoteClick} onLinkClick={onLinkClick} />)}</em>;
+      return <em>{node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} onImageClick={onImageClick} onFootnoteClick={onFootnoteClick} onLinkClick={onLinkClick} invertImages={invertImages} />)}</em>;
     case 'code':
       return <code>{node.content}</code>;
     case 'inline-image':
@@ -756,6 +772,9 @@ const InlineNodeRenderer: React.FC<{ node: InlineNode; onImageClick?: (src: stri
             display: 'inline-block',
             objectFit: 'contain',
             cursor: 'pointer',
+            // See `invertImages`'s own comment (near `isDarkBackgroundTheme`
+            // in Reader) for why this and `hue-rotate` are paired.
+            filter: invertImages ? 'invert(1) hue-rotate(180deg)' : undefined,
           }}
         />
       );
@@ -771,7 +790,7 @@ const InlineNodeRenderer: React.FC<{ node: InlineNode; onImageClick?: (src: stri
           style={{ color: 'var(--reader-accent, #0066cc)', cursor: 'pointer' }}
           onClick={isExternal ? undefined : (e) => { e.preventDefault(); onLinkClick?.(node.href, e); }}
         >
-          {node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} onImageClick={onImageClick} onFootnoteClick={onFootnoteClick} onLinkClick={onLinkClick} />)}
+          {node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} onImageClick={onImageClick} onFootnoteClick={onFootnoteClick} onLinkClick={onLinkClick} invertImages={invertImages} />)}
         </a>
       );
     case 'footnote-ref':
@@ -803,19 +822,19 @@ const InlineNodeRenderer: React.FC<{ node: InlineNode; onImageClick?: (src: stri
   }
 };
 
-const ContentNodeRenderer: React.FC<{ node: ContentNode; onImageClick?: (src: string, alt: string) => void; onFootnoteClick?: (node: FootnoteRefSpan, e: React.MouseEvent) => void; onLinkClick?: (href: string, e: React.MouseEvent) => void; invertPdfPageColors?: boolean }> = ({ node, onImageClick, onFootnoteClick, onLinkClick, invertPdfPageColors }) => {
+const ContentNodeRenderer: React.FC<{ node: ContentNode; onImageClick?: (src: string, alt: string) => void; onFootnoteClick?: (node: FootnoteRefSpan, e: React.MouseEvent) => void; onLinkClick?: (href: string, e: React.MouseEvent) => void; invertImages?: boolean }> = ({ node, onImageClick, onFootnoteClick, onLinkClick, invertImages }) => {
   switch (node.type) {
     case 'paragraph':
       return (
         <p>
-          {node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} onImageClick={onImageClick} onFootnoteClick={onFootnoteClick} onLinkClick={onLinkClick} />)}
+          {node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} onImageClick={onImageClick} onFootnoteClick={onFootnoteClick} onLinkClick={onLinkClick} invertImages={invertImages} />)}
         </p>
       );
     case 'heading': {
       const Tag = `h${node.level}` as keyof React.JSX.IntrinsicElements;
       return (
         <Tag>
-          {node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} onImageClick={onImageClick} onFootnoteClick={onFootnoteClick} onLinkClick={onLinkClick} />)}
+          {node.children.map((child, i) => <InlineNodeRenderer key={i} node={child} onImageClick={onImageClick} onFootnoteClick={onFootnoteClick} onLinkClick={onLinkClick} invertImages={invertImages} />)}
         </Tag>
       );
     }
@@ -837,6 +856,9 @@ const ContentNodeRenderer: React.FC<{ node: ContentNode; onImageClick?: (src: st
               objectFit: 'contain',
               borderRadius: '4px',
               cursor: 'pointer',
+              // See `invertImages`'s own comment (near `isDarkBackgroundTheme`)
+              // for why this and `hue-rotate` are paired.
+              filter: invertImages ? 'invert(1) hue-rotate(180deg)' : undefined,
             }}
           />
           {node.alt && (
@@ -920,7 +942,7 @@ const ContentNodeRenderer: React.FC<{ node: ContentNode; onImageClick?: (src: st
               // diagrams) instead of also flipping them to their
               // complementary color — the same trick browsers' own
               // force-dark image handling uses.
-              filter: invertPdfPageColors ? 'invert(1) hue-rotate(180deg)' : undefined,
+              filter: invertImages ? 'invert(1) hue-rotate(180deg)' : undefined,
             }}
           />
         </div>
@@ -947,7 +969,7 @@ const ContentNodeRenderer: React.FC<{ node: ContentNode; onImageClick?: (src: st
         <ListTag>
           {node.items.map((item, i) => (
             <li key={i}>
-              {item.children.map((child, j) => <ContentNodeRenderer key={j} node={child} onImageClick={onImageClick} onFootnoteClick={onFootnoteClick} onLinkClick={onLinkClick} />)}
+              {item.children.map((child, j) => <ContentNodeRenderer key={j} node={child} onImageClick={onImageClick} onFootnoteClick={onFootnoteClick} onLinkClick={onLinkClick} invertImages={invertImages} />)}
             </li>
           ))}
         </ListTag>
@@ -989,6 +1011,7 @@ export const Reader: React.FC<ReaderProps> = ({
   columns = 1,
   scroll = false,
   showPageDivider = false,
+  invertImagesInDarkMode = true,
   pdfWorkerSrc,
   pdfChapters,
   zoom = 100,
@@ -1253,12 +1276,17 @@ export const Reader: React.FC<ReaderProps> = ({
   // Mantine "dark").
   const isDarkBackgroundTheme = theme === 'dark' || theme === 'quiet' || theme === 'high-contrast';
   const mantineColorScheme: 'light' | 'dark' = isDarkBackgroundTheme ? 'dark' : 'light';
-  // PDF pages are baked-in raster images (white paper, dark ink) — the
-  // reading theme otherwise only ever recolors the reader's own CSS custom
-  // properties, which a pre-rendered image can't respond to, so a bright
-  // white page would glare against the dark-background themes without this
-  // (see its use in the `pdf-page` case of `ContentNodeRenderer`).
-  const invertPdfPageColors = isDarkBackgroundTheme;
+  // Regular content images and rasterized PDF pages alike are baked-in
+  // pixels — the reading theme otherwise only ever recolors the reader's
+  // own CSS custom properties, which a pre-rendered image can't respond to,
+  // so a bright image would glare against the dark-background themes
+  // without this (see its use in the 'image'/'inline-image'/'pdf-page'
+  // cases of `ContentNodeRenderer`/`InlineNodeRenderer`). Gated on both the
+  // active theme and the `invertImagesInDarkMode` prop/setting, so a
+  // consumer (or the reader's own settings panel) can opt out — e.g. for a
+  // book of photographs, where inverting looks worse than the original
+  // glare.
+  const invertImages = isDarkBackgroundTheme && invertImagesInDarkMode;
   // Mantine's default `getRootElement` is `document.documentElement` — with
   // `forceColorScheme` alone, the reader would still write its own
   // colorScheme onto that same shared `<html>` element, clobbering whatever
@@ -3211,9 +3239,10 @@ export const Reader: React.FC<ReaderProps> = ({
   );
 
   const themePanelContent = (
-    // 3-per-row grid (matches Apple Books' own appearance grid) rather
-    // than a single row — 7 themes' worth of swatches would either
-    // overflow or wrap raggedly in a plain flex row.
+    <>
+    {/* 3-per-row grid (matches Apple Books' own appearance grid) rather
+        than a single row — 7 themes' worth of swatches would either
+        overflow or wrap raggedly in a plain flex row. */}
     <div
       dir={t.uiDirection}
       style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}
@@ -3266,6 +3295,25 @@ export const Reader: React.FC<ReaderProps> = ({
         );
       })}
     </div>
+    {/* Only meaningful — and only shown — while a dark-background theme is
+        the *active* one: offering this toggle under a light theme, where it
+        has no visible effect either way, reads as a control for something
+        that isn't currently happening (same reasoning as the layout panel's
+        own page-divider toggle, below). */}
+    {isDarkBackgroundTheme && (
+      <Switch
+        mt="md"
+        size="sm"
+        data-testid="theme-panel-invert-images"
+        checked={invertImagesInDarkMode}
+        onChange={(e) => { if (onSettingsChange) onSettingsChange({ invertImagesInDarkMode: e.currentTarget.checked }); }}
+        label={t.settingsInvertImages}
+        aria-label={t.settingsInvertImages}
+        labelPosition="left"
+        styles={{ body: { justifyContent: 'space-between' }, label: { fontSize: 'var(--mantine-font-size-xs)', fontWeight: 600 } }}
+      />
+    )}
+    </>
   );
 
   const layoutPanelContent = (
@@ -4607,7 +4655,7 @@ export const Reader: React.FC<ReaderProps> = ({
                             // `.ebook-reader__pdf-spread`'s own
                             // `justifyContent: center`.
                             <div key={chapter.id} style={{ flex: '0 1 auto', minWidth: 0, maxWidth: `${MAX_PAGE_WIDTH}px`, height: '100%' }}>
-                              <ContentNodeRenderer node={node} onImageClick={(src, alt) => setLightboxImage({ src, alt })} onFootnoteClick={handleFootnoteClick} onLinkClick={handleLinkClick} invertPdfPageColors={invertPdfPageColors} />
+                              <ContentNodeRenderer node={node} onImageClick={(src, alt) => setLightboxImage({ src, alt })} onFootnoteClick={handleFootnoteClick} onLinkClick={handleLinkClick} invertImages={invertImages} />
                             </div>
                           );
                         })}
@@ -4673,7 +4721,7 @@ export const Reader: React.FC<ReaderProps> = ({
                       {devToolsOpen ? (
                         <Text ta="center">{t.devToolsBlockedMessage}</Text>
                       ) : currentChapter && currentChapter.content.map((node, ni) => (
-                        <ContentNodeRenderer key={`${currentChapterIdx}-${ni}`} node={node} onImageClick={(src, alt) => setLightboxImage({ src, alt })} onFootnoteClick={handleFootnoteClick} onLinkClick={handleLinkClick} />
+                        <ContentNodeRenderer key={`${currentChapterIdx}-${ni}`} node={node} onImageClick={(src, alt) => setLightboxImage({ src, alt })} onFootnoteClick={handleFootnoteClick} onLinkClick={handleLinkClick} invertImages={invertImages} />
                       ))}
                     </div>
                     {/* A sibling of `contentRef` above, not a child of it —

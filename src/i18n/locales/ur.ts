@@ -35,6 +35,7 @@ export const ur: TranslationStrings = {
   themePaper: 'کاغذ',
   themeFocus: 'ارتکاز',
   themeHighContrast: 'اعلیٰ تباین',
+  settingsInvertImages: 'ڈارک موڈ میں تصاویر الٹ دیں',
   settingsFontFamily: 'فونٹ فیملی',
   settingsFontSize: 'فونٹ سائز',
   settingsFontSizeDecrease: 'فونٹ سائز کم کریں',

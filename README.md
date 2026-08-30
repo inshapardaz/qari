@@ -475,6 +475,7 @@ The layout picker has three options: a single-column paginated view (turned via 
   columns={1}              // 1 or 2 column layout (ignored when scroll is true)
   scroll={false}           // true for continuous vertical scroll instead of paginated columns
   showPageDivider={false}  // book-spine-style shadow between the two pages in columns=2 mode
+  invertImagesInDarkMode={true}  // invert content/PDF-page image colors under dark/quiet/high-contrast themes
 />
 ```
 
@@ -742,6 +743,7 @@ When set to `"auto"`, the reader detects direction by analyzing character freque
 | `columns` | `1 \| 2` | `1` | Number of text columns (ignored when `scroll` is true) |
 | `scroll` | `boolean` | `false` | Continuous vertical scroll within the chapter instead of paginated columns |
 | `showPageDivider` | `boolean` | `false` | Show a book-spine-style shadow divider between the two pages in `columns={2}` mode (hidden on a trailing lone-page spread). Toggleable by the user from the Layout dropdown's own checkbox |
+| `invertImagesInDarkMode` | `boolean` | `true` | Invert image colors — content images and rasterized PDF pages alike — under the dark-background themes (dark/quiet/high-contrast), so a baked-in bright image doesn't glare against a dark reading background. No effect under light-background themes. Toggleable by the user from the Theme dropdown's own checkbox (shown only while a dark-background theme is active) |
 | `pdfWorkerSrc` | `string` | jsDelivr CDN URL | Override the PDF.js worker script URL (only relevant for `{ type: 'pdf' }` sources) |
 | `pdfChapters` | `PdfChapterMapEntry[]` | `undefined` | Chapter/page map for PDFs — `{ title, startPage }[]` — since a PDF has no table of contents of its own (only relevant for `{ type: 'pdf' }` sources; see PDF Support above) |
 | `zoom` | `number` | `100` | Zoom level (50-300, snaps to 10%) |
