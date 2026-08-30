@@ -153,10 +153,27 @@ export interface UseSelectionHandlerOptions {
    * listener — the caller has its own right-click handling (e.g. a unified
    * context menu offering both a dictionary lookup and other actions) and
    * invokes `triggerFromCurrentSelection` itself once the user picks the
-   * lookup option. Long-press (touch) behavior is unaffected. Defaults to
-   * false.
+   * lookup option. Defaults to false.
+   *
+   * Only affects the `contextmenu` (mouse/right-click) listener — pair with
+   * `onLongPress` to also redirect the separate touch long-press gesture to
+   * the same caller-owned menu; leaving `onLongPress` unset while this is
+   * true means long-press keeps going straight to the dictionary lookup
+   * even though right-click no longer does, which is rarely what's wanted.
    */
   disableContextMenu?: boolean;
+  /**
+   * When provided, a detected long-press (touch) calls this instead of the
+   * hook's own dictionary-lookup trigger — mirroring `disableContextMenu`
+   * for the touch gesture. Given the long-press's screen position and the
+   * original touch's target element (the same two pieces of information a
+   * `contextmenu`/`click` event's `clientX`/`clientY`/`target` would give a
+   * caller-owned handler), and returning whether it actually did something
+   * with the gesture; when it returns `false` (e.g. there was no selection
+   * or note highlight to act on), the hook falls back to its own dictionary
+   * lookup so a plain word long-press keeps working even with this set.
+   */
+  onLongPress?: (position: { x: number; y: number }, target: EventTarget | null) => boolean;
 }
 
 export interface UseSelectionHandlerReturn {
@@ -192,7 +209,7 @@ export interface UseSelectionHandlerReturn {
 export function useSelectionHandler(
   options: UseSelectionHandlerOptions
 ): UseSelectionHandlerReturn {
-  const { contentRef, hasProviders, longPressThreshold = 500, disableContextMenu = false } = options;
+  const { contentRef, hasProviders, longPressThreshold = 500, disableContextMenu = false, onLongPress } = options;
 
   const [anchorPosition, setAnchorPosition] = useState<AnchorPosition | null>(null);
   const [lookupState, setLookupState] = useState<SelectionLookupState>({
@@ -340,19 +357,35 @@ export function useSelectionHandler(
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const element = contentElement;
-    if (!element || !hasProviders) {
+    // Previously gated on `hasProviders` alone, which meant a consumer with
+    // notes enabled but no dictionary providers configured never got a
+    // long-press listener attached at all — "Add note" by touch silently
+    // didn't work in that configuration. `onLongPress` (the caller-owned
+    // unified-menu path) is an equally valid reason to listen.
+    if (!element || (!hasProviders && !onLongPress)) {
       return;
     }
 
     const handleTouchStart = (event: TouchEvent) => {
-      // Record the touch start position for move detection
+      // Record the touch start position (for move detection, and as the
+      // long-press's own anchor point — see its use below) plus the
+      // original target element, mirroring what a `contextmenu`/`click`
+      // event would give a caller-owned handler.
       const touch = event.touches[0];
       touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
+      const target = event.target;
 
       // Start a timer for long-press detection
       longPressTimerRef.current = setTimeout(() => {
         longPressTimerRef.current = null;
-        // After the threshold, check if there's a selection
+        const position = touchStartPosRef.current;
+        // `onLongPress` (when provided) owns this gesture — e.g. Reader's
+        // own unified note/dictionary menu — falling back to the built-in
+        // dictionary-only trigger only if it declines to handle this
+        // particular long-press (no selection or highlight under it).
+        if (onLongPress && position) {
+          if (onLongPress(position, target)) return;
+        }
         handleSelectionTrigger();
       }, longPressThreshold);
     };
@@ -399,7 +432,7 @@ export function useSelectionHandler(
         longPressTimerRef.current = null;
       }
     };
-  }, [contentElement, hasProviders, longPressThreshold, handleSelectionTrigger]);
+  }, [contentElement, hasProviders, longPressThreshold, handleSelectionTrigger, onLongPress]);
 
   return {
     anchorPosition,

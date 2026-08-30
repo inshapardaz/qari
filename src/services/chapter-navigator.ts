@@ -76,6 +76,51 @@ export function getChapterCharCount(chapter: Chapter): number {
 }
 
 /**
+ * Resolves a chapter-relative character offset (a note's/search match's real
+ * DOM-text offset, or a bookmark's) to a page index. Shared by
+ * BookmarkPanel/NotePanel/SearchPanel (clicking to navigate) and Reader's own
+ * "is the current page bookmarked" check, so the two always agree — a
+ * bookmark that resolves to page 5 when clicked also lights up the toggle
+ * button on page 5, never some other page.
+ *
+ * When `measuredTotalPages` is available (the chapter has actually been
+ * rendered and measured for real this session — see `pagesPerChapter` in
+ * Reader.tsx), `offset` is scaled *proportionally* across the chapter's real
+ * character count rather than divided by a fixed `charsPerPage`: a fixed
+ * assumption rarely matches how many characters actually fit on a rendered
+ * page (depends on font size, margin, columns, viewport), and — critically —
+ * doesn't survive a *later* layout change reflowing the whole chapter into a
+ * different number of pages (issue #21). Proportional scaling recovers
+ * approximately the same reading position regardless.
+ *
+ * Without a real measured total (the chapter hasn't been visited this
+ * session), falls back to the simple `offset / charsPerPage` estimate — the
+ * same heuristic used to resolve an initial reading-progress position before
+ * any real measurement has run.
+ */
+export function resolveOffsetToPage(
+  offset: number,
+  chapterCharCount: number,
+  measuredTotalPages: number | undefined,
+  charsPerPage: number
+): number {
+  if (measuredTotalPages && chapterCharCount > 0) {
+    const clampedOffset = Math.min(offset, chapterCharCount);
+    return Math.max(0, Math.min(
+      Math.round((clampedOffset / chapterCharCount) * (measuredTotalPages - 1)),
+      measuredTotalPages - 1
+    ));
+  }
+  if (offset > chapterCharCount) {
+    const totalPagesInChapter = chapterCharCount === 0
+      ? 1
+      : Math.ceil(chapterCharCount / charsPerPage);
+    return totalPagesInChapter - 1;
+  }
+  return Math.floor(offset / charsPerPage);
+}
+
+/**
  * ChapterNavigator provides chapter-based navigation and reading progress
  * calculation for a Book instance.
  *

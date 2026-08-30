@@ -62,9 +62,9 @@ import { BookmarkStore } from '../services/bookmark-store';
 import { LocalStorageStore } from '../services/local-storage-store';
 import { NoteStore } from '../services/note-store';
 import { ProgressStore } from '../services/progress-store';
-import { ChapterNavigator, getChapterCharCount } from '../services/chapter-navigator';
+import { ChapterNavigator, getChapterCharCount, resolveOffsetToPage } from '../services/chapter-navigator';
 import { URDU_WEB_FONT_OPTIONS, injectUrduWebFontsCss } from '../services/urdu-web-fonts';
-import { getRangeOffsets, applyHighlights, clearHighlights, findTextRange, NOTE_COLOR_ORDER, NOTE_HIGHLIGHT_COLORS } from '../utils/text-highlight';
+import { getTextOffset, getRangeOffsets, applyHighlights, clearHighlights, findTextRange, NOTE_COLOR_ORDER, NOTE_HIGHLIGHT_COLORS } from '../utils/text-highlight';
 
 import { BookmarkPanel } from './BookmarkPanel';
 import { NotePanel } from './NotePanel';
@@ -588,6 +588,63 @@ function getSourceFormat(source: ReaderSource): string {
     case 'pdf':
       return 'pdf';
   }
+}
+
+/**
+ * Finds the real character offset (within `contentEl`'s rendered text — see
+ * `getTextOffset`) of the first character visible on whatever page is
+ * *currently* transformed into view inside `pageBoxEl`. Used to give a new
+ * bookmark a genuine DOM-text position instead of a `page * charsPerPage`
+ * guess — that guess only round-trips back to the same page while pagination
+ * stays exactly as it was; a later font-size, margin, or column change
+ * reflows the whole chapter, after which "page 5" can mean a completely
+ * different stretch of text (issue #21). A real offset, like a note's own
+ * `startOffset`, survives that because it's anchored to the text itself, not
+ * to a page count that changes size out from under it.
+ *
+ * Implemented as a real-DOM hit test (`caretRangeFromPoint`/
+ * `caretPositionFromPoint`) at a point just inside the page's visible
+ * top-start corner, adjusted for reading direction — the same "point on
+ * screen -> DOM position" trick browsers' own right-click/selection
+ * handling uses internally. Neither API exists in jsdom (or a handful of
+ * older/unusual browsers), so this returns `null` when unavailable; callers
+ * must fall back to the coarser page-based estimate in that case.
+ */
+function findVisiblePageStartOffset(
+  contentEl: HTMLElement,
+  pageBoxEl: HTMLElement,
+  margin: number,
+  direction: 'ltr' | 'rtl'
+): number | null {
+  const docWithCaretApis = document as Document & {
+    caretRangeFromPoint?: (x: number, y: number) => Range | null;
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+  };
+  if (!docWithCaretApis.caretRangeFromPoint && !docWithCaretApis.caretPositionFromPoint) return null;
+
+  const rect = pageBoxEl.getBoundingClientRect();
+  // A few pixels inset from the page's own top-padding/side-margin corner
+  // (see `contentRef`'s own `padding: 2rem ${margin}px` style) so the hit
+  // test lands on real text, not the padding around it.
+  const x = direction === 'rtl' ? rect.right - margin - 4 : rect.left + margin + 4;
+  const y = rect.top + 40;
+
+  let node: Node | null = null;
+  let offset = 0;
+  if (docWithCaretApis.caretRangeFromPoint) {
+    const range = docWithCaretApis.caretRangeFromPoint(x, y);
+    if (!range) return null;
+    node = range.startContainer;
+    offset = range.startOffset;
+  } else if (docWithCaretApis.caretPositionFromPoint) {
+    const pos = docWithCaretApis.caretPositionFromPoint(x, y);
+    if (!pos) return null;
+    node = pos.offsetNode;
+    offset = pos.offset;
+  }
+  if (!node || !contentEl.contains(node)) return null;
+
+  return getTextOffset(contentEl, node, offset);
 }
 
 // Shared between the real code-block render (ContentNodeRenderer) and its
@@ -1645,6 +1702,80 @@ export const Reader: React.FC<ReaderProps> = ({
   }, [dictionaryProviders, stardictDictionaries, enableBuiltInDictionary]);
 
   // ---------------------------------------------------------------------------
+  // Notes — right-click (desktop) or long-press (touch) a text selection
+  // inside the content to add a note, or on an existing note highlight to
+  // remove it (both can apply at once, e.g. selecting across part of a
+  // highlight). Position is captured as a plain character offset into the
+  // chapter's rendered text (see `utils/text-highlight.ts`), not an AST
+  // offset, so it stays valid across font/margin/layout changes that don't
+  // alter the text itself.
+  //
+  // Right-click/long-press-over-a-selection is also how dictionary lookup
+  // triggers (see `useSelectionHandler` below). When notes are enabled,
+  // Reader owns both gestures and shows one unified menu with all
+  // applicable actions — see the `disableContextMenu`/`onLongPress` passed
+  // to that hook, and the Menu rendered near the content div for the actual
+  // menu items.
+  // ---------------------------------------------------------------------------
+  const openUnifiedSelectionMenuAt = useCallback((clientX: number, clientY: number, targetEl: EventTarget | null): boolean => {
+    // Deliberately not gated on `readOnly` — selection, and this menu's
+    // "Add note"/dictionary lookup, are meant to keep working under
+    // `readOnly` (see its doc comment on ReaderProps); only the actual
+    // copy/cut clipboard events are blocked (see the content div's
+    // `onCopy`/`onCut`), independent of how the content gets selected.
+    if (!enableNotes) return false;
+
+    const highlightEl = (targetEl as HTMLElement | null)?.closest?.('.qari-note-highlight') as HTMLElement | null;
+    const noteId = highlightEl?.dataset.noteId ?? null;
+
+    let selectionInfo: { start: number; end: number; text: string; range: Range } | null = null;
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed && selection.rangeCount > 0 && selection.toString().trim()) {
+      const range = selection.getRangeAt(0);
+      if (contentRef.current && contentRef.current.contains(range.commonAncestorContainer)) {
+        const { start, end } = getRangeOffsets(contentRef.current, range);
+        if (start !== end) {
+          selectionInfo = { start, end, text: selection.toString(), range: range.cloneRange() };
+        }
+      }
+    }
+
+    // Nothing for the unified menu to offer — let the caller fall back to
+    // whatever it would otherwise do (native context menu, dictionary
+    // lookup, ...).
+    if (!selectionInfo && !noteId) return false;
+
+    // The reader root has its own `transform` (see its style comment) so it
+    // acts as the containing block for this menu's `position: fixed`
+    // target — coordinates need to be relative to the root's box, not the
+    // raw (viewport-relative) clientX/Y, or the menu renders offset from
+    // the actual click whenever the reader isn't flush with the viewport's
+    // top-left corner. Same fix as handleFootnoteClick/handleLinkClick use.
+    const readerRect = rootRef.current?.getBoundingClientRect();
+    const x = clientX - (readerRect?.left ?? 0);
+    const y = clientY - (readerRect?.top ?? 0);
+    setPendingNote({ x, y, selection: selectionInfo, noteId });
+    return true;
+  }, [enableNotes]);
+
+  const handleContentContextMenu = useCallback((e: React.MouseEvent) => {
+    const opened = openUnifiedSelectionMenuAt(e.clientX, e.clientY, e.target);
+    if (opened) e.preventDefault();
+  }, [openUnifiedSelectionMenuAt]);
+
+  // Touch counterpart of the above: a long-press on selected text used to
+  // only ever trigger the dictionary lookup (`useSelectionHandler`'s own
+  // built-in long-press handling), completely bypassing this unified menu —
+  // on platforms whose long-press doesn't also happen to fire a native
+  // `contextmenu` event (notably iOS Safari), "Add note"/"Remove note" were
+  // simply unreachable by touch. Passed as `onLongPress` below so
+  // `useSelectionHandler` routes a detected long-press here instead of
+  // straight to its own dictionary trigger whenever notes are enabled.
+  const handleContentLongPress = useCallback((position: { x: number; y: number }, target: EventTarget | null) => {
+    return openUnifiedSelectionMenuAt(position.x, position.y, target);
+  }, [openUnifiedSelectionMenuAt]);
+
+  // ---------------------------------------------------------------------------
   // Selection handler hook — bridges user text interactions with dictionary lookups
   // ---------------------------------------------------------------------------
   // `anchorPosition` (this hook's own selection-relative coordinates) isn't
@@ -1654,10 +1785,14 @@ export const Reader: React.FC<ReaderProps> = ({
     contentRef,
     hasProviders,
     // When notes are enabled, Reader owns the right-click gesture itself
-    // (see handleContentContextMenu below) so it can offer a unified menu
+    // (see handleContentContextMenu above) so it can offer a unified menu
     // with both "Add note" and the dictionary lookup, instead of the two
     // features fighting over the same contextmenu event.
     disableContextMenu: enableNotes,
+    // Same reasoning, for the touch long-press gesture (see
+    // handleContentLongPress's own comment) — without this, long-press only
+    // ever reached the dictionary lookup below, never the unified menu.
+    onLongPress: enableNotes ? handleContentLongPress : undefined,
   });
 
   // ---------------------------------------------------------------------------
@@ -1863,59 +1998,6 @@ export const Reader: React.FC<ReaderProps> = ({
     }
   }, [onNoteChange]);
 
-  // ---------------------------------------------------------------------------
-  // Notes — right-click a text selection inside the content to add a note,
-  // or right-click an existing note highlight to remove it (both can apply
-  // at once, e.g. selecting across part of a highlight). Position is
-  // captured as a plain character offset into the chapter's rendered text
-  // (see `utils/text-highlight.ts`), not an AST offset, so it stays valid
-  // across font/margin/layout changes that don't alter the text itself.
-  //
-  // Right-click-over-a-selection is also how dictionary lookup triggers
-  // (see `useSelectionHandler`). When notes are enabled, Reader owns the
-  // gesture and shows one unified menu with all applicable actions — see
-  // the `disableContextMenu: enableNotes` passed to that hook above, and
-  // the Menu rendered near the content div for the actual menu items.
-  // ---------------------------------------------------------------------------
-  const handleContentContextMenu = useCallback((e: React.MouseEvent) => {
-    // Deliberately not gated on `readOnly` — selection, and this menu's
-    // "Add note"/dictionary lookup, are meant to keep working under
-    // `readOnly` (see its doc comment on ReaderProps); only the actual
-    // copy/cut clipboard events are blocked (see the content div's
-    // `onCopy`/`onCut`), independent of how the content gets selected.
-    if (!enableNotes) return;
-
-    const targetEl = e.target as HTMLElement | null;
-    const highlightEl = targetEl?.closest?.('.qari-note-highlight') as HTMLElement | null;
-    const noteId = highlightEl?.dataset.noteId ?? null;
-
-    let selectionInfo: { start: number; end: number; text: string; range: Range } | null = null;
-    const selection = window.getSelection();
-    if (selection && !selection.isCollapsed && selection.rangeCount > 0 && selection.toString().trim()) {
-      const range = selection.getRangeAt(0);
-      if (contentRef.current && contentRef.current.contains(range.commonAncestorContainer)) {
-        const { start, end } = getRangeOffsets(contentRef.current, range);
-        if (start !== end) {
-          selectionInfo = { start, end, text: selection.toString(), range: range.cloneRange() };
-        }
-      }
-    }
-
-    // Nothing for the unified menu to offer — let the normal context menu appear.
-    if (!selectionInfo && !noteId) return;
-
-    e.preventDefault();
-    // The reader root has its own `transform` (see its style comment) so it
-    // acts as the containing block for this menu's `position: fixed`
-    // target — coordinates need to be relative to the root's box, not the
-    // raw (viewport-relative) clientX/Y, or the menu renders offset from
-    // the actual click whenever the reader isn't flush with the viewport's
-    // top-left corner. Same fix as handleFootnoteClick/handleLinkClick use.
-    const readerRect = rootRef.current?.getBoundingClientRect();
-    const x = e.clientX - (readerRect?.left ?? 0);
-    const y = e.clientY - (readerRect?.top ?? 0);
-    setPendingNote({ x, y, selection: selectionInfo, noteId });
-  }, [enableNotes]);
 
   // Shared by both places a note can be created from a text selection: the
   // unified context menu (via `pendingNote.selection`) and the dictionary
@@ -3059,16 +3141,21 @@ export const Reader: React.FC<ReaderProps> = ({
 
   // The header's Bookmarks button bookmarks/unbookmarks the current page
   // directly rather than opening a picker — it toggles a bookmark using the
-  // same bookId/chapterId/(page * charsPerPage) convention BookmarkPanel's
-  // own "create" form uses (see handleCreate there), so a bookmark placed
-  // here shows up in the drawer's Bookmarks tab (and vice versa) and
-  // resolves back to the same page on navigation either way.
+  // same convention BookmarkPanel's own click-to-navigate handler expects
+  // (see handleToggleBookmark below and BookmarkPanel.tsx's own comment),
+  // so a bookmark placed here shows up in the drawer's Bookmarks tab (and
+  // vice versa) and resolves back to the same page on navigation either
+  // way. Uses `resolveOffsetToPage` — the same resolver BookmarkPanel's own
+  // click-to-navigate uses — so "is this page bookmarked" and "which page
+  // does this bookmark open to" can never disagree with each other.
   const currentBookId = state.book?.metadata.identifier || '';
-  const currentChapterBookmarkId = state.book?.chapters[currentChapterIdx]?.id || '';
+  const currentChapterForBookmark = state.book?.chapters[currentChapterIdx];
+  const currentChapterBookmarkId = currentChapterForBookmark?.id || '';
+  const currentChapterCharCountForBookmark = currentChapterForBookmark ? getChapterCharCount(currentChapterForBookmark) : 0;
   const currentPageBookmark = state.bookmarks.find(
     (b) => b.bookId === currentBookId
       && b.chapterId === currentChapterBookmarkId
-      && Math.floor(b.position / DEFAULT_CHARS_PER_PAGE) === currentPage
+      && resolveOffsetToPage(b.position, currentChapterCharCountForBookmark, pagesPerChapter[currentChapterIdx], DEFAULT_CHARS_PER_PAGE) === currentPage
   );
   const isCurrentPageBookmarked = !!currentPageBookmark;
 
@@ -3083,7 +3170,14 @@ export const Reader: React.FC<ReaderProps> = ({
     }
 
     const chapterId = state.book.chapters[currentChapterIdx]?.id || '';
-    const position = currentPage * DEFAULT_CHARS_PER_PAGE;
+    // A real DOM-text offset (see `findVisiblePageStartOffset`'s own
+    // comment) survives a later font/layout change; the coarse
+    // `page * charsPerPage` guess is only a fallback for the handful of
+    // environments without the caret-hit-test APIs it needs (issue #21).
+    const realOffset = !scroll && contentRef.current && pageBoxRef.current
+      ? findVisiblePageStartOffset(contentRef.current, pageBoxRef.current, margin, state.direction)
+      : null;
+    const position = realOffset ?? currentPage * DEFAULT_CHARS_PER_PAGE;
     const name = interpolate(t.bookmarkAutoName, { chapter: currentChapterIdx + 1, page: currentPage + 1 });
     try {
       const bookmark = await store.create(currentBookId, chapterId, position, name);
@@ -3095,7 +3189,7 @@ export const Reader: React.FC<ReaderProps> = ({
       // e.g. the per-book bookmark limit was reached — nothing to recover
       // into here, same as the equivalent failure in BookmarkPanel.
     }
-  }, [state.book, currentPageBookmark, currentChapterIdx, currentPage, currentBookId, t, addBookmark, removeBookmark, onBookmarkCreate]);
+  }, [state.book, state.direction, currentPageBookmark, currentChapterIdx, currentPage, currentBookId, scroll, margin, t, addBookmark, removeBookmark, onBookmarkCreate]);
 
   // ---------------------------------------------------------------------------
   // Context value (memoized)

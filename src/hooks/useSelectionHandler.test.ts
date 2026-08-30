@@ -326,6 +326,87 @@ describe('useSelectionHandler', () => {
     });
   });
 
+  describe('onLongPress (issue #21 follow-up: long-press bypassing a caller-owned unified menu)', () => {
+    it('calls onLongPress instead of the built-in dictionary trigger, with the press position and target', () => {
+      const onLongPress = vi.fn().mockReturnValue(true);
+      const { result } = renderHook(() =>
+        useSelectionHandler({ contentRef, hasProviders: true, longPressThreshold: 500, onLongPress })
+      );
+
+      mockSelection('world', contentElement);
+
+      const touchStartEvent = new TouchEvent('touchstart', {
+        bubbles: true,
+        touches: [{ clientX: 42, clientY: 77, identifier: 0 } as Touch],
+      });
+      Object.defineProperty(touchStartEvent, 'target', { value: contentElement });
+
+      act(() => {
+        contentElement.dispatchEvent(touchStartEvent);
+      });
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+
+      expect(onLongPress).toHaveBeenCalledTimes(1);
+      expect(onLongPress).toHaveBeenCalledWith({ x: 42, y: 77 }, contentElement);
+      // onLongPress handled it (returned true) — the built-in dictionary
+      // lookup must not also fire for the same gesture.
+      expect(result.current.lookupState.status).toBe('idle');
+    });
+
+    it('falls back to the dictionary lookup when onLongPress declines the gesture', () => {
+      const onLongPress = vi.fn().mockReturnValue(false);
+      const { result } = renderHook(() =>
+        useSelectionHandler({ contentRef, hasProviders: true, longPressThreshold: 500, onLongPress })
+      );
+
+      mockSelection('world', contentElement);
+
+      const touchStartEvent = new TouchEvent('touchstart', {
+        bubbles: true,
+        touches: [{ clientX: 42, clientY: 77, identifier: 0 } as Touch],
+      });
+
+      act(() => {
+        contentElement.dispatchEvent(touchStartEvent);
+      });
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+
+      expect(onLongPress).toHaveBeenCalledTimes(1);
+      expect(result.current.lookupState.status).toBe('loading');
+    });
+
+    it('still attaches a long-press listener when hasProviders is false, as long as onLongPress is provided', () => {
+      // Regression: the long-press listener used to be gated on
+      // `hasProviders` alone, so a consumer with notes enabled but no
+      // dictionary providers configured never got long-press wired up at
+      // all — "Add note" by touch silently did nothing.
+      const onLongPress = vi.fn().mockReturnValue(true);
+      renderHook(() =>
+        useSelectionHandler({ contentRef, hasProviders: false, longPressThreshold: 500, onLongPress })
+      );
+
+      mockSelection('world', contentElement);
+
+      const touchStartEvent = new TouchEvent('touchstart', {
+        bubbles: true,
+        touches: [{ clientX: 42, clientY: 77, identifier: 0 } as Touch],
+      });
+
+      act(() => {
+        contentElement.dispatchEvent(touchStartEvent);
+      });
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+
+      expect(onLongPress).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('dismiss clears state (Requirement 11.1)', () => {
     it('resets anchorPosition and lookupState to idle', () => {
       const { result } = renderHook(() =>

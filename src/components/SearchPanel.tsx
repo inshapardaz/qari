@@ -14,7 +14,7 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { ActionIcon, Button, Text, TextInput } from '@mantine/core';
 import { useReaderContext } from './Reader';
 import { useTranslations, interpolate } from '../i18n';
-import { getChapterCharCount } from '../services/chapter-navigator';
+import { getChapterCharCount, resolveOffsetToPage } from '../services/chapter-navigator';
 import { searchBook } from '../services/search-service';
 import type { SearchResult } from '../services/search-service';
 import type { PageChangeEvent } from '../models/events';
@@ -89,33 +89,11 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({
       const chapterCharCount = getChapterCharCount(chapter);
       const measuredTotalPages = pagesPerChapter[result.chapterIdx];
 
-      let targetPage: number;
-      let effectivePosition: number;
-
-      if (measuredTotalPages && chapterCharCount > 0) {
-        // This chapter has already been measured for real — scale the
-        // match's real text offset proportionally across the chapter's
-        // *real* page count instead of assuming a fixed charsPerPage. See
-        // the identical fix in NotePanel.tsx (issue #21) for why: that
-        // fixed assumption rarely matches how many characters actually fit
-        // on a rendered page (depends on font size, margin, columns,
-        // viewport).
-        const clampedOffset = Math.min(result.offset, chapterCharCount);
-        targetPage = Math.max(0, Math.min(
-          Math.round((clampedOffset / chapterCharCount) * (measuredTotalPages - 1)),
-          measuredTotalPages - 1
-        ));
-        effectivePosition = clampedOffset;
-      } else if (result.offset > chapterCharCount) {
-        const totalPagesInChapter = chapterCharCount === 0
-          ? 1
-          : Math.ceil(chapterCharCount / charsPerPage);
-        targetPage = totalPagesInChapter - 1;
-        effectivePosition = chapterCharCount;
-      } else {
-        targetPage = Math.floor(result.offset / charsPerPage);
-        effectivePosition = result.offset;
-      }
+      // See `resolveOffsetToPage`'s own comment (chapter-navigator.ts) for
+      // why this prefers the chapter's real, already-measured page count
+      // over a fixed charsPerPage guess whenever it's available (issue #21).
+      const targetPage = resolveOffsetToPage(result.offset, chapterCharCount, measuredTotalPages, charsPerPage);
+      const effectivePosition = Math.min(result.offset, chapterCharCount || result.offset);
 
       let charsBeforeChapter = 0;
       let totalBookChars = 0;

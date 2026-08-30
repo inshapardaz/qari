@@ -11,7 +11,7 @@ import React, { useState, useCallback } from 'react';
 import { Button, ActionIcon, Alert, Title, Group, Text, Textarea } from '@mantine/core';
 import { useReaderContext } from './Reader';
 import { useTranslations, interpolate } from '../i18n';
-import { getChapterCharCount } from '../services/chapter-navigator';
+import { getChapterCharCount, resolveOffsetToPage } from '../services/chapter-navigator';
 import { NOTE_HIGHLIGHT_COLORS, DEFAULT_NOTE_COLOR, NOTE_COLOR_ORDER } from '../utils/text-highlight';
 import type { Note, NoteColor } from '../models/note';
 import type { PageChangeEvent } from '../models/events';
@@ -78,34 +78,11 @@ export const NotePanel: React.FC<NotePanelProps> = ({
       const chapterCharCount = getChapterCharCount(chapter);
       const measuredTotalPages = pagesPerChapter[chapterIdx];
 
-      let targetPage: number;
-      let effectivePosition: number;
-
-      if (measuredTotalPages && chapterCharCount > 0) {
-        // This chapter has already been measured for real (it's the one
-        // currently open, or one visited earlier this session) — scale the
-        // note's real DOM-text offset proportionally across the chapter's
-        // *real* page count instead of assuming a fixed charsPerPage: that
-        // fixed assumption rarely matches how many characters actually fit
-        // on a rendered page (depends on font size, margin, columns,
-        // viewport), and can otherwise land on an early page instead of the
-        // one the note is really on (issue #21).
-        const clampedOffset = Math.min(note.startOffset, chapterCharCount);
-        targetPage = Math.max(0, Math.min(
-          Math.round((clampedOffset / chapterCharCount) * (measuredTotalPages - 1)),
-          measuredTotalPages - 1
-        ));
-        effectivePosition = clampedOffset;
-      } else if (note.startOffset > chapterCharCount) {
-        const totalPagesInChapter = chapterCharCount === 0
-          ? 1
-          : Math.ceil(chapterCharCount / charsPerPage);
-        targetPage = totalPagesInChapter - 1;
-        effectivePosition = chapterCharCount;
-      } else {
-        targetPage = Math.floor(note.startOffset / charsPerPage);
-        effectivePosition = note.startOffset;
-      }
+      // See `resolveOffsetToPage`'s own comment (chapter-navigator.ts) for
+      // why this prefers the chapter's real, already-measured page count
+      // over a fixed charsPerPage guess whenever it's available (issue #21).
+      const targetPage = resolveOffsetToPage(note.startOffset, chapterCharCount, measuredTotalPages, charsPerPage);
+      const effectivePosition = Math.min(note.startOffset, chapterCharCount || note.startOffset);
 
       let charsBeforeChapter = 0;
       let totalBookChars = 0;

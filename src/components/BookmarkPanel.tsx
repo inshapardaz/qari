@@ -14,7 +14,7 @@ import React, { useState, useCallback } from 'react';
 import { Button, ActionIcon, Alert, Title, Group } from '@mantine/core';
 import { useReaderContext } from './Reader';
 import { useTranslations } from '../i18n';
-import { getChapterCharCount } from '../services/chapter-navigator';
+import { getChapterCharCount, resolveOffsetToPage } from '../services/chapter-navigator';
 import type { Bookmark } from '../models/bookmark';
 import type { PageChangeEvent } from '../models/events';
 
@@ -57,14 +57,13 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
 
   /**
    * Handles clicking a bookmark to navigate to its position.
-   * Implements the navigation algorithm from the design:
    * 1. Look up chapterId in book.chapters
    * 2. If chapter not found → show error, stay on current page
-   * 3. Calculate target page: Math.floor(position / charsPerPage)
-   * 4. If position > chapter char count → navigate to last page
-   * 5. Update state via onNavigate callback
-   * 6. Fire onPageChange callback with new position
-   * 7. Recalculate reading progress
+   * 3. Resolve the target page via `resolveOffsetToPage` (see its own
+   *    comment in chapter-navigator.ts)
+   * 4. Update state via onNavigate callback
+   * 5. Fire onPageChange callback with new position
+   * 6. Recalculate reading progress
    */
   const handleBookmarkClick = useCallback(
     (bookmark: Bookmark) => {
@@ -86,45 +85,12 @@ export const BookmarkPanel: React.FC<BookmarkPanelProps> = ({
       const chapterCharCount = getChapterCharCount(chapter);
       const measuredTotalPages = pagesPerChapter[chapterIdx];
 
-      // 3. Calculate target page
-      let targetPage: number;
-      let effectivePosition: number;
-
-      if (measuredTotalPages && chapterCharCount > 0) {
-        // This chapter has already been measured for real (it's the one
-        // currently open, or one visited earlier this session) — trust that
-        // over the char-count heuristic below.
-        //
-        // Recovering the page via a plain `floor(position / charsPerPage)`
-        // (position was encoded as `page * charsPerPage` at creation time)
-        // is only exact as long as pagination hasn't changed since the
-        // bookmark was created — but a later font-size, margin, or column
-        // change reflows the *whole* chapter, so "page 5" can end up
-        // covering a completely different, much smaller or larger, stretch
-        // of text than it did before. Landing back on literally "page 5" of
-        // the new layout would then miss the bookmarked passage entirely
-        // (issue #21). Scaling `position` proportionally across the
-        // chapter's real character count instead recovers approximately
-        // the same *reading position* regardless of how pagination has
-        // changed since — the same fix already applied to Notes/Search,
-        // which anchor to a real DOM-text offset for the same reason.
-        const clampedPosition = Math.min(bookmark.position, chapterCharCount);
-        targetPage = Math.max(0, Math.min(
-          Math.round((clampedPosition / chapterCharCount) * (measuredTotalPages - 1)),
-          measuredTotalPages - 1
-        ));
-        effectivePosition = clampedPosition;
-      } else if (bookmark.position > chapterCharCount) {
-        // 4. If position > chapter char count → navigate to last page
-        const totalPagesInChapter = chapterCharCount === 0
-          ? 1
-          : Math.ceil(chapterCharCount / charsPerPage);
-        targetPage = totalPagesInChapter - 1;
-        effectivePosition = chapterCharCount;
-      } else {
-        targetPage = Math.floor(bookmark.position / charsPerPage);
-        effectivePosition = bookmark.position;
-      }
+      // 3. Calculate target page — see `resolveOffsetToPage`'s own comment
+      // (chapter-navigator.ts) for why this prefers the chapter's real,
+      // already-measured page count over a fixed charsPerPage guess
+      // whenever it's available (issue #21).
+      const targetPage = resolveOffsetToPage(bookmark.position, chapterCharCount, measuredTotalPages, charsPerPage);
+      const effectivePosition = Math.min(bookmark.position, chapterCharCount || bookmark.position);
 
       // 7. Calculate reading progress
       // Progress = (charsBeforeChapter + min(position, chapterCharCount)) / totalBookChars * 100
