@@ -4,6 +4,8 @@ A framework-agnostic ebook reading component built with React at its core, expos
 
 **[Live Demo](https://inshapardaz.github.io/qari/)** — try the reader in your browser, no install required. Source: [github.com/inshapardaz/qari](https://github.com/inshapardaz/qari).
 
+[npm package](https://www.npmjs.com/package/@inshapardaz/qari)
+
 ## Features
 
 - Read EPUB files, Markdown documents, or fetch content from URLs
