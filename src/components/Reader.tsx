@@ -118,6 +118,8 @@ export interface ReaderSettings {
   showPageDivider?: boolean;
   /** Invert image colors (content images and PDF pages alike) under the dark-background reading themes (dark/quiet/high-contrast). Defaults to true. */
   invertImagesInDarkMode?: boolean;
+  /** PDF page zoom (50-300, snaps to 10%), set via the PDF zoom in/out controls. Only relevant for `{ type: 'pdf' }` sources. */
+  pdfZoom?: number;
 }
 
 export interface FontOption {
@@ -195,6 +197,15 @@ export interface ReaderProps {
    */
   pdfChapters?: PdfChapterMapEntry[];
   zoom?: number;
+  /**
+   * Initial PDF page zoom (50-300, snaps to 10%), independent of `zoom`
+   * above (which scales the whole reader via CSS `zoom` and applies to all
+   * source types). This instead seeds the PDF-specific page-scale control
+   * (the header's zoom in/out buttons) — pass the last value reported via
+   * `onSettingsChange`'s `pdfZoom` field to restore it across sessions.
+   * Only relevant when loading a `{ type: 'pdf' }` source. Defaults to 100.
+   */
+  pdfZoom?: number;
   direction?: 'ltr' | 'rtl' | 'auto';
   dictionaryProviders?: DictionaryProvider[];
   /** StarDict dictionary configurations for local/offline definitions (also covers GoldenDict-distributed dictionaries, which typically ship in StarDict format) */
@@ -1026,6 +1037,7 @@ export const Reader: React.FC<ReaderProps> = ({
   pdfWorkerSrc,
   pdfChapters,
   zoom = 100,
+  pdfZoom: pdfZoomProp = 100,
   direction = 'auto',
   dictionaryProviders,
   stardictDictionaries,
@@ -1116,11 +1128,14 @@ export const Reader: React.FC<ReaderProps> = ({
   // re-centered instead of sitting pinned to one edge of the spread.
   const [trailingLoneColumn, setTrailingLoneColumn] = useState<boolean[]>([]);
   // PDF page zoom (see the header's zoom in/out control and its use near the
-  // render return) — deliberately local, uncontrolled state rather than a
-  // prop: it's a transient view setting for the current page image, not a
-  // persisted reading preference like fontSize/margin, so it isn't part of
-  // ReaderSettings/onSettingsChange.
-  const [pdfZoom, setPdfZoom] = useState(100);
+  // render return). Seeded from `pdfZoomProp` so a host app can restore the
+  // last value it persisted from `onSettingsChange`'s `pdfZoom` field (see
+  // the zoom in/out handlers below), the same round-trip every other
+  // in-reader setting goes through — but otherwise kept as local state
+  // rather than a fully controlled prop, since re-syncing it on every
+  // `pdfZoomProp` change (like the `zoom` prop's own effect above) would
+  // fight the user's own in-progress zoom gesture.
+  const [pdfZoom, setPdfZoom] = useState(() => clampZoom(pdfZoomProp));
   const [chapterMenuOpen, setChapterMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [moreSettingsOpen, setMoreSettingsOpen] = useState(false);
@@ -2073,7 +2088,7 @@ export const Reader: React.FC<ReaderProps> = ({
   const loadBook = useCallback(async (src: ReaderSource) => {
     setState(prev => ({ ...prev, loading: true, error: null }));
     pdfParserRef.current = null;
-    setPdfZoom(100);
+    setPdfZoom(clampZoom(pdfZoomProp));
 
     try {
       let book: Book;
@@ -2358,7 +2373,7 @@ export const Reader: React.FC<ReaderProps> = ({
         onError(readerError);
       }
     }
-  }, [direction, onReady, onError, bookmarksProp, pdfWorkerSrc, pdfChapters, enableProgressTracking, bookInfo]);
+  }, [direction, onReady, onError, bookmarksProp, pdfWorkerSrc, pdfChapters, enableProgressTracking, bookInfo, pdfZoomProp]);
 
   useEffect(() => {
     loadBook(source);
@@ -4442,7 +4457,11 @@ export const Reader: React.FC<ReaderProps> = ({
                       <ActionIcon
                         variant="transparent"
                         size={headerIconSize}
-                        onClick={() => setPdfZoom(z => clampZoom(z - 10))}
+                        onClick={() => {
+                          const next = clampZoom(pdfZoom - 10);
+                          setPdfZoom(next);
+                          onSettingsChange?.({ pdfZoom: next });
+                        }}
                         disabled={pdfZoom <= 50}
                         aria-label={`${t.zoomOut}. Current zoom ${pdfZoom}%`}
                         title={t.zoomOut}
@@ -4456,7 +4475,11 @@ export const Reader: React.FC<ReaderProps> = ({
                       <ActionIcon
                         variant="transparent"
                         size={headerIconSize}
-                        onClick={() => setPdfZoom(z => clampZoom(z + 10))}
+                        onClick={() => {
+                          const next = clampZoom(pdfZoom + 10);
+                          setPdfZoom(next);
+                          onSettingsChange?.({ pdfZoom: next });
+                        }}
                         disabled={pdfZoom >= 300}
                         aria-label={`${t.zoomIn}. Current zoom ${pdfZoom}%`}
                         title={t.zoomIn}

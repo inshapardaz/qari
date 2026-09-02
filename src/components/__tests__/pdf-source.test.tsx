@@ -274,6 +274,32 @@ describe('Reader with a PDF source', () => {
     expect(zoomIn).toBeDisabled();
   });
 
+  it('reports PDF zoom changes via onSettingsChange, and seeds the initial zoom from the `pdfZoom` prop (issue #22)', async () => {
+    const pdfjsLib = await import('pdfjs-dist');
+    (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({
+      promise: Promise.resolve(createFakePdfDocument(1)),
+    });
+
+    const onSettingsChange = vi.fn();
+    const source: ReaderSource = { type: 'pdf', data: new ArrayBuffer(8) };
+    render(<Reader source={source} pdfZoom={130} onSettingsChange={onSettingsChange} />);
+    await screen.findByTestId('pdf-page');
+
+    // Seeded from the prop rather than the usual 100% default.
+    expect(screen.getByText('130%')).toBeInTheDocument();
+
+    const zoomIn = screen.getByRole('button', { name: /Zoom in/ });
+    fireEvent.click(zoomIn);
+    expect(screen.getByText('140%')).toBeInTheDocument();
+    expect(onSettingsChange).toHaveBeenCalledWith({ pdfZoom: 140 });
+
+    const zoomOut = screen.getByRole('button', { name: /Zoom out/ });
+    fireEvent.click(zoomOut);
+    fireEvent.click(zoomOut);
+    expect(screen.getByText('120%')).toBeInTheDocument();
+    expect(onSettingsChange).toHaveBeenLastCalledWith({ pdfZoom: 120 });
+  });
+
   it('ignores `scroll` for PDF sources — no continuous vertical flow, zoom controls always shown', async () => {
     const pdfjsLib = await import('pdfjs-dist');
     (pdfjsLib.getDocument as ReturnType<typeof vi.fn>).mockReturnValue({

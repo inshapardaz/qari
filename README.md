@@ -503,6 +503,12 @@ const myFonts: FontOption[] = [
 <Reader source={source} zoom={120} />  // 50-300, clamped to 10% increments
 ```
 
+PDF sources have a separate, independent zoom for the rasterized page image itself (the header's zoom in/out control), since `zoom` above scales the whole reader chrome and text content rather than an individual PDF page. Restore it across sessions the same way as other settings — via `onSettingsChange`'s `pdfZoom` field (see [Listening for Settings Changes](#listening-for-settings-changes)):
+
+```tsx
+<Reader source={pdfSource} pdfZoom={storedPdfZoom} onSettingsChange={({ pdfZoom }) => { if (pdfZoom) save(pdfZoom); }} />
+```
+
 ## UI Chrome Theming (Mantine)
 
 The reader's interactive chrome — header buttons, the chapter menu, the bookmarks popover, the settings dialog, sliders, switches, and selects — is built with [Mantine](https://mantine.dev). This is separate from the reading-content theming above (`theme`, `fontFamily`, etc.), which controls the *book's* appearance, not the surrounding controls.
@@ -588,7 +594,7 @@ When the user adjusts settings via the in-app UI:
 <Reader
   source={source}
   onSettingsChange={(settings) => {
-    // settings: { theme?, fontFamily?, fontSize?, justify?, lineSpacing?, letterSpacing?, wordSpacing?, margin?, columns?, scroll? }
+    // settings: { theme?, fontFamily?, fontSize?, justify?, lineSpacing?, letterSpacing?, wordSpacing?, margin?, columns?, scroll?, showPageDivider?, invertImagesInDarkMode?, pdfZoom? }
     saveToUserPreferences(settings);
   }}
 />
@@ -747,6 +753,7 @@ When set to `"auto"`, the reader detects direction by analyzing character freque
 | `pdfWorkerSrc` | `string` | jsDelivr CDN URL | Override the PDF.js worker script URL (only relevant for `{ type: 'pdf' }` sources) |
 | `pdfChapters` | `PdfChapterMapEntry[]` | `undefined` | Chapter/page map for PDFs — `{ title, startPage }[]` — since a PDF has no table of contents of its own (only relevant for `{ type: 'pdf' }` sources; see PDF Support above) |
 | `zoom` | `number` | `100` | Zoom level (50-300, snaps to 10%) |
+| `pdfZoom` | `number` | `100` | Initial PDF page zoom (50-300, snaps to 10%), independent of `zoom`; only relevant for `{ type: 'pdf' }` sources — see [Zoom](#zoom) |
 | `translations` | `Partial<TranslationStrings>` | English defaults | UI string overrides for i18n |
 | `direction` | `'ltr' \| 'rtl' \| 'auto'` | `'auto'` | Text direction override |
 | `enableBookmarks` | `boolean` | `true` | Show/hide bookmark panel |

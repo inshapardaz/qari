@@ -235,6 +235,7 @@ interface ViewSettings {
   scroll: boolean;
   showPageDivider: boolean;
   invertImagesInDarkMode: boolean;
+  pdfZoom: number;
 }
 
 const DEFAULT_SETTINGS: ViewSettings = {
@@ -250,6 +251,7 @@ const DEFAULT_SETTINGS: ViewSettings = {
   scroll: false,
   showPageDivider: false,
   invertImagesInDarkMode: true,
+  pdfZoom: 100,
 };
 
 function loadSettings(): ViewSettings {
@@ -277,6 +279,8 @@ function loadSettings(): ViewSettings {
       scroll: typeof parsed.scroll === 'boolean' ? parsed.scroll : DEFAULT_SETTINGS.scroll,
       showPageDivider: typeof parsed.showPageDivider === 'boolean' ? parsed.showPageDivider : DEFAULT_SETTINGS.showPageDivider,
       invertImagesInDarkMode: typeof parsed.invertImagesInDarkMode === 'boolean' ? parsed.invertImagesInDarkMode : DEFAULT_SETTINGS.invertImagesInDarkMode,
+      pdfZoom: typeof parsed.pdfZoom === 'number' && parsed.pdfZoom >= 50 && parsed.pdfZoom <= 300
+        ? parsed.pdfZoom : DEFAULT_SETTINGS.pdfZoom,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -406,7 +410,7 @@ function App() {
     setSettings(prev => ({ ...prev, [key]: value }));
   }, []);
 
-  const { theme, fontFamily, fontSize, justify, lineSpacing, letterSpacing, wordSpacing, margin, columns, scroll, showPageDivider, invertImagesInDarkMode } = settings;
+  const { theme, fontFamily, fontSize, justify, lineSpacing, letterSpacing, wordSpacing, margin, columns, scroll, showPageDivider, invertImagesInDarkMode, pdfZoom } = settings;
 
   const [progress, setProgress] = useState<{
     currentPage: number;
@@ -1063,6 +1067,7 @@ function App() {
           showCloseButton={showCloseButton}
           direction={direction}
           zoom={zoom}
+          pdfZoom={pdfZoom}
           margin={margin}
           columns={columns}
           scroll={scroll}
@@ -1088,6 +1093,7 @@ function App() {
             if (s.scroll !== undefined) updateSetting('scroll', s.scroll);
             if (s.showPageDivider !== undefined) updateSetting('showPageDivider', s.showPageDivider);
             if (s.invertImagesInDarkMode !== undefined) updateSetting('invertImagesInDarkMode', s.invertImagesInDarkMode);
+            if (s.pdfZoom !== undefined) updateSetting('pdfZoom', s.pdfZoom);
           }}
           onProgressChange={setProgress}
           onProgressSave={() => setLastProgressSave(new Date().toLocaleTimeString())}
