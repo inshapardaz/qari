@@ -101,4 +101,8 @@ jobs:
           BASE_VERSION=$(node -p "require('./package.json').version.split('-')[0]")
           DEV_VERSION="${BASE_VERSION}-dev.${{ github.run_number }}"
           npm version "$DEV_VERSION" --no-git-tag-version --allow-same-version
-          npm publish --tag dev --provenance --access public
+          # TEMPORARY --dry-run: the npmjs.com trusted publisher for this
+          # package hasn't had actual publish permission enabled yet (only
+          # configured/verified so far) — see PR #23. Remove --dry-run once
+          # that's done and a real publish has been confirmed to work.
+          npm publish --tag dev --provenance --access public --dry-run
