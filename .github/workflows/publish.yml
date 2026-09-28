@@ -64,7 +64,11 @@ jobs:
         run: npm ci
 
       - name: Update npm (trusted publishing needs npm >= 11.5.1)
-        run: npm install -g npm@latest
+        # Pinned to the 11.x line, not `npm@latest`: npm 12 requires Node
+        # >=22, but this job still runs on Node 20 (see `setup-node` above),
+        # and npm 11 already satisfies the >= 11.5.1 trusted-publishing
+        # requirement.
+        run: npm install -g npm@11
 
       - name: Bump patch version (main)
         if: github.ref == 'refs/heads/main'
