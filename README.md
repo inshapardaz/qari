@@ -764,6 +764,7 @@ When set to `"auto"`, the reader detects direction by analyzing character freque
 | `bookmarkAdapter` | `CustomStoreAdapter` | `undefined` | Legacy store adapter |
 | `enableProgressTracking` | `boolean` | `true` | Persist and resume reading position across sessions |
 | `progressAdapter` | `CustomProgressStoreAdapter` | localStorage | Custom reading-progress persistence |
+| `initialChapter` | `number \| string` | `undefined` | Chapter to open on load (zero-based index or chapter `id`); overrides saved progress |
 | `fontOptions` | `FontOption[]` | Serif, Sans, Mono + urdu-web-fonts | Custom font selector options |
 | `mantineTheme` | `MantineThemeOverride` | `undefined` | Overrides for the UI chrome's Mantine theme (deep-merged with defaults) |
 | `enableBuiltInDictionary` | `boolean` | `false` | Enable online dictionary lookup |

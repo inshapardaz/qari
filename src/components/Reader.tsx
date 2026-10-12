@@ -283,6 +283,13 @@ export interface ReaderProps {
    * (matched by `source`'s metadata identifier) is opened.
    */
   enableProgressTracking?: boolean;
+  /**
+   * Chapter to open when a book loads: a zero-based index, or a chapter `id`.
+   * Takes precedence over any saved reading progress (which is otherwise
+   * resumed). An out-of-range index or unknown id is ignored, falling back to
+   * the saved progress / start of the book.
+   */
+  initialChapter?: number | string;
   /** Custom persistence for reading progress (e.g. a server-backed store, to sync across devices). Defaults to localStorage. */
   progressAdapter?: CustomProgressStoreAdapter;
   /** Show a close button in the header. Defaults to false. */
@@ -1048,6 +1055,7 @@ export const Reader: React.FC<ReaderProps> = ({
   readOnly = false,
   blockDevTools = false,
   enableProgressTracking = true,
+  initialChapter,
   fontOptions = DEFAULT_FONT_OPTIONS,
   mantineTheme,
   bookmarkAdapter,
@@ -2272,7 +2280,17 @@ export const Reader: React.FC<ReaderProps> = ({
 
       let resolvedChapterIdx = 0;
       let resolvedPage = 0;
-      if (savedProgress) {
+      const requestedChapterIdx =
+        typeof initialChapter === 'number'
+          ? (Number.isInteger(initialChapter) && initialChapter >= 0 && initialChapter < book.chapters.length ? initialChapter : -1)
+          : initialChapter !== undefined
+            ? book.chapters.findIndex((ch) => ch.id === initialChapter)
+            : -1;
+      if (requestedChapterIdx !== -1) {
+        // An explicit request wins over saved progress and opens at the
+        // chapter's first page.
+        resolvedChapterIdx = requestedChapterIdx;
+      } else if (savedProgress) {
         const progress: ReadingProgressRecord = savedProgress;
         const chapterIdx = book.chapters.findIndex((ch) => ch.id === progress.chapterId);
         if (chapterIdx !== -1) {
@@ -2373,7 +2391,7 @@ export const Reader: React.FC<ReaderProps> = ({
         onError(readerError);
       }
     }
-  }, [direction, onReady, onError, bookmarksProp, pdfWorkerSrc, pdfChapters, enableProgressTracking, bookInfo, pdfZoomProp]);
+  }, [direction, onReady, onError, bookmarksProp, pdfWorkerSrc, pdfChapters, enableProgressTracking, bookInfo, pdfZoomProp, initialChapter]);
 
   useEffect(() => {
     loadBook(source);

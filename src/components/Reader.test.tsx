@@ -806,3 +806,33 @@ describe('Reader swipe navigation', () => {
     expect(onPageChange).not.toHaveBeenCalled();
   });
 });
+
+describe('Reader initialChapter', () => {
+  const content = '# Book\n\n## One\n\nAlpha\n\n## Two\n\nBeta\n\n## Three\n\nGamma';
+
+  async function openAt(initialChapter?: number | string) {
+    const onProgressChange = vi.fn();
+    render(
+      <MantineProvider>
+        <Reader
+          source={createMinimalMarkdownSource(content)}
+          initialChapter={initialChapter}
+          enableProgressTracking={false}
+          onProgressChange={onProgressChange}
+        />
+      </MantineProvider>
+    );
+    await waitFor(() => expect(onProgressChange).toHaveBeenCalled());
+    return onProgressChange.mock.calls[onProgressChange.mock.calls.length - 1][0];
+  }
+
+  it('opens at the requested chapter index', async () => {
+    const progress = await openAt(2);
+    expect(progress.currentChapter).toBe(2);
+  });
+
+  it('ignores an out-of-range index', async () => {
+    const progress = await openAt(99);
+    expect(progress.currentChapter).toBe(0);
+  });
+});
